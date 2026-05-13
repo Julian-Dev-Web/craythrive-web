@@ -22,10 +22,10 @@ import {
 
 const rules = [
   { key: "hasMinLength", label: "8+ characters" },
-  { key: "hasUppercase", label: "Uppercase" },
-  { key: "hasLowercase", label: "Lowercase" },
-  { key: "hasNumber", label: "Number" },
-  { key: "hasSpecialChar", label: "Special" },
+  { key: "hasUppercase", label: "One uppercase letter" },
+  { key: "hasLowercase", label: "One lowercase letter" },
+  { key: "hasNumber", label: "One number" },
+  { key: "hasSpecialChar", label: "One special character" },
 ];
 
 export default function ResetPassword() {
@@ -52,6 +52,14 @@ export default function ResetPassword() {
     password.length > 0 &&
     confirmPassword.length > 0 &&
     password === confirmPassword;
+
+  // Determine segment color based on passed count
+  const getSegmentClass = (index) => {
+    if (index >= passedCount) return ""; // Not active yet
+    if (passedCount <= 2) return "weak";
+    if (passedCount <= 4) return "fair";
+    return "strong";
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -138,35 +146,48 @@ export default function ResetPassword() {
   };
 
   return (
-    <main className="ct-reset-page">
-      <div className="ct-reset-bg-orb one" />
-      <div className="ct-reset-bg-orb two" />
+    <main className="login-polished-page reset-password-page">
+      <div className="login-polished-bg" />
+      <div className="login-polished-orb login-polished-orb-one" />
+      <div className="login-polished-orb login-polished-orb-two" />
 
-      <Link to="/login" className="ct-reset-back">
-        <ArrowLeft size={18} />
-        Back to Login
-      </Link>
+      <section className="login-polished-left">
+        <Link to="/login" className="login-back-link">
+          <ArrowLeft size={18} />
+          Back to Login
+        </Link>
 
-      <section className="ct-reset-card">
-        <div className="ct-reset-illustration">
-          <KeyRound size={48} />
-        </div>
-
-        <div className="ct-reset-heading">
+        <div className="login-brand-hero">
           <h1>Reset Password</h1>
-          <p>Create a strong password for your CrayThrive account.</p>
+          <p>
+            Create a strong new password for your CrayThrive account to get back
+            to managing your tanks.
+          </p>
         </div>
+        <p className="login-copyright">© 2026 CrayThrive. All rights reserved.</p>
+      </section>
 
-        <form onSubmit={handleUpdatePassword} className="ct-reset-form">
+      <section className="login-polished-right">
+        <form onSubmit={handleUpdatePassword} className="login-polished-card reset-password-card">
+          <div className="login-form-header">
+            <span className="login-form-icon">
+              <KeyRound size={28} />
+            </span>
+            <div>
+              <h2>New Password</h2>
+              <p>Almost done. Set your new password below.</p>
+            </div>
+          </div>
+
           {isCheckingSession && (
-            <div className="ct-reset-alert warning">
+            <div className="form-alert warning">
               <Loader2 className="spin-icon" size={18} />
               <span>Checking password recovery session...</span>
             </div>
           )}
 
           {!isCheckingSession && !canReset && (
-            <div className="ct-reset-alert danger">
+            <div className="form-alert danger">
               <AlertTriangle size={18} />
               <span>
                 Reset session not found. Please open the latest password reset
@@ -176,25 +197,23 @@ export default function ResetPassword() {
           )}
 
           {errorMessage && (
-            <div className="ct-reset-alert danger">
+            <div className="form-alert danger">
               <AlertTriangle size={18} />
               <span>{errorMessage}</span>
             </div>
           )}
 
           {successMessage && (
-            <div className="ct-reset-alert success">
+            <div className="form-alert success">
               <CheckCircle2 size={18} />
               <span>{successMessage}</span>
             </div>
           )}
 
-          <label className="ct-reset-field">
+          <label className="input-group">
             <span>New password</span>
-
-            <div className="ct-reset-input">
-              <LockKeyhole size={18} />
-
+            <div className="input-shell">
+              <LockKeyhole size={19} className="input-icon" />
               <input
                 type={showPassword ? "text" : "password"}
                 placeholder="Enter new password"
@@ -202,58 +221,51 @@ export default function ResetPassword() {
                 onChange={(event) => setPassword(event.target.value)}
                 autoComplete="new-password"
               />
-
               <button
                 type="button"
+                className="password-toggle"
                 onClick={() => setShowPassword((current) => !current)}
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
               </button>
             </div>
           </label>
 
-          <div className="ct-strength">
-            <div className="ct-strength-top">
-              <span>Password strength</span>
-              <strong className={`score-${strength.label.toLowerCase()}`}>
-                {strength.label}
-              </strong>
+          {/* === CLEAN SEGMENTED VALIDATION === */}
+          {password.length > 0 && (
+            <div className="password-validation-box">
+              <div className="password-segments">
+                {[...Array(5)].map((_, index) => (
+                  <div key={index} className={`segment ${getSegmentClass(index)}`} />
+                ))}
+              </div>
+
+              <div className="password-strength-text" style={{ color: strength?.color || "#a4bdc6" }}>
+                Password strength: {strength?.label || "None"}
+              </div>
+
+              <div className="password-rules-list">
+                {rules.map((rule) => {
+                  const isMet = checks[rule.key];
+                  return (
+                    <div key={rule.key} className={`rule-item ${isMet ? "met" : ""}`}>
+                      {isMet ? <Check size={14} strokeWidth={3} /> : <X size={14} strokeWidth={3} />}
+                      <span>{rule.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
+          )}
 
-            <div className="ct-strength-bars">
-              {rules.map((rule, index) => {
-                const passed = checks[rule.key];
-
-                return (
-                  <div
-                    key={rule.key}
-                    className={`ct-strength-segment ${passed ? "passed" : ""}`}
-                  >
-                    <i />
-                    <span>{rule.label}</span>
-                    <b>{passed ? <Check size={13} /> : index + 1}</b>
-                  </div>
-                );
-              })}
-            </div>
-
-            <p className="ct-strength-helper">
-              {passedCount === rules.length
-                ? "All requirements completed."
-                : `${passedCount} of ${rules.length} requirements completed.`}
-            </p>
-          </div>
-
-          <label className="ct-reset-field">
-            <span>Re-enter password</span>
-
-            <div className="ct-reset-input">
-              <LockKeyhole size={18} />
-
+          <label className="input-group">
+            <span>Confirm password</span>
+            <div className="input-shell">
+              <LockKeyhole size={19} className="input-icon" />
               <input
                 type={showPassword ? "text" : "password"}
-                placeholder="Confirm new password"
+                placeholder="Re-enter new password"
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}
                 autoComplete="new-password"
@@ -262,15 +274,15 @@ export default function ResetPassword() {
           </label>
 
           {confirmPassword.length > 0 && (
-            <div className={`ct-match ${passwordsMatch ? "matched" : ""}`}>
-              {passwordsMatch ? <Check size={16} /> : <X size={16} />}
+            <div className={`password-match-note ${passwordsMatch ? "matched" : ""}`}>
+              {passwordsMatch ? <CheckCircle2 size={18} /> : <X size={18} />}
               <span>{passwordsMatch ? "Passwords match" : "Passwords do not match"}</span>
             </div>
           )}
 
           <button
-            className="ct-reset-submit"
-            disabled={isSubmitting || isCheckingSession || !canReset}
+            className="login-submit"
+            disabled={isSubmitting || isCheckingSession || !canReset || !passwordsMatch || passedCount < 5}
           >
             {isSubmitting ? (
               <>
@@ -279,14 +291,12 @@ export default function ResetPassword() {
               </>
             ) : (
               <>
-                Update Password
+                Reset Password
                 <Save size={18} />
               </>
             )}
           </button>
         </form>
-
-        <p className="ct-reset-footer">© 2026 CrayThrive. All rights reserved.</p>
       </section>
     </main>
   );
