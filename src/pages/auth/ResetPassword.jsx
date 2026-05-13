@@ -21,26 +21,11 @@ import {
 } from "../../utils/passwordRules";
 
 const passwordRules = [
-  {
-    key: "hasMinLength",
-    label: "8+ chars",
-  },
-  {
-    key: "hasUppercase",
-    label: "Uppercase",
-  },
-  {
-    key: "hasLowercase",
-    label: "Lowercase",
-  },
-  {
-    key: "hasNumber",
-    label: "Number",
-  },
-  {
-    key: "hasSpecialChar",
-    label: "Special",
-  },
+  { key: "hasMinLength", label: "8+ characters" },
+  { key: "hasUppercase", label: "Uppercase" },
+  { key: "hasLowercase", label: "Lowercase" },
+  { key: "hasNumber", label: "Number" },
+  { key: "hasSpecialChar", label: "Special char" },
 ];
 
 export default function ResetPassword() {
@@ -59,14 +44,10 @@ export default function ResetPassword() {
   const strength = useMemo(() => getPasswordStrength(password), [password]);
 
   const passedCount = useMemo(() => {
-    return Object.values(checks).filter(Boolean).length;
+    return passwordRules.filter((rule) => checks[rule.key]).length;
   }, [checks]);
 
-  // UPDATED: Correct math so the line ends precisely in the middle of the active circles
-  const progressPercent =
-    passedCount <= 1
-      ? "0%"
-      : `${((passedCount - 1) / (passwordRules.length - 1)) * 100}%`;
+  const progressPercent = `${(passedCount / passwordRules.length) * 100}%`;
 
   const passwordsMatch =
     password.length > 0 &&
@@ -84,8 +65,8 @@ export default function ResetPassword() {
 
       const { data } = await supabase.auth.getSession();
 
-      if (data?.session?.user) {
-        if (isMounted) setCanReset(true);
+      if (data?.session?.user && isMounted) {
+        setCanReset(true);
       }
 
       if (isMounted) setIsCheckingSession(false);
@@ -175,7 +156,7 @@ export default function ResetPassword() {
           <h1>Create New Password</h1>
           <p>
             Set a stronger password for your CrayThrive account. Complete all
-            validation steps below before updating your password.
+            password requirements before updating.
           </p>
         </div>
 
@@ -183,7 +164,10 @@ export default function ResetPassword() {
       </section>
 
       <section className="login-polished-right">
-        <form className="login-polished-card reset-password-card" onSubmit={handleUpdatePassword}>
+        <form
+          className="login-polished-card reset-password-card"
+          onSubmit={handleUpdatePassword}
+        >
           <div className="login-form-header">
             <span className="login-form-icon">
               <KeyRound size={24} />
@@ -206,8 +190,8 @@ export default function ResetPassword() {
             <div className="form-alert danger">
               <AlertTriangle size={18} />
               <span>
-                Reset session not found. Please open the password reset link from
-                your email again.
+                Reset session not found. Please open the latest password reset
+                link from your email again.
               </span>
             </div>
           )}
@@ -228,8 +212,10 @@ export default function ResetPassword() {
 
           <label className="input-group">
             <span>New Password</span>
+
             <div className="input-shell">
               <LockKeyhole size={19} />
+
               <input
                 type={showPassword ? "text" : "password"}
                 placeholder="Enter new password"
@@ -249,41 +235,37 @@ export default function ResetPassword() {
             </div>
           </label>
 
-          {/* UPDATED: Stepper Card Implementation */}
-          <div className="password-stepper-card">
-            <div className="password-stepper-head">
-              <div className="password-stepper-head-title">
+          <div className="reset-rule-meter">
+            <div className="reset-rule-meter-top">
+              <div>
                 <span>Password Strength</span>
-                <strong style={{ color: strength?.color || "#a4bdc6" }}>
-                  {strength?.label || "None"}
-                </strong>
+                <strong style={{ color: strength.color }}>{strength.label}</strong>
               </div>
-              <b>{passedCount} / {passwordRules.length}</b>
+
+              <b>{passedCount}/5</b>
             </div>
 
-            <div className="password-stepper-wrap">
-              {/* Wrapped lines ensure accurate left/right alignment */}
-              <div className="password-stepper-lines-wrapper">
-                <div className="password-stepper-line" />
-                <div
-                  className="password-stepper-fill"
-                  style={{ width: progressPercent }}
-                />
-              </div>
+            <div className="reset-rule-line-area">
+              <div className="reset-rule-base-line" />
+              <div
+                className="reset-rule-fill-line"
+                style={{ width: progressPercent }}
+              />
 
-              <div className="password-stepper-grid">
+              <div className="reset-rule-steps">
                 {passwordRules.map((rule, index) => {
                   const passed = checks[rule.key];
 
                   return (
                     <div
+                      className={`reset-rule-step ${passed ? "is-passed" : ""}`}
                       key={rule.key}
-                      className={`password-step ${passed ? "passed" : ""}`}
                     >
-                      <div className="password-step-circle">
+                      <span className="reset-rule-circle">
                         {passed ? <Check size={14} /> : index + 1}
-                      </div>
-                      <span>{rule.label}</span>
+                      </span>
+
+                      <small>{rule.label}</small>
                     </div>
                   );
                 })}
@@ -293,8 +275,10 @@ export default function ResetPassword() {
 
           <label className="input-group">
             <span>Confirm Password</span>
+
             <div className="input-shell">
               <LockKeyhole size={19} />
+
               <input
                 type={showPassword ? "text" : "password"}
                 placeholder="Confirm new password"
