@@ -11,7 +11,7 @@ import {
   Loader2,
   LockKeyhole,
   Save,
-  XCircle,
+  X,
 } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "../../lib/supabase";
 import {
@@ -20,12 +20,12 @@ import {
   isPasswordStrong,
 } from "../../utils/passwordRules";
 
-const passwordRules = [
+const rules = [
   { key: "hasMinLength", label: "8+ characters" },
   { key: "hasUppercase", label: "Uppercase" },
   { key: "hasLowercase", label: "Lowercase" },
   { key: "hasNumber", label: "Number" },
-  { key: "hasSpecialChar", label: "Special char" },
+  { key: "hasSpecialChar", label: "Special" },
 ];
 
 export default function ResetPassword() {
@@ -43,11 +43,10 @@ export default function ResetPassword() {
   const checks = useMemo(() => getPasswordChecks(password), [password]);
   const strength = useMemo(() => getPasswordStrength(password), [password]);
 
-  const passedCount = useMemo(() => {
-    return passwordRules.filter((rule) => checks[rule.key]).length;
-  }, [checks]);
-
-  const progressPercent = `${(passedCount / passwordRules.length) * 100}%`;
+  const passedCount = useMemo(
+    () => rules.filter((rule) => checks[rule.key]).length,
+    [checks]
+  );
 
   const passwordsMatch =
     password.length > 0 &&
@@ -119,9 +118,7 @@ export default function ResetPassword() {
     try {
       setIsSubmitting(true);
 
-      const { error } = await supabase.auth.updateUser({
-        password,
-      });
+      const { error } = await supabase.auth.updateUser({ password });
 
       if (error) {
         throw new Error(error.message);
@@ -141,80 +138,62 @@ export default function ResetPassword() {
   };
 
   return (
-    <main className="login-polished-page reset-password-page">
-      <div className="login-polished-bg" />
-      <div className="login-polished-orb login-polished-orb-one" />
-      <div className="login-polished-orb login-polished-orb-two" />
+    <main className="ct-reset-page">
+      <div className="ct-reset-bg-orb one" />
+      <div className="ct-reset-bg-orb two" />
 
-      <section className="login-polished-left">
-        <Link to="/login" className="login-back-link">
-          <ArrowLeft size={18} />
-          Back to Login
-        </Link>
+      <Link to="/login" className="ct-reset-back">
+        <ArrowLeft size={18} />
+        Back to Login
+      </Link>
 
-        <div className="login-brand-hero">
-          <h1>Create New Password</h1>
-          <p>
-            Set a stronger password for your CrayThrive account. Complete all
-            password requirements before updating.
-          </p>
+      <section className="ct-reset-card">
+        <div className="ct-reset-illustration">
+          <KeyRound size={48} />
         </div>
 
-        <p className="login-copyright">© 2026 CrayThrive. All rights reserved.</p>
-      </section>
+        <div className="ct-reset-heading">
+          <h1>Reset Password</h1>
+          <p>Create a strong password for your CrayThrive account.</p>
+        </div>
 
-      <section className="login-polished-right">
-        <form
-          className="login-polished-card reset-password-card"
-          onSubmit={handleUpdatePassword}
-        >
-          <div className="login-form-header">
-            <span className="login-form-icon">
-              <KeyRound size={24} />
-            </span>
-
-            <div>
-              <h2>New Password</h2>
-              <p>Follow the password validation steps below.</p>
-            </div>
-          </div>
-
+        <form onSubmit={handleUpdatePassword} className="ct-reset-form">
           {isCheckingSession && (
-            <div className="form-alert warning">
+            <div className="ct-reset-alert warning">
               <Loader2 className="spin-icon" size={18} />
               <span>Checking password recovery session...</span>
             </div>
           )}
 
           {!isCheckingSession && !canReset && (
-            <div className="form-alert danger">
+            <div className="ct-reset-alert danger">
               <AlertTriangle size={18} />
               <span>
                 Reset session not found. Please open the latest password reset
-                link from your email again.
+                link from your email.
               </span>
             </div>
           )}
 
           {errorMessage && (
-            <div className="form-alert danger">
+            <div className="ct-reset-alert danger">
               <AlertTriangle size={18} />
               <span>{errorMessage}</span>
             </div>
           )}
 
           {successMessage && (
-            <div className="form-alert success">
+            <div className="ct-reset-alert success">
               <CheckCircle2 size={18} />
               <span>{successMessage}</span>
             </div>
           )}
 
-          <label className="input-group">
-            <span>New Password</span>
+          <label className="ct-reset-field">
+            <span>New password</span>
 
-            <div className="input-shell">
-              <LockKeyhole size={19} />
+            <div className="ct-reset-input">
+              <LockKeyhole size={18} />
 
               <input
                 type={showPassword ? "text" : "password"}
@@ -226,58 +205,51 @@ export default function ResetPassword() {
 
               <button
                 type="button"
-                className="password-toggle"
                 onClick={() => setShowPassword((current) => !current)}
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
-                {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
           </label>
 
-          <div className="reset-rule-meter">
-            <div className="reset-rule-meter-top">
-              <div>
-                <span>Password Strength</span>
-                <strong style={{ color: strength.color }}>{strength.label}</strong>
-              </div>
-
-              <b>{passedCount}/5</b>
+          <div className="ct-strength">
+            <div className="ct-strength-top">
+              <span>Password strength</span>
+              <strong className={`score-${strength.label.toLowerCase()}`}>
+                {strength.label}
+              </strong>
             </div>
 
-            <div className="reset-rule-line-area">
-              <div className="reset-rule-base-line" />
-              <div
-                className="reset-rule-fill-line"
-                style={{ width: progressPercent }}
-              />
+            <div className="ct-strength-bars">
+              {rules.map((rule, index) => {
+                const passed = checks[rule.key];
 
-              <div className="reset-rule-steps">
-                {passwordRules.map((rule, index) => {
-                  const passed = checks[rule.key];
-
-                  return (
-                    <div
-                      className={`reset-rule-step ${passed ? "is-passed" : ""}`}
-                      key={rule.key}
-                    >
-                      <span className="reset-rule-circle">
-                        {passed ? <Check size={14} /> : index + 1}
-                      </span>
-
-                      <small>{rule.label}</small>
-                    </div>
-                  );
-                })}
-              </div>
+                return (
+                  <div
+                    key={rule.key}
+                    className={`ct-strength-segment ${passed ? "passed" : ""}`}
+                  >
+                    <i />
+                    <span>{rule.label}</span>
+                    <b>{passed ? <Check size={13} /> : index + 1}</b>
+                  </div>
+                );
+              })}
             </div>
+
+            <p className="ct-strength-helper">
+              {passedCount === rules.length
+                ? "All requirements completed."
+                : `${passedCount} of ${rules.length} requirements completed.`}
+            </p>
           </div>
 
-          <label className="input-group">
-            <span>Confirm Password</span>
+          <label className="ct-reset-field">
+            <span>Re-enter password</span>
 
-            <div className="input-shell">
-              <LockKeyhole size={19} />
+            <div className="ct-reset-input">
+              <LockKeyhole size={18} />
 
               <input
                 type={showPassword ? "text" : "password"}
@@ -290,14 +262,14 @@ export default function ResetPassword() {
           </label>
 
           {confirmPassword.length > 0 && (
-            <div className={`password-match-note ${passwordsMatch ? "matched" : ""}`}>
-              {passwordsMatch ? <CheckCircle2 size={17} /> : <XCircle size={17} />}
+            <div className={`ct-match ${passwordsMatch ? "matched" : ""}`}>
+              {passwordsMatch ? <Check size={16} /> : <X size={16} />}
               <span>{passwordsMatch ? "Passwords match" : "Passwords do not match"}</span>
             </div>
           )}
 
           <button
-            className="login-submit"
+            className="ct-reset-submit"
             disabled={isSubmitting || isCheckingSession || !canReset}
           >
             {isSubmitting ? (
@@ -313,6 +285,8 @@ export default function ResetPassword() {
             )}
           </button>
         </form>
+
+        <p className="ct-reset-footer">© 2026 CrayThrive. All rights reserved.</p>
       </section>
     </main>
   );
