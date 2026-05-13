@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   AlertTriangle,
@@ -10,11 +10,24 @@ import {
 } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "../../lib/supabase";
 
+const DEFAULT_LIVE_SITE_URL = "https://www.craythrive.site";
+
+function getSiteUrl() {
+  const envSiteUrl = import.meta.env.VITE_APP_SITE_URL;
+  const siteUrl = envSiteUrl || DEFAULT_LIVE_SITE_URL;
+
+  return siteUrl.replace(/\/$/, "");
+}
+
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+
+  const resetRedirectUrl = useMemo(() => {
+    return `${getSiteUrl()}/reset-password`;
+  }, []);
 
   const handleResetRequest = async (event) => {
     event.preventDefault();
@@ -26,7 +39,9 @@ export default function ForgotPassword() {
       return;
     }
 
-    if (!email.trim()) {
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanEmail) {
       setErrorMessage("Please enter your registered email address.");
       return;
     }
@@ -34,10 +49,8 @@ export default function ForgotPassword() {
     try {
       setIsSubmitting(true);
 
-      const redirectTo = `${window.location.origin}/reset-password`;
-
-      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-        redirectTo,
+      const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+        redirectTo: resetRedirectUrl,
       });
 
       if (error) {
@@ -45,7 +58,7 @@ export default function ForgotPassword() {
       }
 
       setSuccessMessage(
-        "Password reset link sent. Please check your email and open the reset link."
+        "Password reset link sent. Please check your inbox or spam folder, then open the reset link."
       );
     } catch (error) {
       setErrorMessage(error.message || "Could not send reset email. Please try again.");
@@ -115,6 +128,7 @@ export default function ForgotPassword() {
 
           <label className="input-group">
             <span>Email Address</span>
+
             <div className="input-shell">
               <Mail size={19} />
               <input
@@ -142,7 +156,9 @@ export default function ForgotPassword() {
           </button>
 
           <p className="login-note">
-            Open the email link, then create a new password on the reset page.
+            Reset links will open on{" "}
+            <strong>craythrive.site/reset-password</strong>. Check spam if the
+            email does not appear in your inbox.
           </p>
         </form>
       </section>
