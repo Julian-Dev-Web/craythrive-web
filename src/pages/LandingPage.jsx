@@ -183,7 +183,6 @@ export default function LandingPage() {
           <div className="app-nav-links">
             <a href="#home">Home</a>
             <a href="#features">Features</a>
-            <a href="#home">Preview</a>
             <a href="#details">Details</a>
             <Link to="/login" className="nav-login-pill">
               Login
