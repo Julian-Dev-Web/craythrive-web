@@ -53,14 +53,6 @@ export default function ResetPassword() {
     confirmPassword.length > 0 &&
     password === confirmPassword;
 
-  // Determine segment color based on passed count
-  const getSegmentClass = (index) => {
-    if (index >= passedCount) return ""; // Not active yet
-    if (passedCount <= 2) return "weak";
-    if (passedCount <= 4) return "fair";
-    return "strong";
-  };
-
   useEffect(() => {
     let isMounted = true;
 
@@ -232,25 +224,34 @@ export default function ResetPassword() {
             </div>
           </label>
 
-          {/* === CLEAN SEGMENTED VALIDATION === */}
+          {/* === CLEAN SEGMENTED VALIDATION METER === */}
           {password.length > 0 && (
             <div className="password-validation-box">
+              {/* HORIZONTAL LOADING BARS */}
               <div className="password-segments">
-                {[...Array(5)].map((_, index) => (
-                  <div key={index} className={`segment ${getSegmentClass(index)}`} />
-                ))}
+                {[...Array(5)].map((_, index) => {
+                  let segmentClass = "";
+                  if (index < passedCount) {
+                    if (passedCount <= 2) segmentClass = "weak";
+                    else if (passedCount <= 4) segmentClass = "fair";
+                    else segmentClass = "strong";
+                  }
+                  
+                  return <div key={index} className={`segment ${segmentClass}`} />;
+                })}
               </div>
 
               <div className="password-strength-text" style={{ color: strength?.color || "#a4bdc6" }}>
                 Password strength: {strength?.label || "None"}
               </div>
 
+              {/* CHECKLIST */}
               <div className="password-rules-list">
                 {rules.map((rule) => {
                   const isMet = checks[rule.key];
                   return (
                     <div key={rule.key} className={`rule-item ${isMet ? "met" : ""}`}>
-                      {isMet ? <Check size={14} strokeWidth={3} /> : <X size={14} strokeWidth={3} />}
+                      {isMet ? <Check size={16} strokeWidth={3} /> : <X size={16} strokeWidth={3} />}
                       <span>{rule.label}</span>
                     </div>
                   );
