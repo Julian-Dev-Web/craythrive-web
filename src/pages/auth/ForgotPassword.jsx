@@ -19,6 +19,20 @@ function getSiteUrl() {
   return siteUrl.replace(/\/$/, "");
 }
 
+async function checkRegisteredProfile(email) {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id,email")
+    .eq("email", email)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error("Could not verify this email. Please try again.");
+  }
+
+  return Boolean(data);
+}
+
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -48,6 +62,15 @@ export default function ForgotPassword() {
 
     try {
       setIsSubmitting(true);
+
+      const isRegistered = await checkRegisteredProfile(cleanEmail);
+
+      if (!isRegistered) {
+        setErrorMessage(
+          "This email is not registered in CrayThrive. Please use the email you used in the mobile app."
+        );
+        return;
+      }
 
       const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
         redirectTo: resetRedirectUrl,
@@ -82,8 +105,8 @@ export default function ForgotPassword() {
         <div className="login-brand-hero">
           <h1>Forgot Password?</h1>
           <p>
-            Enter your CrayThrive account email. We will send a secure password
-            reset link to your inbox.
+            Enter your registered CrayThrive account email. We will only send a
+            reset link if the email exists in your CrayThrive profile.
           </p>
         </div>
 
@@ -144,7 +167,7 @@ export default function ForgotPassword() {
           <button className="login-submit" disabled={isSubmitting}>
             {isSubmitting ? (
               <>
-                Sending reset link...
+                Checking email...
                 <Loader2 className="spin-icon" size={18} />
               </>
             ) : (
