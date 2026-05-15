@@ -22,11 +22,28 @@ import {
 
 const rules = [
   { key: "hasMinLength", label: "8+ characters" },
-  { key: "hasUppercase", label: "One uppercase letter" },
-  { key: "hasLowercase", label: "One lowercase letter" },
-  { key: "hasNumber", label: "One number" },
-  { key: "hasSpecialChar", label: "One special character" },
+  { key: "hasUppercase", label: "Uppercase" },
+  { key: "hasLowercase", label: "Lowercase" },
+  { key: "hasNumber", label: "Number" },
+  { key: "hasSpecialChar", label: "Special" },
 ];
+
+async function isSameAsCurrentPassword(newPassword) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const email = user?.email;
+
+  if (!email) return false;
+
+  const { error } = await supabase.auth.signInWithPassword({
+    email,
+    password: newPassword,
+  });
+
+  return !error;
+}
 
 export default function ResetPassword() {
   const navigate = useNavigate();
@@ -118,6 +135,13 @@ export default function ResetPassword() {
     try {
       setIsSubmitting(true);
 
+      const sameAsCurrentPassword = await isSameAsCurrentPassword(password);
+
+      if (sameAsCurrentPassword) {
+        setErrorMessage("New password cannot be the same as your current password.");
+        return;
+      }
+
       const { error } = await supabase.auth.updateUser({ password });
 
       if (error) {
@@ -138,48 +162,35 @@ export default function ResetPassword() {
   };
 
   return (
-    <main className="login-polished-page reset-password-page">
-      <div className="login-polished-bg" />
-      <div className="login-polished-orb login-polished-orb-one" />
-      <div className="login-polished-orb login-polished-orb-two" />
+    <main className="ct-reset-page">
+      <div className="ct-reset-bg-orb one" />
+      <div className="ct-reset-bg-orb two" />
 
-      <section className="login-polished-left">
-        <Link to="/login" className="login-back-link">
-          <ArrowLeft size={18} />
-          Back to Login
-        </Link>
+      <Link to="/login" className="ct-reset-back">
+        <ArrowLeft size={18} />
+        Back to Login
+      </Link>
 
-        <div className="login-brand-hero">
-          <h1>Reset Password</h1>
-          <p>
-            Create a strong new password for your CrayThrive account to get back
-            to managing your tanks.
-          </p>
+      <section className="ct-reset-card">
+        <div className="ct-reset-illustration">
+          <KeyRound size={48} />
         </div>
-        <p className="login-copyright">© 2026 CrayThrive. All rights reserved.</p>
-      </section>
 
-      <section className="login-polished-right">
-        <form onSubmit={handleUpdatePassword} className="login-polished-card reset-password-card">
-          <div className="login-form-header">
-            <span className="login-form-icon">
-              <KeyRound size={28} />
-            </span>
-            <div>
-              <h2>New Password</h2>
-              <p>Almost done. Set your new password below.</p>
-            </div>
-          </div>
+        <div className="ct-reset-heading">
+          <h1>Reset Password</h1>
+          <p>Create a strong password for your CrayThrive account.</p>
+        </div>
 
+        <form onSubmit={handleUpdatePassword} className="ct-reset-form">
           {isCheckingSession && (
-            <div className="form-alert warning">
+            <div className="ct-reset-alert warning">
               <Loader2 className="spin-icon" size={18} />
               <span>Checking password recovery session...</span>
             </div>
           )}
 
           {!isCheckingSession && !canReset && (
-            <div className="form-alert danger">
+            <div className="ct-reset-alert danger">
               <AlertTriangle size={18} />
               <span>
                 Reset session not found. Please open the latest password reset
@@ -189,23 +200,25 @@ export default function ResetPassword() {
           )}
 
           {errorMessage && (
-            <div className="form-alert danger">
+            <div className="ct-reset-alert danger">
               <AlertTriangle size={18} />
               <span>{errorMessage}</span>
             </div>
           )}
 
           {successMessage && (
-            <div className="form-alert success">
+            <div className="ct-reset-alert success">
               <CheckCircle2 size={18} />
               <span>{successMessage}</span>
             </div>
           )}
 
-          <label className="input-group">
+          <label className="ct-reset-field">
             <span>New password</span>
-            <div className="input-shell">
-              <LockKeyhole size={19} className="input-icon" />
+
+            <div className="ct-reset-input">
+              <LockKeyhole size={18} />
+
               <input
                 type={showPassword ? "text" : "password"}
                 placeholder="Enter new password"
@@ -213,60 +226,58 @@ export default function ResetPassword() {
                 onChange={(event) => setPassword(event.target.value)}
                 autoComplete="new-password"
               />
+
               <button
                 type="button"
-                className="password-toggle"
                 onClick={() => setShowPassword((current) => !current)}
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
-                {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
           </label>
 
-          {/* === CLEAN SEGMENTED VALIDATION METER === */}
-          {password.length > 0 && (
-            <div className="password-validation-box">
-              {/* HORIZONTAL LOADING BARS */}
-              <div className="password-segments">
-                {[...Array(5)].map((_, index) => {
-                  let segmentClass = "";
-                  if (index < passedCount) {
-                    if (passedCount <= 2) segmentClass = "weak";
-                    else if (passedCount <= 4) segmentClass = "fair";
-                    else segmentClass = "strong";
-                  }
-                  
-                  return <div key={index} className={`segment ${segmentClass}`} />;
-                })}
-              </div>
-
-              <div className="password-strength-text" style={{ color: strength?.color || "#a4bdc6" }}>
-                Password strength: {strength?.label || "None"}
-              </div>
-
-              {/* CHECKLIST */}
-              <div className="password-rules-list">
-                {rules.map((rule) => {
-                  const isMet = checks[rule.key];
-                  return (
-                    <div key={rule.key} className={`rule-item ${isMet ? "met" : ""}`}>
-                      {isMet ? <Check size={16} strokeWidth={3} /> : <X size={16} strokeWidth={3} />}
-                      <span>{rule.label}</span>
-                    </div>
-                  );
-                })}
-              </div>
+          <div className="ct-strength">
+            <div className="ct-strength-top">
+              <span>Password strength</span>
+              <strong className={`score-${strength.label.toLowerCase().replace(" ", "-")}`}>
+                {strength.label}
+              </strong>
             </div>
-          )}
 
-          <label className="input-group">
-            <span>Confirm password</span>
-            <div className="input-shell">
-              <LockKeyhole size={19} className="input-icon" />
+            <div className="ct-strength-bars">
+              {rules.map((rule, index) => {
+                const passed = checks[rule.key];
+
+                return (
+                  <div
+                    key={rule.key}
+                    className={`ct-strength-segment ${passed ? "passed" : ""}`}
+                  >
+                    <i />
+                    <span>{rule.label}</span>
+                    <b>{passed ? <Check size={13} /> : index + 1}</b>
+                  </div>
+                );
+              })}
+            </div>
+
+            <p className="ct-strength-helper">
+              {passedCount === rules.length
+                ? "All requirements completed."
+                : `${passedCount} of ${rules.length} requirements completed.`}
+            </p>
+          </div>
+
+          <label className="ct-reset-field">
+            <span>Re-enter password</span>
+
+            <div className="ct-reset-input">
+              <LockKeyhole size={18} />
+
               <input
                 type={showPassword ? "text" : "password"}
-                placeholder="Re-enter new password"
+                placeholder="Confirm new password"
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}
                 autoComplete="new-password"
@@ -275,15 +286,15 @@ export default function ResetPassword() {
           </label>
 
           {confirmPassword.length > 0 && (
-            <div className={`password-match-note ${passwordsMatch ? "matched" : ""}`}>
-              {passwordsMatch ? <CheckCircle2 size={18} /> : <X size={18} />}
+            <div className={`ct-match ${passwordsMatch ? "matched" : ""}`}>
+              {passwordsMatch ? <Check size={16} /> : <X size={16} />}
               <span>{passwordsMatch ? "Passwords match" : "Passwords do not match"}</span>
             </div>
           )}
 
           <button
-            className="login-submit"
-            disabled={isSubmitting || isCheckingSession || !canReset || !passwordsMatch || passedCount < 5}
+            className="ct-reset-submit"
+            disabled={isSubmitting || isCheckingSession || !canReset}
           >
             {isSubmitting ? (
               <>
@@ -292,12 +303,14 @@ export default function ResetPassword() {
               </>
             ) : (
               <>
-                Reset Password
+                Update Password
                 <Save size={18} />
               </>
             )}
           </button>
         </form>
+
+        <p className="ct-reset-footer">© 2026 CrayThrive. All rights reserved.</p>
       </section>
     </main>
   );

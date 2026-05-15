@@ -20,10 +20,13 @@ function getSiteUrl() {
 }
 
 async function checkRegisteredProfile(email) {
+  const cleanEmail = email.trim().toLowerCase();
+
   const { data, error } = await supabase
     .from("profiles")
     .select("id,email")
-    .eq("email", email)
+    .ilike("email", cleanEmail)
+    .limit(1)
     .maybeSingle();
 
   if (error) {
