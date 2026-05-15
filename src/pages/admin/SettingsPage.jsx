@@ -1,327 +1,334 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
-  Camera,
+  Bell,
   CheckCircle2,
+  Database,
   Droplets,
-  FlaskConical,
+  Gauge,
   Loader2,
   RefreshCw,
-  RotateCcw,
   Save,
-  Settings2,
+  Settings,
+  ShieldCheck,
   Thermometer,
+  UserRound,
   Waves,
 } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "../../lib/supabase";
 
-const thresholdTables = [
-  "threshold_settings",
-  "user_threshold_settings",
-  "sensor_thresholds",
-];
+const STORAGE_KEY = "craythrive_threshold_settings";
 
 const DEFAULT_THRESHOLDS = {
-  temperature: {
-    safeMin: 22,
-    safeMax: 28,
-  },
-  ph: {
-    safeMin: 6.5,
-    safeMax: 8.0,
-  },
-  turbidity: {
-    safeMax: 50,
-    warningMax: 100,
-    criticalMax: 200,
-  },
-  waterLevel: {
-    safeMin: 4,
-    safeMax: 5,
-    criticalLow: 3,
-    criticalHigh: 7,
-  },
-  ammonia: {
-    safeMax: 0.25,
-    warningMax: 0.5,
-    criticalMax: 1.0,
-  },
+  temperatureMin: 20,
+  temperatureMax: 30,
+  phMin: 6.5,
+  phMax: 8.5,
+  turbidityMax: 40,
+  waterLevelMin: 35,
+  ammoniaMax: 0.25,
 };
 
-const SENSOR_CONFIG = {
-  temperature: {
-    title: "Temperature",
-    icon: Thermometer,
+const thresholdTableCandidates = [
+  "user_settings",
+  "threshold_settings",
+  "tank_thresholds",
+  "settings",
+];
+
+const thresholdRows = [
+  {
+    key: "temperatureMin",
+    label: "Temperature Minimum",
+    helper: "Lowest safe water temperature.",
     unit: "°C",
-    description:
-      "Controls the safe water temperature range used for tank condition checks.",
-    fields: [
-      {
-        key: "safeMin",
-        label: "Safe minimum",
-        step: "0.1",
-      },
-      {
-        key: "safeMax",
-        label: "Safe maximum",
-        step: "0.1",
-      },
-    ],
+    icon: Thermometer,
+    min: 10,
+    max: 40,
+    step: 0.1,
   },
-  ph: {
-    title: "pH Level",
-    icon: FlaskConical,
+  {
+    key: "temperatureMax",
+    label: "Temperature Maximum",
+    helper: "Highest safe water temperature.",
+    unit: "°C",
+    icon: Thermometer,
+    min: 10,
+    max: 40,
+    step: 0.1,
+  },
+  {
+    key: "phMin",
+    label: "pH Minimum",
+    helper: "Lowest safe pH level.",
     unit: "pH",
-    description:
-      "Controls the safe acidity/alkalinity range for the water condition.",
-    fields: [
-      {
-        key: "safeMin",
-        label: "Safe minimum",
-        step: "0.1",
-      },
-      {
-        key: "safeMax",
-        label: "Safe maximum",
-        step: "0.1",
-      },
-    ],
-  },
-  turbidity: {
-    title: "Turbidity",
-    icon: Waves,
-    unit: "NTU",
-    description:
-      "Controls water clarity thresholds for dirty or critical water alerts.",
-    fields: [
-      {
-        key: "safeMax",
-        label: "Safe maximum",
-        step: "1",
-      },
-      {
-        key: "warningMax",
-        label: "Warning maximum",
-        step: "1",
-      },
-      {
-        key: "criticalMax",
-        label: "Critical maximum",
-        step: "1",
-      },
-    ],
-  },
-  waterLevel: {
-    title: "Water Level",
     icon: Droplets,
-    unit: "in",
-    description:
-      "Controls the safe water height. Default is based on the client target of around 4 to 5 inches.",
-    fields: [
-      {
-        key: "safeMin",
-        label: "Safe minimum",
-        step: "0.1",
-      },
-      {
-        key: "safeMax",
-        label: "Safe maximum",
-        step: "0.1",
-      },
-      {
-        key: "criticalLow",
-        label: "Critical low",
-        step: "0.1",
-      },
-      {
-        key: "criticalHigh",
-        label: "Critical high",
-        step: "0.1",
-      },
-    ],
+    min: 0,
+    max: 14,
+    step: 0.1,
   },
-  ammonia: {
-    title: "Ammonia",
-    icon: Camera,
+  {
+    key: "phMax",
+    label: "pH Maximum",
+    helper: "Highest safe pH level.",
+    unit: "pH",
+    icon: Droplets,
+    min: 0,
+    max: 14,
+    step: 0.1,
+  },
+  {
+    key: "turbidityMax",
+    label: "Turbidity Maximum",
+    helper: "Maximum dirty water/turbidity value.",
+    unit: "NTU",
+    icon: Waves,
+    min: 0,
+    max: 100,
+    step: 1,
+  },
+  {
+    key: "waterLevelMin",
+    label: "Water Level Minimum",
+    helper: "Minimum safe tank water level.",
+    unit: "%",
+    icon: Gauge,
+    min: 0,
+    max: 100,
+    step: 1,
+  },
+  {
+    key: "ammoniaMax",
+    label: "Ammonia Maximum",
+    helper: "Maximum safe ammonia reading.",
     unit: "ppm",
-    description:
-      "Controls ammonia result thresholds from mobile or ESP32-CAM test strip records.",
-    fields: [
-      {
-        key: "safeMax",
-        label: "Safe maximum",
-        step: "0.01",
-      },
-      {
-        key: "warningMax",
-        label: "Warning maximum",
-        step: "0.01",
-      },
-      {
-        key: "criticalMax",
-        label: "Critical maximum",
-        step: "0.01",
-      },
-    ],
+    icon: AlertTriangle,
+    min: 0,
+    max: 5,
+    step: 0.01,
   },
-};
+];
 
-function cloneDefaultThresholds() {
-  return JSON.parse(JSON.stringify(DEFAULT_THRESHOLDS));
-}
+function getLocalThresholds() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
 
-function mergeThresholds(incoming) {
-  const defaults = cloneDefaultThresholds();
+    if (!saved) return DEFAULT_THRESHOLDS;
 
-  if (!incoming || typeof incoming !== "object") {
-    return defaults;
-  }
-
-  Object.keys(defaults).forEach((sensorKey) => {
-    defaults[sensorKey] = {
-      ...defaults[sensorKey],
-      ...(incoming[sensorKey] || {}),
+    return {
+      ...DEFAULT_THRESHOLDS,
+      ...JSON.parse(saved),
     };
-  });
-
-  return defaults;
+  } catch {
+    return DEFAULT_THRESHOLDS;
+  }
 }
 
-function normalizeThresholds(thresholds) {
-  const normalized = {};
+function normalizeThresholds(data) {
+  if (!data) return DEFAULT_THRESHOLDS;
 
-  Object.entries(thresholds).forEach(([sensorKey, values]) => {
-    normalized[sensorKey] = {};
-
-    Object.entries(values || {}).forEach(([fieldKey, value]) => {
-      const numberValue = Number(value);
-      normalized[sensorKey][fieldKey] = Number.isFinite(numberValue)
-        ? numberValue
-        : value;
-    });
-  });
-
-  return normalized;
-}
-
-function getStorageKey(userId) {
-  return `craythrive_thresholds_${userId || "local"}`;
-}
-
-async function getCurrentUser() {
-  const { data } = await supabase.auth.getSession();
-  const user = data?.session?.user;
+  const source = data.thresholds || data.safe_thresholds || data;
 
   return {
-    id: user?.id || "",
-    email: user?.email || "",
+    temperatureMin:
+      Number(source.temperatureMin ?? source.temperature_min) ||
+      DEFAULT_THRESHOLDS.temperatureMin,
+    temperatureMax:
+      Number(source.temperatureMax ?? source.temperature_max) ||
+      DEFAULT_THRESHOLDS.temperatureMax,
+    phMin: Number(source.phMin ?? source.ph_min) || DEFAULT_THRESHOLDS.phMin,
+    phMax: Number(source.phMax ?? source.ph_max) || DEFAULT_THRESHOLDS.phMax,
+    turbidityMax:
+      Number(source.turbidityMax ?? source.turbidity_max) ||
+      DEFAULT_THRESHOLDS.turbidityMax,
+    waterLevelMin:
+      Number(source.waterLevelMin ?? source.water_level_min) ||
+      DEFAULT_THRESHOLDS.waterLevelMin,
+    ammoniaMax:
+      Number(source.ammoniaMax ?? source.ammonia_max) ||
+      DEFAULT_THRESHOLDS.ammoniaMax,
   };
 }
 
-async function readThresholdsFromSupabase(userId) {
-  for (const tableName of thresholdTables) {
-    const { data, error } = await supabase
+function getProfileName(profile, user) {
+  return (
+    profile?.username ||
+    profile?.full_name ||
+    profile?.first_name ||
+    user?.email?.split("@")?.[0] ||
+    "CrayThrive User"
+  );
+}
+
+function isRangeValid(thresholds) {
+  return (
+    Number(thresholds.temperatureMin) < Number(thresholds.temperatureMax) &&
+    Number(thresholds.phMin) < Number(thresholds.phMax)
+  );
+}
+
+async function getCurrentUserAndProfile() {
+  const { data } = await supabase.auth.getSession();
+  const user = data?.session?.user;
+
+  if (!user) {
+    return {
+      user: null,
+      profile: null,
+    };
+  }
+
+  const byId = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (!byId.error && byId.data) {
+    return {
+      user,
+      profile: byId.data,
+    };
+  }
+
+  const byEmail = await supabase
+    .from("profiles")
+    .select("*")
+    .ilike("email", user.email)
+    .maybeSingle();
+
+  return {
+    user,
+    profile: byEmail.error ? null : byEmail.data,
+  };
+}
+
+async function loadThresholdsFromSupabase(userId) {
+  for (const tableName of thresholdTableCandidates) {
+    const response = await supabase
       .from(tableName)
       .select("*")
       .eq("user_id", userId)
       .maybeSingle();
 
-    if (!error && data) {
+    if (!response.error && response.data) {
       return {
-        thresholds: data.thresholds || data.settings || data.sensor_thresholds,
-        source: tableName,
+        thresholds: normalizeThresholds(response.data),
+        tableUsed: tableName,
+      };
+    }
+
+    const byOwner = await supabase
+      .from(tableName)
+      .select("*")
+      .eq("owner_id", userId)
+      .maybeSingle();
+
+    if (!byOwner.error && byOwner.data) {
+      return {
+        thresholds: normalizeThresholds(byOwner.data),
+        tableUsed: tableName,
       };
     }
   }
 
   return {
-    thresholds: null,
-    source: "",
+    thresholds: getLocalThresholds(),
+    tableUsed: "localStorage",
   };
 }
 
 async function saveThresholdsToSupabase(userId, thresholds) {
-  const payloadOptions = [
-    {
-      user_id: userId,
-      thresholds,
-      updated_at: new Date().toISOString(),
-    },
-    {
-      user_id: userId,
-      settings: thresholds,
-      updated_at: new Date().toISOString(),
-    },
-  ];
+  const payload = {
+    user_id: userId,
+    thresholds,
+    temperature_min: Number(thresholds.temperatureMin),
+    temperature_max: Number(thresholds.temperatureMax),
+    ph_min: Number(thresholds.phMin),
+    ph_max: Number(thresholds.phMax),
+    turbidity_max: Number(thresholds.turbidityMax),
+    water_level_min: Number(thresholds.waterLevelMin),
+    ammonia_max: Number(thresholds.ammoniaMax),
+    updated_at: new Date().toISOString(),
+  };
 
-  for (const tableName of thresholdTables) {
-    for (const payload of payloadOptions) {
-      const { error } = await supabase
-        .from(tableName)
-        .upsert(payload, {
-          onConflict: "user_id",
-        });
+  for (const tableName of thresholdTableCandidates) {
+    const response = await supabase
+      .from(tableName)
+      .upsert(payload, {
+        onConflict: "user_id",
+      })
+      .select()
+      .maybeSingle();
 
-      if (!error) {
-        return {
-          saved: true,
-          source: tableName,
-        };
-      }
+    if (!response.error) {
+      return tableName;
     }
   }
 
-  return {
-    saved: false,
-    source: "",
-  };
+  return "localStorage";
+}
+
+function ThresholdControl({ item, value, onChange }) {
+  const Icon = item.icon;
+
+  return (
+    <article className="modern-setting-threshold-card">
+      <div className="modern-setting-threshold-top">
+        <span>
+          <Icon size={20} />
+        </span>
+
+        <div>
+          <strong>{item.label}</strong>
+          <small>{item.helper}</small>
+        </div>
+      </div>
+
+      <div className="modern-setting-threshold-control">
+        <input
+          type="range"
+          min={item.min}
+          max={item.max}
+          step={item.step}
+          value={value}
+          onChange={(event) => onChange(item.key, event.target.value)}
+        />
+
+        <label>
+          <input
+            type="number"
+            min={item.min}
+            max={item.max}
+            step={item.step}
+            value={value}
+            onChange={(event) => onChange(item.key, event.target.value)}
+          />
+          <span>{item.unit}</span>
+        </label>
+      </div>
+    </article>
+  );
 }
 
 export default function SettingsPage() {
-  const [thresholds, setThresholds] = useState(cloneDefaultThresholds());
-  const [authUserId, setAuthUserId] = useState("");
-  const [source, setSource] = useState("Default values");
-  const [statusMessage, setStatusMessage] = useState("");
+  const [thresholds, setThresholds] = useState(getLocalThresholds);
+  const [profile, setProfile] = useState(null);
+  const [user, setUser] = useState(null);
+  const [dataSource, setDataSource] = useState("localStorage");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [message, setMessage] = useState("");
 
-  const thresholdSummary = useMemo(
-    () => [
-      {
-        label: "Temperature",
-        value: `${thresholds.temperature.safeMin} - ${thresholds.temperature.safeMax} °C`,
-      },
-      {
-        label: "pH",
-        value: `${thresholds.ph.safeMin} - ${thresholds.ph.safeMax}`,
-      },
-      {
-        label: "Turbidity",
-        value: `Safe ≤ ${thresholds.turbidity.safeMax} NTU`,
-      },
-      {
-        label: "Water level",
-        value: `${thresholds.waterLevel.safeMin} - ${thresholds.waterLevel.safeMax} in`,
-      },
-      {
-        label: "Ammonia",
-        value: `Safe ≤ ${thresholds.ammonia.safeMax} ppm`,
-      },
-    ],
-    [thresholds]
-  );
+  const displayName = getProfileName(profile, user);
+  const email = profile?.email || user?.email || "No email";
+  const validThresholds = useMemo(() => isRangeValid(thresholds), [thresholds]);
 
   const loadSettings = async () => {
-    setStatusMessage("");
+    setMessage("");
 
     if (!isSupabaseConfigured || !supabase) {
-      const local = localStorage.getItem(getStorageKey("local"));
-
-      if (local) {
-        setThresholds(mergeThresholds(JSON.parse(local)));
-        setSource("Local browser storage");
-      }
-
+      setDataSource("localStorage");
       setIsLoading(false);
       return;
     }
@@ -329,38 +336,25 @@ export default function SettingsPage() {
     try {
       setIsLoading(true);
 
-      const currentUser = await getCurrentUser();
+      const result = await getCurrentUserAndProfile();
 
-      setAuthUserId(currentUser.id);
+      setUser(result.user);
+      setProfile(result.profile);
 
-      if (!currentUser.id) {
-        setThresholds(cloneDefaultThresholds());
-        setSource("Default values");
+      if (!result.user?.id) {
+        setDataSource("localStorage");
         return;
       }
 
-      const supabaseResult = await readThresholdsFromSupabase(currentUser.id);
+      const loaded = await loadThresholdsFromSupabase(result.user.id);
 
-      if (supabaseResult.thresholds) {
-        setThresholds(mergeThresholds(supabaseResult.thresholds));
-        setSource(supabaseResult.source);
-        return;
-      }
-
-      const local = localStorage.getItem(getStorageKey(currentUser.id));
-
-      if (local) {
-        setThresholds(mergeThresholds(JSON.parse(local)));
-        setSource("Local browser storage");
-        return;
-      }
-
-      setThresholds(cloneDefaultThresholds());
-      setSource("Default values");
+      setThresholds(loaded.thresholds);
+      setDataSource(loaded.tableUsed);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(loaded.thresholds));
     } catch (error) {
       console.error("Settings loading error:", error);
-      setThresholds(cloneDefaultThresholds());
-      setSource("Default values");
+      setDataSource("localStorage");
+      setThresholds(getLocalThresholds());
     } finally {
       setIsLoading(false);
     }
@@ -370,186 +364,197 @@ export default function SettingsPage() {
     loadSettings();
   }, []);
 
-  const updateThreshold = (sensorKey, fieldKey, value) => {
+  const handleThresholdChange = (key, value) => {
+    setMessage("");
+
     setThresholds((current) => ({
       ...current,
-      [sensorKey]: {
-        ...current[sensorKey],
-        [fieldKey]: value,
-      },
+      [key]: Number(value),
     }));
   };
 
-  const handleSave = async () => {
-    setStatusMessage("");
+  const handleResetDefaults = () => {
+    setThresholds(DEFAULT_THRESHOLDS);
+    setMessage("Default CrayThrive safe thresholds restored. Save changes to apply.");
+  };
 
-    const normalized = normalizeThresholds(thresholds);
-    const storageKey = getStorageKey(authUserId || "local");
+  const handleSave = async () => {
+    setMessage("");
+
+    if (!validThresholds) {
+      setMessage("Temperature and pH minimum values must be lower than maximum values.");
+      return;
+    }
 
     try {
       setIsSaving(true);
 
-      if (isSupabaseConfigured && supabase && authUserId) {
-        const result = await saveThresholdsToSupabase(authUserId, normalized);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(thresholds));
 
-        if (result.saved) {
-          localStorage.setItem(storageKey, JSON.stringify(normalized));
-          setThresholds(mergeThresholds(normalized));
-          setSource(result.source);
-          setStatusMessage("Threshold settings saved successfully.");
-          return;
-        }
+      let savedSource = "localStorage";
+
+      if (isSupabaseConfigured && supabase && user?.id) {
+        savedSource = await saveThresholdsToSupabase(user.id, thresholds);
       }
 
-      localStorage.setItem(storageKey, JSON.stringify(normalized));
-      setThresholds(mergeThresholds(normalized));
-      setSource("Local browser storage");
-      setStatusMessage(
-        "Saved locally. Add a threshold_settings table later for mobile sync."
+      setDataSource(savedSource);
+      setMessage(
+        savedSource === "localStorage"
+          ? "Saved locally. Add a Supabase threshold table later to sync with mobile."
+          : `Threshold settings saved to ${savedSource}.`
       );
     } catch (error) {
       console.error("Settings saving error:", error);
-      setStatusMessage("Could not save thresholds. Please try again.");
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(thresholds));
+      setDataSource("localStorage");
+      setMessage("Saved locally because Supabase settings table is not available yet.");
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleResetDefaults = () => {
-    setThresholds(cloneDefaultThresholds());
-    setSource("Default values");
-    setStatusMessage("Default thresholds restored. Click Save to apply them.");
-  };
-
   if (isLoading) {
     return (
-      <section className="settings-empty-state">
-        <Loader2 className="spin-icon" size={30} />
+      <section className="modern-settings-loading">
+        <Loader2 className="spin-icon" size={34} />
         <h3>Loading settings...</h3>
-        <p>Please wait while CrayThrive checks your threshold settings.</p>
+        <p>CrayThrive is preparing your profile and threshold settings.</p>
       </section>
     );
   }
 
   return (
-    <div className="settings-page">
-      <section className="settings-header-card">
+    <div className="modern-settings-page">
+      <section className="modern-settings-hero">
         <div>
-          <p className="dashboard-eyebrow">System Configuration</p>
-          <h2>Settings</h2>
+          <p className="dashboard-eyebrow">Settings</p>
+          <h2>Control your safe water thresholds.</h2>
           <p>
-            Configure safe threshold values for your tank sensors. These values
-            can be used by the dashboard, mobile app, and IoT rule logic for
-            normal, warning, and critical status checks.
+            Adjust the values used to classify tank readings as normal, warning,
+            or critical. These settings are prepared for syncing with the mobile
+            app and IoT monitoring logic.
           </p>
 
-          <div className="settings-header-actions">
+          <div className="modern-settings-actions">
             <button className="dashboard-primary-button" onClick={handleSave}>
               {isSaving ? (
-                <Loader2 className="spin-icon" size={18} />
+                <>
+                  Saving...
+                  <Loader2 className="spin-icon" size={18} />
+                </>
               ) : (
-                <Save size={18} />
+                <>
+                  Save Settings
+                  <Save size={18} />
+                </>
               )}
-              Save Thresholds
             </button>
 
             <button
-              className="settings-secondary-button"
               type="button"
+              className="modern-secondary-link"
               onClick={handleResetDefaults}
             >
-              <RotateCcw size={18} />
+              <RefreshCw size={18} />
               Restore Defaults
             </button>
 
-            <button
-              className="settings-secondary-button"
-              type="button"
-              onClick={loadSettings}
-            >
-              <RefreshCw size={18} />
-              Reload
-            </button>
+            <span>Source: {dataSource}</span>
+          </div>
+        </div>
 
-            <span>Source: {source}</span>
+        <div className="modern-settings-hero-card">
+          <Settings size={38} />
+          <strong>{validThresholds ? "Ready" : "Check"}</strong>
+          <span>
+            {validThresholds
+              ? "Threshold values are valid"
+              : "Some ranges need review"}
+          </span>
+        </div>
+      </section>
+
+      {message && (
+        <section
+          className={`modern-settings-message ${
+            validThresholds ? "success" : "warning"
+          }`}
+        >
+          {validThresholds ? <CheckCircle2 size={20} /> : <AlertTriangle size={20} />}
+          <span>{message}</span>
+        </section>
+      )}
+
+      <section className="modern-settings-grid">
+        <article className="modern-settings-panel">
+          <div className="modern-panel-heading">
+            <div>
+              <p className="dashboard-eyebrow">Account</p>
+              <h3>Web dashboard profile</h3>
+            </div>
+            <UserRound size={22} />
           </div>
 
-          {statusMessage && (
-            <div className="settings-status-message">
-              <CheckCircle2 size={18} />
-              <span>{statusMessage}</span>
+          <div className="modern-settings-profile-card">
+            <div className="modern-settings-avatar">
+              <UserRound size={28} />
             </div>
-          )}
+
+            <div>
+              <strong>{displayName}</strong>
+              <span>{email}</span>
+              <small>Role: Admin dashboard access</small>
+            </div>
+          </div>
+        </article>
+
+        <article className="modern-settings-panel">
+          <div className="modern-panel-heading">
+            <div>
+              <p className="dashboard-eyebrow">Notifications</p>
+              <h3>Alert behavior</h3>
+            </div>
+            <Bell size={22} />
+          </div>
+
+          <div className="modern-settings-info-list">
+            <div>
+              <ShieldCheck size={19} />
+              <span>Critical water alerts should stay visible until resolved.</span>
+            </div>
+
+            <div>
+              <Database size={19} />
+              <span>Threshold values can be reused by mobile and IoT logic later.</span>
+            </div>
+
+            <div>
+              <AlertTriangle size={19} />
+              <span>Unsafe values will help classify readings into warning or critical.</span>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section className="modern-settings-panel modern-settings-wide">
+        <div className="modern-panel-heading">
+          <div>
+            <p className="dashboard-eyebrow">Safe Thresholds</p>
+            <h3>Water condition rules</h3>
+          </div>
+          <Gauge size={22} />
         </div>
-      </section>
 
-      <section className="settings-summary-grid">
-        {thresholdSummary.map((item) => (
-          <article className="settings-summary-card" key={item.label}>
-            <span>
-              <Settings2 size={22} />
-            </span>
-            <strong>{item.value}</strong>
-            <p>{item.label}</p>
-          </article>
-        ))}
-      </section>
-
-      <section className="settings-note-card">
-        <AlertTriangle size={22} />
-        <div>
-          <strong>Threshold note</strong>
-          <p>
-            These are starter/default values. For final deployment, adjust them
-            based on actual crayfish species, tank setup, adviser feedback, and
-            client testing.
-          </p>
+        <div className="modern-setting-threshold-grid">
+          {thresholdRows.map((item) => (
+            <ThresholdControl
+              key={item.key}
+              item={item}
+              value={thresholds[item.key]}
+              onChange={handleThresholdChange}
+            />
+          ))}
         </div>
-      </section>
-
-      <section className="threshold-card-grid">
-        {Object.entries(SENSOR_CONFIG).map(([sensorKey, config]) => {
-          const Icon = config.icon;
-
-          return (
-            <article className="threshold-card" key={sensorKey}>
-              <div className="threshold-card-header">
-                <span>
-                  <Icon size={24} />
-                </span>
-
-                <div>
-                  <h3>{config.title}</h3>
-                  <p>{config.description}</p>
-                </div>
-              </div>
-
-              <div className="threshold-field-grid">
-                {config.fields.map((field) => (
-                  <label className="threshold-field" key={field.key}>
-                    <span>{field.label}</span>
-
-                    <div>
-                      <input
-                        type="number"
-                        step={field.step}
-                        value={thresholds[sensorKey]?.[field.key] ?? ""}
-                        onChange={(event) =>
-                          updateThreshold(
-                            sensorKey,
-                            field.key,
-                            event.target.value
-                          )
-                        }
-                      />
-                      <b>{config.unit}</b>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            </article>
-          );
-        })}
       </section>
     </div>
   );

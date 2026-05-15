@@ -3,24 +3,19 @@ import {
   Activity,
   AlertTriangle,
   BarChart3,
-  CalendarDays,
-  Camera,
+  CheckCircle2,
   Database,
-  Download,
+  DollarSign,
   Droplets,
   FileText,
-  FlaskConical,
   Gauge,
-  Layers,
   Loader2,
   PackageCheck,
   PieChart,
-  Printer,
   RefreshCw,
   ShoppingBag,
   Thermometer,
   TrendingUp,
-  Wallet,
   Waves,
 } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "../../lib/supabase";
@@ -28,7 +23,6 @@ import { isSupabaseConfigured, supabase } from "../../lib/supabase";
 const tableGroups = {
   tanks: ["tanks", "user_tanks", "tank_profiles"],
   readings: ["sensor_readings", "tank_readings", "readings"],
-  ammonia: ["ammonia_readings", "ammonia_results"],
   alerts: ["alerts", "notifications", "tank_alerts"],
   listings: ["marketplace_listings", "listings", "products"],
   orders: [
@@ -47,15 +41,8 @@ const userFilterColumns = [
   "farmer_id",
   "seller_id",
   "buyer_id",
-];
-
-const chartColors = [
-  "#00d9c7",
-  "#ffd43b",
-  "#ff5c7a",
-  "#6058ff",
-  "#3ae8ff",
-  "#9b8cff",
+  "breeder_id",
+  "recipient_id",
 ];
 
 function clean(value) {
@@ -66,11 +53,7 @@ function lower(value) {
   return clean(value).toLowerCase();
 }
 
-function formatNumber(value) {
-  return new Intl.NumberFormat("en-US").format(value || 0);
-}
-
-function formatPrice(value) {
+function formatPeso(value) {
   const amount = Number(value);
 
   if (!Number.isFinite(amount)) return "₱0";
@@ -82,8 +65,8 @@ function formatPrice(value) {
   }).format(amount);
 }
 
-function getDateValue(row) {
-  return row?.created_at || row?.updated_at || row?.date || row?.timestamp || "";
+function formatNumber(value) {
+  return new Intl.NumberFormat("en-US").format(value || 0);
 }
 
 function formatDate(value) {
@@ -101,204 +84,89 @@ function formatDate(value) {
   });
 }
 
-function formatShortDate(value) {
-  if (!value) return "No date";
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "No date";
-
-  return date.toLocaleDateString([], {
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function getValue(row, keys) {
+function getValue(row, keys, fallback = null) {
   for (const key of keys) {
-    if (row?.[key] !== null && row?.[key] !== undefined) return row[key];
+    if (row?.[key] !== null && row?.[key] !== undefined && row?.[key] !== "") {
+      return row[key];
+    }
   }
 
-  return null;
+  return fallback;
 }
 
-function getStatus(row) {
-  const raw = lower(
-    row?.status ||
-      row?.condition ||
-      row?.severity ||
-      row?.listing_status ||
-      row?.order_status ||
-      row?.alert_status
-  );
-
-  if (raw.includes("critical") || raw.includes("danger") || raw.includes("high")) {
-    return "critical";
-  }
-
-  if (raw.includes("warn") || raw.includes("dirty") || raw.includes("medium")) {
-    return "warning";
-  }
-
-  if (raw.includes("sold")) return "sold";
-  if (raw.includes("reserve")) return "reserved";
-  if (raw.includes("complete")) return "completed";
-  if (raw.includes("confirm")) return "confirmed";
-  if (raw.includes("cancel")) return "cancelled";
-  if (raw.includes("pending")) return "pending";
-  if (raw.includes("resolved")) return "resolved";
-  if (raw.includes("hidden")) return "hidden";
-  if (raw.includes("active")) return "active";
-  if (raw.includes("normal") || raw.includes("safe") || raw.includes("good")) {
-    return "normal";
-  }
-
-  return raw || "normal";
+function toNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }
 
-function getTankType(tank) {
-  return (
-    tank?.type ||
-    tank?.tank_type ||
-    tank?.stage ||
-    tank?.tank_stage ||
-    tank?.category ||
-    "General"
-  );
-}
-
-function getListingType(listing) {
-  return (
-    listing?.crayfish_type ||
-    listing?.type ||
-    listing?.species ||
-    listing?.category ||
-    "Crayfish"
-  );
-}
-
-function getListingStage(listing) {
-  return (
-    listing?.stage ||
-    listing?.life_stage ||
-    listing?.size_stage ||
-    listing?.age_stage ||
-    "Unspecified"
-  );
-}
-
-function getListingPrice(listing) {
-  return (
-    listing?.price ||
-    listing?.unit_price ||
-    listing?.selling_price ||
-    listing?.amount ||
-    0
-  );
-}
-
-function getListingQuantity(listing) {
-  return listing?.quantity || listing?.qty || listing?.stock || listing?.count || 1;
-}
-
-function getOrderTotal(order) {
-  return (
-    order?.total_price ||
-    order?.total ||
-    order?.amount ||
-    order?.price_total ||
-    order?.subtotal ||
-    0
-  );
-}
-
-function getRecordTitle(row, fallback) {
-  return (
-    row?.title ||
-    row?.name ||
-    row?.tank_name ||
-    row?.product_name ||
-    row?.listing_title ||
-    row?.alert_title ||
-    row?.type ||
-    row?.notification_type ||
-    fallback
-  );
-}
-
-function averageNumber(rows, keys) {
+function average(rows, keys) {
   const values = rows
-    .map((row) => Number(getValue(row, keys)))
-    .filter((value) => Number.isFinite(value));
+    .map((row) => toNumber(getValue(row, keys)))
+    .filter((value) => value !== null);
 
-  if (values.length === 0) return "N/A";
+  if (!values.length) return "N/A";
 
   const total = values.reduce((sum, value) => sum + value, 0);
   return (total / values.length).toFixed(2);
 }
 
-function countBy(rows, getter) {
-  const map = new Map();
+function getWaterStatus(row) {
+  const raw = lower(row?.status || row?.condition || row?.water_status || row?.severity);
 
-  rows.forEach((row) => {
-    const key = clean(getter(row)) || "Unknown";
-    map.set(key, (map.get(key) || 0) + 1);
-  });
+  if (raw.includes("critical") || raw.includes("danger")) return "critical";
+  if (raw.includes("warning") || raw.includes("dirty")) return "warning";
+  if (raw.includes("normal") || raw.includes("safe") || raw.includes("good")) return "normal";
 
-  return Array.from(map.entries()).map(([label, value]) => ({
-    label,
-    value,
-  }));
+  const temp = toNumber(getValue(row, ["temperature", "temp", "water_temperature"]));
+  const ph = toNumber(getValue(row, ["ph", "pH", "ph_level"]));
+  const turbidity = toNumber(getValue(row, ["turbidity", "turbidity_level", "ntu"]));
+  const waterLevel = toNumber(getValue(row, ["water_level", "level", "water_height"]));
+
+  if (
+    (temp !== null && (temp < 18 || temp > 32)) ||
+    (ph !== null && (ph < 6 || ph > 9)) ||
+    (turbidity !== null && turbidity > 70) ||
+    (waterLevel !== null && waterLevel < 20)
+  ) {
+    return "critical";
+  }
+
+  if (
+    (temp !== null && (temp < 20 || temp > 30)) ||
+    (ph !== null && (ph < 6.5 || ph > 8.5)) ||
+    (turbidity !== null && turbidity > 40) ||
+    (waterLevel !== null && waterLevel < 35)
+  ) {
+    return "warning";
+  }
+
+  return "normal";
 }
 
-function sumBy(rows, getter) {
-  return rows.reduce((sum, row) => {
-    const value = Number(getter(row));
-    return sum + (Number.isFinite(value) ? value : 0);
-  }, 0);
+function getMarketStatus(row) {
+  const raw = lower(row?.status || row?.listing_status || row?.order_status || row?.payment_status);
+
+  if (raw.includes("complete")) return "completed";
+  if (raw.includes("confirm")) return "confirmed";
+  if (raw.includes("paid")) return "paid";
+  if (raw.includes("sold")) return "sold";
+  if (raw.includes("cancel")) return "cancelled";
+  if (raw.includes("pending")) return "pending";
+  if (raw.includes("active") || raw.includes("available")) return "active";
+
+  return raw || "pending";
 }
 
-function groupDailyCount(rows) {
-  const map = new Map();
-
-  rows.forEach((row) => {
-    const label = formatShortDate(getDateValue(row));
-    if (label === "No date") return;
-    map.set(label, (map.get(label) || 0) + 1);
-  });
-
-  return Array.from(map.entries())
-    .slice(0, 8)
-    .map(([label, value]) => ({ label, value }));
+function getOrderTotal(order) {
+  return getValue(
+    order,
+    ["total_price", "total", "amount", "price_total", "subtotal", "price"],
+    0
+  );
 }
 
-function groupDailySales(rows) {
-  const map = new Map();
-
-  rows.forEach((row) => {
-    const label = formatShortDate(getDateValue(row));
-    if (label === "No date") return;
-
-    const value = Number(getOrderTotal(row));
-    map.set(label, (map.get(label) || 0) + (Number.isFinite(value) ? value : 0));
-  });
-
-  return Array.from(map.entries())
-    .slice(0, 8)
-    .map(([label, value]) => ({ label, value }));
-}
-
-function filterByDateRange(rows, dateFrom, dateTo) {
-  return rows.filter((row) => {
-    const rawDate = getDateValue(row);
-    const date = rawDate ? new Date(rawDate) : null;
-
-    if (!date || Number.isNaN(date.getTime())) return true;
-
-    const matchesFrom = !dateFrom || date >= new Date(`${dateFrom}T00:00:00`);
-    const matchesTo = !dateTo || date <= new Date(`${dateTo}T23:59:59`);
-
-    return matchesFrom && matchesTo;
-  });
+function getRecordDate(row) {
+  return row?.created_at || row?.updated_at || row?.timestamp || row?.date || "";
 }
 
 function uniqueRows(rows) {
@@ -313,6 +181,7 @@ function uniqueRows(rows) {
       row?.alert_id ||
       row?.listing_id ||
       row?.order_id ||
+      row?.created_at ||
       `row-${index}`;
 
     map.set(id, row);
@@ -331,16 +200,16 @@ async function getCurrentUser() {
   };
 }
 
-async function fetchRows(tableNames, userId, limit = 600) {
+async function fetchRows(tableNames, userId, limit = 250) {
   for (const tableName of tableNames) {
     const mergedRows = [];
     let successful = false;
 
-    for (const userColumn of userFilterColumns) {
+    for (const column of userFilterColumns) {
       const ordered = await supabase
         .from(tableName)
         .select("*")
-        .eq(userColumn, userId)
+        .eq(column, userId)
         .order("created_at", { ascending: false })
         .limit(limit);
 
@@ -353,7 +222,7 @@ async function fetchRows(tableNames, userId, limit = 600) {
       const plain = await supabase
         .from(tableName)
         .select("*")
-        .eq(userColumn, userId)
+        .eq(column, userId)
         .limit(limit);
 
       if (!plain.error && Array.isArray(plain.data)) {
@@ -376,184 +245,70 @@ async function fetchRows(tableNames, userId, limit = 600) {
   };
 }
 
-function downloadCsv(filename, rows) {
-  if (!rows.length) return;
-
-  const keys = Array.from(
-    rows.reduce((set, row) => {
-      Object.keys(row || {}).forEach((key) => set.add(key));
-      return set;
-    }, new Set())
-  );
-
-  const escapeCell = (value) => {
-    const text = String(value ?? "");
-    return `"${text.replaceAll('"', '""')}"`;
-  };
-
-  const csv = [
-    keys.join(","),
-    ...rows.map((row) => keys.map((key) => escapeCell(row[key])).join(",")),
-  ].join("\n");
-
-  const blob = new Blob([csv], {
-    type: "text/csv;charset=utf-8;",
-  });
-
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-
-  link.href = url;
-  link.download = filename;
-  link.click();
-
-  URL.revokeObjectURL(url);
-}
-
-function StatCard({ icon: Icon, label, value, helper }) {
+function SummaryCard({ icon: Icon, label, value, helper, tone = "default" }) {
   return (
-    <article className="reports-summary-card">
+    <article className={`modern-report-summary-card ${tone}`}>
       <span>
         <Icon size={22} />
       </span>
-      <strong>{value}</strong>
-      <p>{label}</p>
-      <small>{helper}</small>
-    </article>
-  );
-}
 
-function PieAnalytics({ title, subtitle, data }) {
-  const total = data.reduce((sum, item) => sum + item.value, 0);
-
-  let current = 0;
-  const gradient =
-    total > 0
-      ? `conic-gradient(${data
-          .map((item, index) => {
-            const start = current;
-            const size = (item.value / total) * 100;
-            current += size;
-            return `${chartColors[index % chartColors.length]} ${start}% ${current}%`;
-          })
-          .join(", ")})`
-      : "conic-gradient(rgba(0, 217, 199, 0.14) 0% 100%)";
-
-  return (
-    <article className="reports-panel">
-      <div className="reports-panel-header">
-        <div>
-          <p className="dashboard-eyebrow">{subtitle}</p>
-          <h3>{title}</h3>
-        </div>
-        <PieChart size={22} />
-      </div>
-
-      <div className="reports-pie-layout">
-        <div className="reports-pie" style={{ background: gradient }}>
-          <div>
-            <strong>{formatNumber(total)}</strong>
-            <span>Total</span>
-          </div>
-        </div>
-
-        <div className="reports-legend-list">
-          {data.length === 0 ? (
-            <div className="reports-mini-empty">No chart data yet.</div>
-          ) : (
-            data.map((item, index) => (
-              <div key={item.label}>
-                <i style={{ background: chartColors[index % chartColors.length] }} />
-                <span>{item.label}</span>
-                <strong>{formatNumber(item.value)}</strong>
-              </div>
-            ))
-          )}
-        </div>
+      <div>
+        <strong>{value}</strong>
+        <p>{label}</p>
+        <small>{helper}</small>
       </div>
     </article>
   );
 }
 
-function BarAnalytics({ title, subtitle, data, money = false }) {
-  const max = Math.max(1, ...data.map((item) => Number(item.value) || 0));
+function BarRow({ label, value, max, tone = "default" }) {
+  const width = max > 0 ? `${Math.min((value / max) * 100, 100)}%` : "0%";
 
   return (
-    <article className="reports-panel">
-      <div className="reports-panel-header">
-        <div>
-          <p className="dashboard-eyebrow">{subtitle}</p>
-          <h3>{title}</h3>
-        </div>
-        <BarChart3 size={22} />
+    <div className={`modern-report-bar-row ${tone}`}>
+      <div>
+        <span>{label}</span>
+        <strong>{formatNumber(value)}</strong>
       </div>
 
-      <div className="reports-bar-list">
-        {data.length === 0 ? (
-          <div className="reports-mini-empty">No graph data yet.</div>
-        ) : (
-          data.map((item) => (
-            <div className="reports-bar-row" key={item.label}>
-              <span>{item.label}</span>
-              <div>
-                <i style={{ width: `${((Number(item.value) || 0) / max) * 100}%` }} />
-              </div>
-              <strong>{money ? formatPrice(item.value) : formatNumber(item.value)}</strong>
-            </div>
-          ))
-        )}
-      </div>
-    </article>
+      <i>
+        <b style={{ width }} />
+      </i>
+    </div>
   );
 }
 
-function PreviewList({ title, subtitle, icon: Icon, rows }) {
+function DonutStat({ label, value, total, tone = "default" }) {
+  const percent = total > 0 ? Math.round((value / total) * 100) : 0;
+
   return (
-    <article className="reports-panel reports-table-panel">
-      <div className="reports-panel-header">
-        <div>
-          <p className="dashboard-eyebrow">{subtitle}</p>
-          <h3>{title}</h3>
-        </div>
-        <Icon size={22} />
+    <div className={`modern-report-donut ${tone}`}>
+      <div
+        style={{
+          "--percent": `${percent}%`,
+        }}
+      >
+        <strong>{percent}%</strong>
       </div>
 
-      <div className="reports-preview-list">
-        {rows.slice(0, 8).length === 0 ? (
-          <div className="reports-mini-empty">No records available.</div>
-        ) : (
-          rows.slice(0, 8).map((row, index) => (
-            <div className="reports-preview-row" key={row?.id || index}>
-              <div>
-                <strong>{getRecordTitle(row, "CrayThrive Record")}</strong>
-                <span>{formatDate(getDateValue(row))}</span>
-              </div>
-
-              <b className={`reports-status-pill ${getStatus(row)}`}>
-                {getStatus(row)}
-              </b>
-            </div>
-          ))
-        )}
-      </div>
-    </article>
+      <span>{label}</span>
+      <small>
+        {formatNumber(value)} of {formatNumber(total)}
+      </small>
+    </div>
   );
 }
 
 export default function ReportsPage() {
+  const [activeReport, setActiveReport] = useState("tanks");
   const [datasets, setDatasets] = useState({
     tanks: [],
     readings: [],
-    ammonia: [],
     alerts: [],
     listings: [],
     orders: [],
   });
-
   const [sources, setSources] = useState({});
-  const [activeReport, setActiveReport] = useState("overview");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
 
@@ -572,7 +327,6 @@ export default function ReportsPage() {
         setDatasets({
           tanks: [],
           readings: [],
-          ammonia: [],
           alerts: [],
           listings: [],
           orders: [],
@@ -580,20 +334,17 @@ export default function ReportsPage() {
         return;
       }
 
-      const [tanks, readings, ammonia, alerts, listings, orders] =
-        await Promise.all([
-          fetchRows(tableGroups.tanks, currentUser.id),
-          fetchRows(tableGroups.readings, currentUser.id),
-          fetchRows(tableGroups.ammonia, currentUser.id),
-          fetchRows(tableGroups.alerts, currentUser.id),
-          fetchRows(tableGroups.listings, currentUser.id),
-          fetchRows(tableGroups.orders, currentUser.id),
-        ]);
+      const [tanks, readings, alerts, listings, orders] = await Promise.all([
+        fetchRows(tableGroups.tanks, currentUser.id),
+        fetchRows(tableGroups.readings, currentUser.id),
+        fetchRows(tableGroups.alerts, currentUser.id),
+        fetchRows(tableGroups.listings, currentUser.id),
+        fetchRows(tableGroups.orders, currentUser.id),
+      ]);
 
       setDatasets({
         tanks: tanks.rows,
         readings: readings.rows,
-        ammonia: ammonia.rows,
         alerts: alerts.rows,
         listings: listings.rows,
         orders: orders.rows,
@@ -602,7 +353,6 @@ export default function ReportsPage() {
       setSources({
         tanks: tanks.tableUsed,
         readings: readings.tableUsed,
-        ammonia: ammonia.tableUsed,
         alerts: alerts.tableUsed,
         listings: listings.tableUsed,
         orders: orders.tableUsed,
@@ -620,456 +370,486 @@ export default function ReportsPage() {
     loadReports();
   }, []);
 
-  const filtered = useMemo(() => {
+  const tankAnalytics = useMemo(() => {
+    const readingStatus = datasets.readings.map(getWaterStatus);
+    const normal = readingStatus.filter((status) => status === "normal").length;
+    const warning = readingStatus.filter((status) => status === "warning").length;
+    const critical = readingStatus.filter((status) => status === "critical").length;
+
+    const alertCritical = datasets.alerts.filter((alert) => {
+      const status = lower(alert?.severity || alert?.status || alert?.priority);
+      return status.includes("critical") || status.includes("danger") || status.includes("high");
+    }).length;
+
     return {
-      tanks: datasets.tanks,
-      readings: filterByDateRange(datasets.readings, dateFrom, dateTo),
-      ammonia: filterByDateRange(datasets.ammonia, dateFrom, dateTo),
-      alerts: filterByDateRange(datasets.alerts, dateFrom, dateTo),
-      listings: filterByDateRange(datasets.listings, dateFrom, dateTo),
-      orders: filterByDateRange(datasets.orders, dateFrom, dateTo),
+      totalTanks: datasets.tanks.length,
+      totalReadings: datasets.readings.length,
+      totalAlerts: datasets.alerts.length,
+      normal,
+      warning,
+      critical,
+      alertCritical,
+      avgTemp: average(datasets.readings, ["temperature", "temp", "water_temperature"]),
+      avgPh: average(datasets.readings, ["ph", "pH", "ph_level"]),
+      avgTurbidity: average(datasets.readings, ["turbidity", "turbidity_level", "ntu"]),
+      avgWaterLevel: average(datasets.readings, ["water_level", "level", "water_height"]),
     };
-  }, [datasets, dateFrom, dateTo]);
+  }, [datasets]);
 
-  const exportRows = useMemo(() => {
-    if (activeReport === "tanks") {
-      return [...filtered.tanks, ...filtered.readings, ...filtered.ammonia, ...filtered.alerts];
-    }
+  const marketAnalytics = useMemo(() => {
+    const activeListings = datasets.listings.filter(
+      (listing) => getMarketStatus(listing) === "active"
+    ).length;
 
-    if (activeReport === "marketplace") {
-      return [...filtered.listings, ...filtered.orders];
-    }
+    const soldListings = datasets.listings.filter(
+      (listing) => getMarketStatus(listing) === "sold"
+    ).length;
 
-    return [
-      ...filtered.tanks,
-      ...filtered.readings,
-      ...filtered.ammonia,
-      ...filtered.alerts,
-      ...filtered.listings,
-      ...filtered.orders,
-    ];
-  }, [activeReport, filtered]);
+    const completedOrders = datasets.orders.filter((order) =>
+      ["completed", "confirmed", "paid"].includes(getMarketStatus(order))
+    );
 
-  const avgTemp = averageNumber(filtered.readings, [
-    "temperature",
-    "temp",
-    "water_temperature",
-  ]);
+    const pendingOrders = datasets.orders.filter(
+      (order) => getMarketStatus(order) === "pending"
+    ).length;
 
-  const avgPh = averageNumber(filtered.readings, ["ph", "pH", "ph_level"]);
+    const cancelledOrders = datasets.orders.filter((order) =>
+      ["cancelled", "rejected"].includes(getMarketStatus(order))
+    ).length;
 
-  const avgTurbidity = averageNumber(filtered.readings, [
-    "turbidity",
-    "turbidity_level",
-    "ntu",
-  ]);
+    const totalSales = completedOrders.reduce(
+      (sum, order) => sum + Number(getOrderTotal(order) || 0),
+      0
+    );
 
-  const avgWaterLevel = averageNumber(filtered.readings, [
-    "water_level",
-    "level",
-    "water_height",
-  ]);
+    return {
+      totalListings: datasets.listings.length,
+      activeListings,
+      soldListings,
+      totalOrders: datasets.orders.length,
+      completedOrders: completedOrders.length,
+      pendingOrders,
+      cancelledOrders,
+      totalSales,
+    };
+  }, [datasets]);
 
-  const totalSales = sumBy(filtered.orders, getOrderTotal);
-  const potentialListingValue = sumBy(
-    filtered.listings,
-    (listing) => Number(getListingPrice(listing)) * Number(getListingQuantity(listing))
-  );
+  const tankBars = [
+    { label: "Normal readings", value: tankAnalytics.normal, tone: "success" },
+    { label: "Warning readings", value: tankAnalytics.warning, tone: "warning" },
+    { label: "Critical readings", value: tankAnalytics.critical, tone: "danger" },
+    { label: "Critical alerts", value: tankAnalytics.alertCritical, tone: "danger" },
+  ];
 
-  const completedOrders = filtered.orders.filter(
-    (order) => getStatus(order) === "completed" || getStatus(order) === "confirmed"
-  ).length;
+  const marketBars = [
+    { label: "Active listings", value: marketAnalytics.activeListings, tone: "success" },
+    { label: "Sold listings", value: marketAnalytics.soldListings, tone: "default" },
+    { label: "Completed orders", value: marketAnalytics.completedOrders, tone: "success" },
+    { label: "Pending orders", value: marketAnalytics.pendingOrders, tone: "warning" },
+    { label: "Cancelled orders", value: marketAnalytics.cancelledOrders, tone: "danger" },
+  ];
 
-  const soldListings = filtered.listings.filter(
-    (listing) => getStatus(listing) === "sold"
-  ).length;
+  const maxTankBar = Math.max(1, ...tankBars.map((item) => item.value));
+  const maxMarketBar = Math.max(1, ...marketBars.map((item) => item.value));
 
-  const tankStatusData = countBy(filtered.tanks, getStatus);
-  const readingStatusData = countBy(filtered.readings, getStatus);
-  const tankTypeData = countBy(filtered.tanks, getTankType);
-  const listingStatusData = countBy(filtered.listings, getStatus);
-  const orderStatusData = countBy(filtered.orders, getStatus);
-  const listingTypeData = countBy(filtered.listings, getListingType);
-  const listingStageData = countBy(filtered.listings, getListingStage);
+  const recentTankRecords = [...datasets.alerts, ...datasets.readings]
+    .sort((a, b) => new Date(getRecordDate(b)) - new Date(getRecordDate(a)))
+    .slice(0, 6);
 
-  const activityData = groupDailyCount([
-    ...filtered.readings,
-    ...filtered.alerts,
-    ...filtered.listings,
-    ...filtered.orders,
-  ]);
+  const recentMarketRecords = [...datasets.orders, ...datasets.listings]
+    .sort((a, b) => new Date(getRecordDate(b)) - new Date(getRecordDate(a)))
+    .slice(0, 6);
 
-  const sensorData = groupDailyCount(filtered.readings);
-  const alertData = groupDailyCount(filtered.alerts);
-  const salesData = groupDailySales(filtered.orders);
-  const listingActivityData = groupDailyCount(filtered.listings);
+  if (isLoading) {
+    return (
+      <section className="modern-report-loading">
+        <Loader2 className="spin-icon" size={34} />
+        <h3>Loading reports...</h3>
+        <p>CrayThrive is preparing your dashboard analytics.</p>
+      </section>
+    );
+  }
 
   return (
-    <div className="reports-page">
-      <section className="reports-header-card">
+    <div className="modern-reports-page">
+      <section className="modern-reports-hero">
         <div>
-          <p className="dashboard-eyebrow">Analytics Center</p>
-          <h2>Reports & Analytics</h2>
+          <p className="dashboard-eyebrow">Reports & Analytics</p>
+          <h2>Understand tank health and marketplace performance.</h2>
           <p>
-            Switch between overview, tank analytics, and marketplace analytics.
-            This page summarizes tank conditions, sensor performance, ammonia
-            checks, listing activity, orders, and sales from your CrayThrive
-            account.
+            Switch between aquaculture reports and marketplace analytics. This
+            view summarizes sensor conditions, alerts, listings, orders, and sales.
           </p>
 
-          <div className="reports-header-actions">
+          <div className="modern-report-actions">
             <button className="dashboard-primary-button" onClick={loadReports}>
-              {isLoading ? (
-                <Loader2 className="spin-icon" size={18} />
-              ) : (
-                <RefreshCw size={18} />
-              )}
+              <RefreshCw size={18} />
               Refresh Reports
-            </button>
-
-            <button
-              className="reports-secondary-button"
-              type="button"
-              onClick={() => window.print()}
-            >
-              <Printer size={18} />
-              Print
-            </button>
-
-            <button
-              className="reports-secondary-button"
-              type="button"
-              onClick={() =>
-                downloadCsv(`craythrive-${activeReport}-analytics.csv`, exportRows)
-              }
-            >
-              <Download size={18} />
-              Export CSV
             </button>
 
             <span>
               {lastUpdated
                 ? `Last updated ${lastUpdated.toLocaleTimeString()}`
-                : "Waiting for analytics sync"}
+                : "Waiting for report sync"}
             </span>
           </div>
         </div>
-      </section>
 
-      <section className="reports-switch-card">
-        <div className="reports-tabs">
-          <button
-            className={activeReport === "overview" ? "is-active" : ""}
-            onClick={() => setActiveReport("overview")}
-          >
-            <BarChart3 size={18} />
-            Overview
-          </button>
-
-          <button
-            className={activeReport === "tanks" ? "is-active" : ""}
-            onClick={() => setActiveReport("tanks")}
-          >
-            <Droplets size={18} />
-            Tank Analytics
-          </button>
-
-          <button
-            className={activeReport === "marketplace" ? "is-active" : ""}
-            onClick={() => setActiveReport("marketplace")}
-          >
-            <ShoppingBag size={18} />
-            Marketplace Analytics
-          </button>
-        </div>
-
-        <div className="reports-date-controls">
-          <label>
-            <CalendarDays size={18} />
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(event) => setDateFrom(event.target.value)}
-            />
-          </label>
-
-          <label>
-            <CalendarDays size={18} />
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(event) => setDateTo(event.target.value)}
-            />
-          </label>
+        <div className="modern-report-hero-card">
+          <FileText size={38} />
+          <strong>{activeReport === "tanks" ? "Tank" : "Market"}</strong>
+          <span>Active report view</span>
         </div>
       </section>
 
-      {isLoading ? (
-        <section className="reports-empty-state">
-          <Loader2 className="spin-icon" size={30} />
-          <h3>Loading analytics...</h3>
-          <p>Please wait while CrayThrive summarizes your records.</p>
-        </section>
+      <section className="modern-report-tabs">
+        <button
+          type="button"
+          className={activeReport === "tanks" ? "is-active" : ""}
+          onClick={() => setActiveReport("tanks")}
+        >
+          <Droplets size={18} />
+          Tank Reports
+        </button>
+
+        <button
+          type="button"
+          className={activeReport === "market" ? "is-active" : ""}
+          onClick={() => setActiveReport("market")}
+        >
+          <ShoppingBag size={18} />
+          Market Reports
+        </button>
+      </section>
+
+      {activeReport === "tanks" ? (
+        <>
+          <section className="modern-report-summary-grid">
+            <SummaryCard
+              icon={Droplets}
+              label="Total Tanks"
+              value={tankAnalytics.totalTanks}
+              helper={`Source: ${sources.tanks || "tanks"}`}
+            />
+
+            <SummaryCard
+              icon={Activity}
+              label="Readings"
+              value={tankAnalytics.totalReadings}
+              helper={`Source: ${sources.readings || "readings"}`}
+            />
+
+            <SummaryCard
+              icon={AlertTriangle}
+              label="Critical Alerts"
+              value={tankAnalytics.alertCritical}
+              helper={`${tankAnalytics.totalAlerts} total alerts`}
+              tone={tankAnalytics.alertCritical > 0 ? "danger" : "success"}
+            />
+
+            <SummaryCard
+              icon={Thermometer}
+              label="Avg Temperature"
+              value={
+                tankAnalytics.avgTemp === "N/A"
+                  ? "N/A"
+                  : `${tankAnalytics.avgTemp}°C`
+              }
+              helper="Average sensor value"
+            />
+          </section>
+
+          <section className="modern-report-grid">
+            <article className="modern-report-panel">
+              <div className="modern-panel-heading">
+                <div>
+                  <p className="dashboard-eyebrow">Water Metrics</p>
+                  <h3>Average tank condition</h3>
+                </div>
+                <Gauge size={22} />
+              </div>
+
+              <div className="modern-report-metric-grid">
+                <div>
+                  <Thermometer size={20} />
+                  <strong>
+                    {tankAnalytics.avgTemp === "N/A"
+                      ? "N/A"
+                      : `${tankAnalytics.avgTemp}°C`}
+                  </strong>
+                  <span>Temperature</span>
+                </div>
+
+                <div>
+                  <Droplets size={20} />
+                  <strong>{tankAnalytics.avgPh}</strong>
+                  <span>pH Level</span>
+                </div>
+
+                <div>
+                  <Waves size={20} />
+                  <strong>{tankAnalytics.avgTurbidity}</strong>
+                  <span>Turbidity</span>
+                </div>
+
+                <div>
+                  <Gauge size={20} />
+                  <strong>{tankAnalytics.avgWaterLevel}</strong>
+                  <span>Water Level</span>
+                </div>
+              </div>
+            </article>
+
+            <article className="modern-report-panel">
+              <div className="modern-panel-heading">
+                <div>
+                  <p className="dashboard-eyebrow">Status Graph</p>
+                  <h3>Reading distribution</h3>
+                </div>
+                <BarChart3 size={22} />
+              </div>
+
+              <div className="modern-report-bars">
+                {tankBars.map((item) => (
+                  <BarRow
+                    key={item.label}
+                    label={item.label}
+                    value={item.value}
+                    max={maxTankBar}
+                    tone={item.tone}
+                  />
+                ))}
+              </div>
+            </article>
+
+            <article className="modern-report-panel modern-report-wide">
+              <div className="modern-panel-heading">
+                <div>
+                  <p className="dashboard-eyebrow">Condition Share</p>
+                  <h3>Tank safety percentage</h3>
+                </div>
+                <PieChart size={22} />
+              </div>
+
+              <div className="modern-report-donut-grid">
+                <DonutStat
+                  label="Normal"
+                  value={tankAnalytics.normal}
+                  total={tankAnalytics.totalReadings}
+                  tone="success"
+                />
+
+                <DonutStat
+                  label="Warning"
+                  value={tankAnalytics.warning}
+                  total={tankAnalytics.totalReadings}
+                  tone="warning"
+                />
+
+                <DonutStat
+                  label="Critical"
+                  value={tankAnalytics.critical}
+                  total={tankAnalytics.totalReadings}
+                  tone="danger"
+                />
+              </div>
+            </article>
+
+            <article className="modern-report-panel modern-report-wide">
+              <div className="modern-panel-heading">
+                <div>
+                  <p className="dashboard-eyebrow">Recent Tank Records</p>
+                  <h3>Latest tank-side activities</h3>
+                </div>
+                <Database size={22} />
+              </div>
+
+              <div className="modern-report-list">
+                {recentTankRecords.length === 0 ? (
+                  <div className="modern-report-empty-small">
+                    <CheckCircle2 size={28} />
+                    <strong>No tank report records yet</strong>
+                    <span>Sensor and alert records will appear once synced.</span>
+                  </div>
+                ) : (
+                  recentTankRecords.map((record, index) => (
+                    <div className="modern-report-row" key={record?.id || index}>
+                      <div>
+                        <strong>
+                          {record?.title ||
+                            record?.tank_name ||
+                            record?.type ||
+                            record?.sensor_type ||
+                            `Tank Record ${index + 1}`}
+                        </strong>
+                        <span>{formatDate(getRecordDate(record))}</span>
+                      </div>
+
+                      <b className={`modern-report-chip ${getWaterStatus(record)}`}>
+                        {getWaterStatus(record)}
+                      </b>
+                    </div>
+                  ))
+                )}
+              </div>
+            </article>
+          </section>
+        </>
       ) : (
         <>
-          {activeReport === "overview" && (
-            <>
-              <section className="reports-summary-grid">
-                <StatCard
-                  icon={Droplets}
-                  label="Tanks"
-                  value={formatNumber(filtered.tanks.length)}
-                  helper={`Source: ${sources.tanks || "tanks"}`}
+          <section className="modern-report-summary-grid">
+            <SummaryCard
+              icon={ShoppingBag}
+              label="Listings"
+              value={marketAnalytics.totalListings}
+              helper={`${marketAnalytics.activeListings} active listing(s)`}
+            />
+
+            <SummaryCard
+              icon={PackageCheck}
+              label="Orders"
+              value={marketAnalytics.totalOrders}
+              helper={`${marketAnalytics.completedOrders} completed/paid`}
+            />
+
+            <SummaryCard
+              icon={DollarSign}
+              label="Sales Value"
+              value={formatPeso(marketAnalytics.totalSales)}
+              helper="Completed order total"
+              tone="success"
+            />
+
+            <SummaryCard
+              icon={TrendingUp}
+              label="Conversion"
+              value={
+                marketAnalytics.totalListings > 0
+                  ? `${Math.round(
+                      (marketAnalytics.completedOrders /
+                        marketAnalytics.totalListings) *
+                        100
+                    )}%`
+                  : "0%"
+              }
+              helper="Orders compared to listings"
+            />
+          </section>
+
+          <section className="modern-report-grid">
+            <article className="modern-report-panel">
+              <div className="modern-panel-heading">
+                <div>
+                  <p className="dashboard-eyebrow">Sales Analytics</p>
+                  <h3>Marketplace performance</h3>
+                </div>
+                <DollarSign size={22} />
+              </div>
+
+              <div className="modern-report-sales-card">
+                <strong>{formatPeso(marketAnalytics.totalSales)}</strong>
+                <span>Total completed sales value</span>
+                <p>
+                  Based on completed, confirmed, or paid order records from your
+                  marketplace tables.
+                </p>
+              </div>
+            </article>
+
+            <article className="modern-report-panel">
+              <div className="modern-panel-heading">
+                <div>
+                  <p className="dashboard-eyebrow">Order Graph</p>
+                  <h3>Market distribution</h3>
+                </div>
+                <BarChart3 size={22} />
+              </div>
+
+              <div className="modern-report-bars">
+                {marketBars.map((item) => (
+                  <BarRow
+                    key={item.label}
+                    label={item.label}
+                    value={item.value}
+                    max={maxMarketBar}
+                    tone={item.tone}
+                  />
+                ))}
+              </div>
+            </article>
+
+            <article className="modern-report-panel modern-report-wide">
+              <div className="modern-panel-heading">
+                <div>
+                  <p className="dashboard-eyebrow">Order Status Share</p>
+                  <h3>Buyer activity percentage</h3>
+                </div>
+                <PieChart size={22} />
+              </div>
+
+              <div className="modern-report-donut-grid">
+                <DonutStat
+                  label="Completed"
+                  value={marketAnalytics.completedOrders}
+                  total={marketAnalytics.totalOrders}
+                  tone="success"
                 />
 
-                <StatCard
-                  icon={Activity}
-                  label="Sensor readings"
-                  value={formatNumber(filtered.readings.length)}
-                  helper={`Avg temp: ${avgTemp}`}
+                <DonutStat
+                  label="Pending"
+                  value={marketAnalytics.pendingOrders}
+                  total={marketAnalytics.totalOrders}
+                  tone="warning"
                 />
 
-                <StatCard
-                  icon={Camera}
-                  label="Ammonia records"
-                  value={formatNumber(filtered.ammonia.length)}
-                  helper={`Source: ${sources.ammonia || "ammonia_readings"}`}
+                <DonutStat
+                  label="Cancelled"
+                  value={marketAnalytics.cancelledOrders}
+                  total={marketAnalytics.totalOrders}
+                  tone="danger"
                 />
+              </div>
+            </article>
 
-                <StatCard
-                  icon={AlertTriangle}
-                  label="Alerts"
-                  value={formatNumber(filtered.alerts.length)}
-                  helper={`${countBy(filtered.alerts, getStatus)
-                    .map((item) => `${item.label}: ${item.value}`)
-                    .slice(0, 2)
-                    .join(" • ") || "No alert summary"}`}
-                />
+            <article className="modern-report-panel modern-report-wide">
+              <div className="modern-panel-heading">
+                <div>
+                  <p className="dashboard-eyebrow">Recent Market Records</p>
+                  <h3>Latest listing and order activity</h3>
+                </div>
+                <ShoppingBag size={22} />
+              </div>
 
-                <StatCard
-                  icon={ShoppingBag}
-                  label="Listings"
-                  value={formatNumber(filtered.listings.length)}
-                  helper={`${soldListings} sold listing(s)`}
-                />
+              <div className="modern-report-list">
+                {recentMarketRecords.length === 0 ? (
+                  <div className="modern-report-empty-small">
+                    <ShoppingBag size={28} />
+                    <strong>No market report records yet</strong>
+                    <span>Listings and order records will appear once synced.</span>
+                  </div>
+                ) : (
+                  recentMarketRecords.map((record, index) => (
+                    <div className="modern-report-row" key={record?.id || index}>
+                      <div>
+                        <strong>
+                          {record?.title ||
+                            record?.product_name ||
+                            record?.listing_title ||
+                            record?.item_name ||
+                            `Market Record ${index + 1}`}
+                        </strong>
+                        <span>{formatDate(getRecordDate(record))}</span>
+                      </div>
 
-                <StatCard
-                  icon={PackageCheck}
-                  label="Orders"
-                  value={formatNumber(filtered.orders.length)}
-                  helper={`${completedOrders} completed/confirmed`}
-                />
-              </section>
-
-              <section className="reports-analytics-grid">
-                <PieAnalytics
-                  title="Overall Activity Mix"
-                  subtitle="Overview"
-                  data={[
-                    { label: "Readings", value: filtered.readings.length },
-                    { label: "Alerts", value: filtered.alerts.length },
-                    { label: "Listings", value: filtered.listings.length },
-                    { label: "Orders", value: filtered.orders.length },
-                    { label: "Ammonia", value: filtered.ammonia.length },
-                  ]}
-                />
-
-                <BarAnalytics
-                  title="Daily Activity"
-                  subtitle="Overview Graph"
-                  data={activityData}
-                />
-
-                <PreviewList
-                  title="Latest System Records"
-                  subtitle="Preview"
-                  icon={Database}
-                  rows={exportRows}
-                />
-              </section>
-            </>
-          )}
-
-          {activeReport === "tanks" && (
-            <>
-              <section className="reports-summary-grid">
-                <StatCard
-                  icon={Droplets}
-                  label="Total tanks"
-                  value={formatNumber(filtered.tanks.length)}
-                  helper="Registered tank records"
-                />
-
-                <StatCard
-                  icon={Thermometer}
-                  label="Average temperature"
-                  value={avgTemp === "N/A" ? "N/A" : `${avgTemp}°C`}
-                  helper="From sensor readings"
-                />
-
-                <StatCard
-                  icon={FlaskConical}
-                  label="Average pH"
-                  value={avgPh}
-                  helper="From sensor readings"
-                />
-
-                <StatCard
-                  icon={Waves}
-                  label="Average turbidity"
-                  value={avgTurbidity}
-                  helper="From sensor readings"
-                />
-
-                <StatCard
-                  icon={Gauge}
-                  label="Average water level"
-                  value={avgWaterLevel}
-                  helper="From sensor readings"
-                />
-
-                <StatCard
-                  icon={Camera}
-                  label="Ammonia checks"
-                  value={formatNumber(filtered.ammonia.length)}
-                  helper="Camera/mobile ammonia records"
-                />
-              </section>
-
-              <section className="reports-analytics-grid">
-                <PieAnalytics
-                  title="Tank Status Distribution"
-                  subtitle="Tank Analytics"
-                  data={tankStatusData}
-                />
-
-                <PieAnalytics
-                  title="Tank Type Distribution"
-                  subtitle="Tank Analytics"
-                  data={tankTypeData}
-                />
-
-                <BarAnalytics
-                  title="Sensor Reading Volume"
-                  subtitle="Tank Graph"
-                  data={sensorData}
-                />
-
-                <BarAnalytics
-                  title="Alert Volume"
-                  subtitle="Tank Graph"
-                  data={alertData}
-                />
-
-                <PieAnalytics
-                  title="Sensor Condition Status"
-                  subtitle="Tank Analytics"
-                  data={readingStatusData}
-                />
-
-                <PreviewList
-                  title="Latest Tank Records"
-                  subtitle="Tank Preview"
-                  icon={Layers}
-                  rows={[...filtered.tanks, ...filtered.readings, ...filtered.ammonia]}
-                />
-              </section>
-            </>
-          )}
-
-          {activeReport === "marketplace" && (
-            <>
-              <section className="reports-summary-grid">
-                <StatCard
-                  icon={ShoppingBag}
-                  label="Total listings"
-                  value={formatNumber(filtered.listings.length)}
-                  helper="Crayfish-only listings"
-                />
-
-                <StatCard
-                  icon={Wallet}
-                  label="Total sales"
-                  value={formatPrice(totalSales)}
-                  helper="From order records"
-                />
-
-                <StatCard
-                  icon={TrendingUp}
-                  label="Potential value"
-                  value={formatPrice(potentialListingValue)}
-                  helper="Price × quantity of listings"
-                />
-
-                <StatCard
-                  icon={PackageCheck}
-                  label="Orders"
-                  value={formatNumber(filtered.orders.length)}
-                  helper={`${completedOrders} completed/confirmed`}
-                />
-
-                <StatCard
-                  icon={ShoppingBag}
-                  label="Sold listings"
-                  value={formatNumber(soldListings)}
-                  helper="Marketplace sold records"
-                />
-
-                <StatCard
-                  icon={FileText}
-                  label="Listing source"
-                  value={sources.listings || "listings"}
-                  helper={`Orders source: ${sources.orders || "orders"}`}
-                />
-              </section>
-
-              <section className="reports-analytics-grid">
-                <PieAnalytics
-                  title="Listing Status Distribution"
-                  subtitle="Market Analytics"
-                  data={listingStatusData}
-                />
-
-                <PieAnalytics
-                  title="Order Status Distribution"
-                  subtitle="Market Analytics"
-                  data={orderStatusData}
-                />
-
-                <BarAnalytics
-                  title="Daily Sales"
-                  subtitle="Sales Graph"
-                  data={salesData}
-                  money
-                />
-
-                <BarAnalytics
-                  title="Listing Activity"
-                  subtitle="Market Graph"
-                  data={listingActivityData}
-                />
-
-                <PieAnalytics
-                  title="Crayfish Type Distribution"
-                  subtitle="Market Analytics"
-                  data={listingTypeData}
-                />
-
-                <PieAnalytics
-                  title="Stage Distribution"
-                  subtitle="Market Analytics"
-                  data={listingStageData}
-                />
-
-                <PreviewList
-                  title="Latest Marketplace Records"
-                  subtitle="Market Preview"
-                  icon={ShoppingBag}
-                  rows={[...filtered.listings, ...filtered.orders]}
-                />
-              </section>
-            </>
-          )}
+                      <b className={`modern-report-chip ${getMarketStatus(record)}`}>
+                        {getMarketStatus(record)}
+                      </b>
+                    </div>
+                  ))
+                )}
+              </div>
+            </article>
+          </section>
         </>
       )}
     </div>

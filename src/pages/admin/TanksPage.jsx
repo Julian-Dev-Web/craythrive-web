@@ -4,10 +4,12 @@ import {
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
+  Database,
   Droplets,
   Filter,
-  FlaskConical,
+  Gauge,
   Loader2,
+  Plus,
   RefreshCw,
   Search,
   Thermometer,
@@ -15,10 +17,8 @@ import {
 } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "../../lib/supabase";
 
-const tankTableNames = ["tanks", "user_tanks", "tank_profiles"];
-const readingTableNames = ["sensor_readings", "tank_readings", "readings"];
-const ammoniaTableNames = ["ammonia_readings", "ammonia_results"];
-const alertTableNames = ["alerts", "notifications", "tank_alerts"];
+const tankTables = ["tanks", "user_tanks", "tank_profiles"];
+const readingTables = ["sensor_readings", "tank_readings", "readings"];
 
 const userFilterColumns = [
   "user_id",
@@ -28,22 +28,19 @@ const userFilterColumns = [
   "farmer_id",
 ];
 
-const tankIdColumns = ["tank_id", "tankId", "tank"];
-
-function normalizeText(value) {
+function clean(value) {
   return String(value || "").trim();
 }
 
 function lower(value) {
-  return normalizeText(value).toLowerCase();
+  return clean(value).toLowerCase();
 }
 
 function formatDate(value) {
-  if (!value) return "No update yet";
+  if (!value) return "No sync yet";
 
   const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) return "No update yet";
+  if (Number.isNaN(date.getTime())) return "No sync yet";
 
   return date.toLocaleString([], {
     month: "short",
@@ -53,84 +50,83 @@ function formatDate(value) {
   });
 }
 
-function getTankId(tank) {
-  return tank?.id || tank?.tank_id || tank?.uuid || tank?.tankId || "";
-}
-
-function getTankName(tank) {
+function getTankName(tank, index) {
   return (
     tank?.name ||
     tank?.tank_name ||
     tank?.title ||
     tank?.label ||
-    tank?.tank_label ||
-    "Unnamed Tank"
+    `Tank ${index + 1}`
   );
+}
+
+function getTankId(tank, index) {
+  return tank?.id || tank?.tank_id || tank?.uuid || `tank-${index}`;
 }
 
 function getTankType(tank) {
-  return (
-    tank?.type ||
-    tank?.tank_type ||
-    tank?.stage ||
-    tank?.tank_stage ||
-    tank?.category ||
-    "General"
-  );
+  return tank?.type || tank?.tank_type || tank?.category || "Crayfish Tank";
 }
 
-function getTankCount(tank) {
-  return (
-    tank?.crayfish_count ||
-    tank?.stock_count ||
-    tank?.quantity ||
-    tank?.count ||
-    tank?.total_crayfish ||
-    null
-  );
-}
-
-function getTankStatus(tank, latestReading, alertCount) {
-  const rawStatus =
+function getTankStatus(tank, reading) {
+  const raw = lower(
     tank?.status ||
-    tank?.condition ||
-    tank?.tank_status ||
-    latestReading?.status ||
-    latestReading?.condition ||
-    latestReading?.severity ||
-    "";
+      tank?.condition ||
+      reading?.status ||
+      reading?.condition ||
+      reading?.water_status
+  );
 
-  const status = lower(rawStatus);
-
-  if (alertCount > 0 && !status) return "warning";
-  if (status.includes("critical") || status.includes("danger")) return "critical";
-  if (status.includes("warn")) return "warning";
-  if (status.includes("dirty")) return "warning";
-  if (status.includes("normal") || status.includes("safe") || status.includes("good")) {
+  if (raw.includes("critical") || raw.includes("danger")) return "critical";
+  if (raw.includes("warning") || raw.includes("dirty")) return "warning";
+  if (raw.includes("normal") || raw.includes("safe") || raw.includes("good")) {
     return "normal";
   }
 
-  return alertCount > 0 ? "warning" : "normal";
+  return raw || "normal";
 }
 
-function getReadingValue(reading, keys) {
+function getValue(row, keys) {
   for (const key of keys) {
-    if (reading?.[key] !== null && reading?.[key] !== undefined) {
-      return reading[key];
+    if (row?.[key] !== null && row?.[key] !== undefined && row?.[key] !== "") {
+      return row[key];
     }
   }
 
-  return null;
+  return "N/A";
 }
 
-function getAmmoniaValue(ammonia) {
-  return getReadingValue(ammonia, [
-    "ammonia_level",
-    "ammonia",
-    "nh3",
-    "result",
-    "value",
-  ]);
+function getLatestReadingForTank(tank, readings) {
+  const tankId = getTankId(tank, 0);
+
+  const matched = readings
+    .filter((reading) => {
+      const readingTankId =
+        reading?.tank_id ||
+        reading?.tankId ||
+        reading?.tank_uuid ||
+        reading?.tank_profile_id;
+
+      return String(readingTankId) === String(tankId);
+    })
+    .sort(
+      (a, b) =>
+        new Date(b?.created_at || b?.timestamp || 0) -
+        new Date(a?.created_at || a?.timestamp || 0)
+    );
+
+  return matched[0] || null;
+}
+
+function uniqueRows(rows) {
+  const map = new Map();
+
+  rows.forEach((row, index) => {
+    const id = row?.id || row?.uuid || row?.tank_id || `row-${index}`;
+    map.set(id, row);
+  });
+
+  return Array.from(map.values());
 }
 
 async function getCurrentUser() {
@@ -143,98 +139,75 @@ async function getCurrentUser() {
   };
 }
 
-async function fetchUserRowsFromTables(tableNames, userId, limit = 100) {
+async function fetchRows(tableNames, userId, limit = 200) {
   for (const tableName of tableNames) {
+    const mergedRows = [];
+    let successful = false;
+
     for (const column of userFilterColumns) {
-      const { data, error } = await supabase
+      const ordered = await supabase
+        .from(tableName)
+        .select("*")
+        .eq(column, userId)
+        .order("created_at", { ascending: false })
+        .limit(limit);
+
+      if (!ordered.error && Array.isArray(ordered.data)) {
+        successful = true;
+        mergedRows.push(...ordered.data);
+        continue;
+      }
+
+      const plain = await supabase
         .from(tableName)
         .select("*")
         .eq(column, userId)
         .limit(limit);
 
-      if (!error && Array.isArray(data)) {
-        return {
-          rows: data,
-          tableUsed: tableName,
-          userColumnUsed: column,
-        };
+      if (!plain.error && Array.isArray(plain.data)) {
+        successful = true;
+        mergedRows.push(...plain.data);
       }
+    }
+
+    if (successful) {
+      return {
+        rows: uniqueRows(mergedRows),
+        tableUsed: tableName,
+      };
     }
   }
 
   return {
     rows: [],
     tableUsed: tableNames[0],
-    userColumnUsed: "",
   };
 }
 
-async function fetchLatestByTank(tableNames, tankId, userId) {
-  if (!tankId) return null;
+function SummaryCard({ icon: Icon, label, value, helper }) {
+  return (
+    <article className="modern-tank-summary-card">
+      <span>
+        <Icon size={22} />
+      </span>
 
-  for (const tableName of tableNames) {
-    for (const tankColumn of tankIdColumns) {
-      for (const userColumn of userFilterColumns) {
-        const withDate = await supabase
-          .from(tableName)
-          .select("*")
-          .eq(tankColumn, tankId)
-          .eq(userColumn, userId)
-          .order("created_at", { ascending: false })
-          .limit(1);
-
-        if (!withDate.error && Array.isArray(withDate.data)) {
-          return withDate.data[0] || null;
-        }
-
-        const withoutDate = await supabase
-          .from(tableName)
-          .select("*")
-          .eq(tankColumn, tankId)
-          .eq(userColumn, userId)
-          .limit(1);
-
-        if (!withoutDate.error && Array.isArray(withoutDate.data)) {
-          return withoutDate.data[0] || null;
-        }
-      }
-    }
-  }
-
-  return null;
-}
-
-async function countAlertsByTank(tankId, userId) {
-  if (!tankId) return 0;
-
-  for (const tableName of alertTableNames) {
-    for (const tankColumn of tankIdColumns) {
-      for (const userColumn of userFilterColumns) {
-        const { count, error } = await supabase
-          .from(tableName)
-          .select("*", { count: "exact", head: true })
-          .eq(tankColumn, tankId)
-          .eq(userColumn, userId);
-
-        if (!error) {
-          return count || 0;
-        }
-      }
-    }
-  }
-
-  return 0;
+      <div>
+        <strong>{value}</strong>
+        <p>{label}</p>
+        <small>{helper}</small>
+      </div>
+    </article>
+  );
 }
 
 export default function TanksPage() {
   const [tanks, setTanks] = useState([]);
-  const [tankMeta, setTankMeta] = useState({});
-  const [tableUsed, setTableUsed] = useState("tanks");
+  const [readings, setReadings] = useState([]);
+  const [sources, setSources] = useState({});
   const [searchTerm, setSearchTerm] = useState("");
-  const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all");
   const [isLoading, setIsLoading] = useState(true);
-  const [lastUpdated, setLastUpdated] = useState(null);
 
   const loadTanks = async () => {
     if (!isSupabaseConfigured || !supabase) {
@@ -249,49 +222,23 @@ export default function TanksPage() {
 
       if (!currentUser.id) {
         setTanks([]);
-        setTankMeta({});
+        setReadings([]);
         return;
       }
 
-      const result = await fetchUserRowsFromTables(
-        tankTableNames,
-        currentUser.id
-      );
+      const [tankResult, readingResult] = await Promise.all([
+        fetchRows(tankTables, currentUser.id),
+        fetchRows(readingTables, currentUser.id),
+      ]);
 
-      const sortedTanks = [...result.rows].sort((a, b) => {
-        const aDate = new Date(a.updated_at || a.created_at || 0).getTime();
-        const bDate = new Date(b.updated_at || b.created_at || 0).getTime();
-        return bDate - aDate;
+      setTanks(tankResult.rows);
+      setReadings(readingResult.rows);
+      setSources({
+        tanks: tankResult.tableUsed,
+        readings: readingResult.tableUsed,
       });
-
-      const metaPairs = await Promise.all(
-        sortedTanks.map(async (tank) => {
-          const tankId = getTankId(tank);
-
-          const [latestReading, latestAmmonia, alertCount] = await Promise.all([
-            fetchLatestByTank(readingTableNames, tankId, currentUser.id),
-            fetchLatestByTank(ammoniaTableNames, tankId, currentUser.id),
-            countAlertsByTank(tankId, currentUser.id),
-          ]);
-
-          return [
-            tankId,
-            {
-              latestReading,
-              latestAmmonia,
-              alertCount,
-              status: getTankStatus(tank, latestReading, alertCount),
-            },
-          ];
-        })
-      );
-
-      setTanks(sortedTanks);
-      setTankMeta(Object.fromEntries(metaPairs));
-      setTableUsed(result.tableUsed);
-      setLastUpdated(new Date());
     } catch (error) {
-      console.error("Tank loading error:", error);
+      console.error("Tanks loading error:", error);
     } finally {
       setIsLoading(false);
     }
@@ -301,144 +248,164 @@ export default function TanksPage() {
     loadTanks();
   }, []);
 
-  const tankTypes = useMemo(() => {
-    const unique = new Set();
+  const enrichedTanks = useMemo(() => {
+    return tanks.map((tank, index) => {
+      const latestReading = getLatestReadingForTank(tank, readings);
 
-    tanks.forEach((tank) => {
-      const type = getTankType(tank);
-      if (type) unique.add(type);
+      return {
+        tank,
+        index,
+        latestReading,
+        id: getTankId(tank, index),
+        name: getTankName(tank, index),
+        type: getTankType(tank),
+        status: getTankStatus(tank, latestReading),
+      };
     });
+  }, [tanks, readings]);
 
-    return Array.from(unique);
-  }, [tanks]);
+  const tankTypes = useMemo(() => {
+    const types = Array.from(new Set(enrichedTanks.map((item) => item.type)));
+    return types.filter(Boolean);
+  }, [enrichedTanks]);
 
   const filteredTanks = useMemo(() => {
-    return tanks.filter((tank) => {
-      const tankId = getTankId(tank);
-      const meta = tankMeta[tankId] || {};
-      const name = lower(getTankName(tank));
-      const type = lower(getTankType(tank));
-      const status = lower(meta.status || "normal");
-      const search = lower(searchTerm);
+    return enrichedTanks.filter((item) => {
+      const search = searchTerm.trim().toLowerCase();
 
       const matchesSearch =
         !search ||
-        name.includes(search) ||
-        type.includes(search) ||
-        lower(tankId).includes(search);
-
-      const matchesType =
-        typeFilter === "all" || type === lower(typeFilter);
+        item.name.toLowerCase().includes(search) ||
+        item.type.toLowerCase().includes(search) ||
+        item.status.toLowerCase().includes(search);
 
       const matchesStatus =
-        statusFilter === "all" || status === lower(statusFilter);
+        statusFilter === "all" || item.status === statusFilter;
 
-      return matchesSearch && matchesType && matchesStatus;
+      const matchesType = typeFilter === "all" || item.type === typeFilter;
+
+      return matchesSearch && matchesStatus && matchesType;
     });
-  }, [tanks, tankMeta, searchTerm, typeFilter, statusFilter]);
+  }, [enrichedTanks, searchTerm, statusFilter, typeFilter]);
 
-  const statusCounts = useMemo(() => {
-    return tanks.reduce(
-      (acc, tank) => {
-        const tankId = getTankId(tank);
-        const status = tankMeta[tankId]?.status || "normal";
+  const summary = useMemo(() => {
+    const critical = enrichedTanks.filter((item) => item.status === "critical").length;
+    const warning = enrichedTanks.filter((item) => item.status === "warning").length;
+    const normal = enrichedTanks.filter((item) => item.status === "normal").length;
 
-        acc.total += 1;
-        acc[status] = (acc[status] || 0) + 1;
+    return {
+      total: enrichedTanks.length,
+      normal,
+      warning,
+      critical,
+    };
+  }, [enrichedTanks]);
 
-        return acc;
-      },
-      {
-        total: 0,
-        normal: 0,
-        warning: 0,
-        critical: 0,
-      }
+  if (isLoading) {
+    return (
+      <section className="modern-tank-loading">
+        <Loader2 className="spin-icon" size={34} />
+        <h3>Loading tanks...</h3>
+        <p>CrayThrive is syncing your tank records from Supabase.</p>
+      </section>
     );
-  }, [tanks, tankMeta]);
+  }
 
   return (
-    <div className="tanks-page">
-      <section className="tanks-header-card">
+    <div className="modern-tanks-page">
+      <section className="modern-tanks-hero">
         <div>
           <p className="dashboard-eyebrow">Tank Management</p>
-          <h2>My Tanks</h2>
+          <h2>Monitor every crayfish tank clearly.</h2>
           <p>
-            View all tanks connected to your CrayThrive mobile account. Each
-            tank card shows latest readings, ammonia result, alert count, and
-            current condition.
+            View your tank list, latest water readings, tank health status, and
+            important tank metadata synced from the same mobile account.
           </p>
 
-          <div className="tanks-header-actions">
+          <div className="modern-tanks-actions">
             <button className="dashboard-primary-button" onClick={loadTanks}>
-              {isLoading ? (
-                <Loader2 className="spin-icon" size={18} />
-              ) : (
-                <RefreshCw size={18} />
-              )}
+              <RefreshCw size={18} />
               Refresh Tanks
             </button>
 
+            <button className="modern-secondary-link" type="button">
+              <Plus size={18} />
+              Add Tank Soon
+            </button>
+
             <span>
-              {lastUpdated
-                ? `Last updated ${lastUpdated.toLocaleTimeString()}`
-                : `Source table: ${tableUsed}`}
+              Source: {sources.tanks || "tanks"} / {sources.readings || "readings"}
             </span>
           </div>
         </div>
+
+        <div className="modern-tanks-hero-card">
+          <Droplets size={38} />
+          <strong>{summary.total}</strong>
+          <span>Total synced tanks</span>
+        </div>
       </section>
 
-      <section className="tank-summary-grid">
-        <article className="tank-summary-card">
-          <span>
-            <Droplets size={22} />
-          </span>
-          <strong>{statusCounts.total}</strong>
-          <p>Total tanks</p>
-        </article>
+      <section className="modern-tank-summary-grid">
+        <SummaryCard
+          icon={Droplets}
+          label="Total Tanks"
+          value={summary.total}
+          helper="All tank records"
+        />
 
-        <article className="tank-summary-card">
-          <span>
-            <CheckCircle2 size={22} />
-          </span>
-          <strong>{statusCounts.normal || 0}</strong>
-          <p>Normal</p>
-        </article>
+        <SummaryCard
+          icon={CheckCircle2}
+          label="Normal"
+          value={summary.normal}
+          helper="Healthy tanks"
+        />
 
-        <article className="tank-summary-card">
-          <span>
-            <AlertTriangle size={22} />
-          </span>
-          <strong>{statusCounts.warning || 0}</strong>
-          <p>Warning</p>
-        </article>
+        <SummaryCard
+          icon={AlertTriangle}
+          label="Warning"
+          value={summary.warning}
+          helper="Needs monitoring"
+        />
 
-        <article className="tank-summary-card">
-          <span>
-            <AlertTriangle size={22} />
-          </span>
-          <strong>{statusCounts.critical || 0}</strong>
-          <p>Critical</p>
-        </article>
+        <SummaryCard
+          icon={Gauge}
+          label="Critical"
+          value={summary.critical}
+          helper="Needs immediate review"
+        />
       </section>
 
-      <section className="tank-toolbar">
-        <label className="tank-search-box">
+      <section className="modern-tank-toolbar">
+        <div className="modern-tank-search">
           <Search size={18} />
           <input
+            placeholder="Search tank name, type, or status..."
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="Search tank name, type, or ID..."
           />
+        </div>
+
+        <label className="modern-tank-filter">
+          <Filter size={18} />
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value)}
+          >
+            <option value="all">All Status</option>
+            <option value="normal">Normal</option>
+            <option value="warning">Warning</option>
+            <option value="critical">Critical</option>
+          </select>
         </label>
 
-        <label className="tank-filter">
-          <Filter size={18} />
+        <label className="modern-tank-filter">
+          <Database size={18} />
           <select
             value={typeFilter}
             onChange={(event) => setTypeFilter(event.target.value)}
           >
-            <option value="all">All types</option>
+            <option value="all">All Types</option>
             {tankTypes.map((type) => (
               <option key={type} value={type}>
                 {type}
@@ -446,141 +413,96 @@ export default function TanksPage() {
             ))}
           </select>
         </label>
-
-        <label className="tank-filter">
-          <Waves size={18} />
-          <select
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
-          >
-            <option value="all">All status</option>
-            <option value="normal">Normal</option>
-            <option value="warning">Warning</option>
-            <option value="critical">Critical</option>
-          </select>
-        </label>
       </section>
 
-      {isLoading ? (
-        <section className="tank-empty-state">
-          <Loader2 className="spin-icon" size={30} />
-          <h3>Loading tanks...</h3>
-          <p>Please wait while CrayThrive checks your tank records.</p>
-        </section>
-      ) : filteredTanks.length === 0 ? (
-        <section className="tank-empty-state">
+      {filteredTanks.length === 0 ? (
+        <section className="modern-tank-empty">
           <Droplets size={34} />
           <h3>No tanks found</h3>
           <p>
-            No tank records matched your filters. Add tanks from the mobile app
-            or refresh after syncing your account.
+            No tank records matched your current filters. Add tanks from the
+            mobile app or adjust the filter values.
           </p>
         </section>
       ) : (
-        <section className="tank-card-grid">
-          {filteredTanks.map((tank) => {
-            const tankId = getTankId(tank);
-            const meta = tankMeta[tankId] || {};
-            const reading = meta.latestReading || {};
-            const ammonia = meta.latestAmmonia || {};
-            const status = meta.status || "normal";
+        <section className="modern-tank-grid">
+          {filteredTanks.map((item) => {
+            const reading = item.latestReading;
 
-            const temp = getReadingValue(reading, [
+            const temperature = getValue(reading, [
               "temperature",
               "temp",
               "water_temperature",
             ]);
 
-            const ph = getReadingValue(reading, ["ph", "pH", "ph_level"]);
+            const ph = getValue(reading, ["ph", "pH", "ph_level"]);
 
-            const turbidity = getReadingValue(reading, [
+            const turbidity = getValue(reading, [
               "turbidity",
               "turbidity_level",
               "ntu",
             ]);
 
-            const waterLevel = getReadingValue(reading, [
+            const waterLevel = getValue(reading, [
               "water_level",
               "level",
               "water_height",
             ]);
 
-            const ammoniaValue = getAmmoniaValue(ammonia);
+            const lastSync =
+              reading?.created_at ||
+              reading?.timestamp ||
+              item.tank?.updated_at ||
+              item.tank?.created_at;
 
             return (
-              <article className="tank-card" key={tankId || getTankName(tank)}>
-                <div className="tank-card-top">
+              <article className="modern-tank-card" key={item.id}>
+                <div className="modern-tank-card-top">
                   <div>
-                    <span className="tank-type-pill">{getTankType(tank)}</span>
-                    <h3>{getTankName(tank)}</h3>
+                    <span className="modern-tank-type">{item.type}</span>
+                    <h3>{item.name}</h3>
                   </div>
 
-                  <span className={`tank-status-pill ${status}`}>
-                    {status}
-                  </span>
+                  <b className={`modern-tank-status ${item.status}`}>
+                    {item.status}
+                  </b>
                 </div>
 
-                <div className="tank-meta-row">
-                  <span>ID: {tankId || "No ID"}</span>
-                  <span>
-                    Count:{" "}
-                    {getTankCount(tank) !== null ? getTankCount(tank) : "N/A"}
-                  </span>
+                <div className="modern-tank-meta">
+                  <span>Capacity: {getValue(item.tank, ["capacity", "size", "volume"])}</span>
+                  <span>Stock: {getValue(item.tank, ["stock", "count", "crayfish_count"])}</span>
+                  <span>Last sync: {formatDate(lastSync)}</span>
                 </div>
 
-                <div className="tank-reading-grid">
+                <div className="modern-tank-reading-grid">
                   <div>
-                    <Thermometer size={18} />
-                    <strong>{temp !== null ? `${temp}°C` : "N/A"}</strong>
+                    <Thermometer size={19} />
+                    <strong>{temperature !== "N/A" ? `${temperature}°C` : "N/A"}</strong>
                     <span>Temperature</span>
                   </div>
 
                   <div>
-                    <FlaskConical size={18} />
-                    <strong>{ph !== null ? ph : "N/A"}</strong>
-                    <span>pH</span>
+                    <Droplets size={19} />
+                    <strong>{ph}</strong>
+                    <span>pH Level</span>
                   </div>
 
                   <div>
-                    <Waves size={18} />
-                    <strong>{turbidity !== null ? turbidity : "N/A"}</strong>
+                    <Waves size={19} />
+                    <strong>{turbidity}</strong>
                     <span>Turbidity</span>
                   </div>
 
                   <div>
-                    <Droplets size={18} />
-                    <strong>{waterLevel !== null ? waterLevel : "N/A"}</strong>
-                    <span>Water level</span>
+                    <Gauge size={19} />
+                    <strong>{waterLevel}</strong>
+                    <span>Water Level</span>
                   </div>
                 </div>
 
-                <div className="tank-extra-row">
-                  <div>
-                    <span>Ammonia</span>
-                    <strong>{ammoniaValue !== null ? ammoniaValue : "No record"}</strong>
-                  </div>
-
-                  <div>
-                    <span>Alerts</span>
-                    <strong>{meta.alertCount || 0}</strong>
-                  </div>
-
-                  <div>
-                    <span>Updated</span>
-                    <strong>
-                      {formatDate(
-                        reading.created_at ||
-                          ammonia.created_at ||
-                          tank.updated_at ||
-                          tank.created_at
-                      )}
-                    </strong>
-                  </div>
-                </div>
-
-                <Link className="tank-details-link" to={`/admin/tanks/${tankId}`}>
-                  Open tank details
-                  <ArrowRight size={17} />
+                <Link to={`/admin/tanks/${item.id}`} className="modern-tank-link">
+                  View Tank Details
+                  <ArrowRight size={18} />
                 </Link>
               </article>
             );

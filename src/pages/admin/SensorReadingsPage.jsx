@@ -2,11 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertTriangle,
-  CalendarDays,
+  CheckCircle2,
   Database,
   Droplets,
   Filter,
-  FlaskConical,
   Gauge,
   Loader2,
   RefreshCw,
@@ -16,8 +15,7 @@ import {
 } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "../../lib/supabase";
 
-const readingTableNames = ["sensor_readings", "tank_readings", "readings"];
-const tankTableNames = ["tanks", "user_tanks", "tank_profiles"];
+const readingTables = ["sensor_readings", "tank_readings", "readings"];
 
 const userFilterColumns = [
   "user_id",
@@ -26,8 +24,6 @@ const userFilterColumns = [
   "created_by",
   "farmer_id",
 ];
-
-const tankIdKeys = ["tank_id", "tankId", "tank", "id"];
 
 function clean(value) {
   return String(value || "").trim();
@@ -52,86 +48,89 @@ function formatDate(value) {
   });
 }
 
-function getValue(row, keys) {
+function getValue(row, keys, fallback = "N/A") {
   for (const key of keys) {
-    if (row?.[key] !== null && row?.[key] !== undefined) return row[key];
+    if (row?.[key] !== null && row?.[key] !== undefined && row?.[key] !== "") {
+      return row[key];
+    }
   }
 
-  return null;
+  return fallback;
 }
 
-function getReadingId(reading, index) {
-  return reading?.id || reading?.reading_id || reading?.uuid || `reading-${index}`;
+function toNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }
 
-function getReadingTankId(reading) {
-  return (
-    reading?.tank_id ||
-    reading?.tankId ||
-    reading?.tank ||
-    reading?.tank_uuid ||
-    ""
-  );
-}
-
-function getTankId(tank) {
-  return tank?.id || tank?.tank_id || tank?.uuid || tank?.tankId || "";
-}
-
-function getTankName(tank) {
-  return (
-    tank?.name ||
-    tank?.tank_name ||
-    tank?.title ||
-    tank?.label ||
-    tank?.tank_label ||
-    "Unnamed Tank"
-  );
-}
-
-function getReadingTankName(reading, tankMap) {
-  const tankId = getReadingTankId(reading);
-  return (
-    reading?.tank_name ||
-    reading?.tank_label ||
-    tankMap[tankId]?.name ||
-    tankId ||
-    "Unlinked Tank"
-  );
-}
-
-function getReadingStatus(reading) {
+function getReadingStatus(row) {
   const raw = lower(
-    reading?.status ||
-      reading?.condition ||
-      reading?.severity ||
-      reading?.water_status ||
-      "normal"
+    row?.status || row?.condition || row?.water_status || row?.severity
   );
 
   if (raw.includes("critical") || raw.includes("danger")) return "critical";
-  if (raw.includes("warn") || raw.includes("dirty")) return "warning";
-  if (raw.includes("safe") || raw.includes("good") || raw.includes("normal")) {
+  if (raw.includes("warning") || raw.includes("dirty")) return "warning";
+  if (raw.includes("normal") || raw.includes("safe") || raw.includes("good")) {
     return "normal";
   }
 
-  return raw || "normal";
+  const temp = toNumber(
+    getValue(row, ["temperature", "temp", "water_temperature"], null)
+  );
+
+  const ph = toNumber(getValue(row, ["ph", "pH", "ph_level"], null));
+
+  const turbidity = toNumber(
+    getValue(row, ["turbidity", "turbidity_level", "ntu"], null)
+  );
+
+  const waterLevel = toNumber(
+    getValue(row, ["water_level", "level", "water_height"], null)
+  );
+
+  if (
+    (temp !== null && (temp < 18 || temp > 32)) ||
+    (ph !== null && (ph < 6 || ph > 9)) ||
+    (turbidity !== null && turbidity > 70) ||
+    (waterLevel !== null && waterLevel < 20)
+  ) {
+    return "critical";
+  }
+
+  if (
+    (temp !== null && (temp < 20 || temp > 30)) ||
+    (ph !== null && (ph < 6.5 || ph > 8.5)) ||
+    (turbidity !== null && turbidity > 40) ||
+    (waterLevel !== null && waterLevel < 35)
+  ) {
+    return "warning";
+  }
+
+  return "normal";
 }
 
-function getTemperature(reading) {
-  return getValue(reading, ["temperature", "temp", "water_temperature"]);
+function average(rows, keys) {
+  const values = rows
+    .map((row) => toNumber(getValue(row, keys, null)))
+    .filter((value) => value !== null);
+
+  if (!values.length) return "N/A";
+
+  const total = values.reduce((sum, value) => sum + value, 0);
+  return (total / values.length).toFixed(2);
 }
 
-function getPh(reading) {
-  return getValue(reading, ["ph", "pH", "ph_level"]);
-}
+function uniqueRows(rows) {
+  const map = new Map();
 
-function getTurbidity(reading) {
-  return getValue(reading, ["turbidity", "turbidity_level", "ntu"]);
-}
+  rows.forEach((row, index) => {
+    const id =
+      row?.id || row?.uuid || row?.reading_id || row?.created_at || `row-${index}`;
 
-function getWaterLevel(reading) {
-  return getValue(reading, ["water_level", "level", "water_height"]);
+    map.set(id, row);
+  });
+
+  return Array.from(map.values());
 }
 
 async function getCurrentUser() {
@@ -144,59 +143,87 @@ async function getCurrentUser() {
   };
 }
 
-async function fetchUserRows(tableNames, userId, limit = 250) {
+async function fetchRows(tableNames, userId, limit = 220) {
   for (const tableName of tableNames) {
-    for (const userColumn of userFilterColumns) {
+    const mergedRows = [];
+    let successful = false;
+
+    for (const column of userFilterColumns) {
       const ordered = await supabase
         .from(tableName)
         .select("*")
-        .eq(userColumn, userId)
+        .eq(column, userId)
         .order("created_at", { ascending: false })
         .limit(limit);
 
       if (!ordered.error && Array.isArray(ordered.data)) {
-        return {
-          rows: ordered.data,
-          tableUsed: tableName,
-          userColumnUsed: userColumn,
-        };
+        successful = true;
+        mergedRows.push(...ordered.data);
+        continue;
       }
 
       const plain = await supabase
         .from(tableName)
         .select("*")
-        .eq(userColumn, userId)
+        .eq(column, userId)
         .limit(limit);
 
       if (!plain.error && Array.isArray(plain.data)) {
-        return {
-          rows: plain.data,
-          tableUsed: tableName,
-          userColumnUsed: userColumn,
-        };
+        successful = true;
+        mergedRows.push(...plain.data);
       }
+    }
+
+    if (successful) {
+      return {
+        rows: uniqueRows(mergedRows),
+        tableUsed: tableName,
+      };
     }
   }
 
   return {
     rows: [],
     tableUsed: tableNames[0],
-    userColumnUsed: "",
   };
+}
+
+function SummaryCard({ icon: Icon, label, value, helper, tone = "default" }) {
+  return (
+    <article className={`modern-reading-summary-card ${tone}`}>
+      <span>
+        <Icon size={22} />
+      </span>
+
+      <div>
+        <strong>{value}</strong>
+        <p>{label}</p>
+        <small>{helper}</small>
+      </div>
+    </article>
+  );
+}
+
+function MetricCard({ icon: Icon, label, value, unit }) {
+  return (
+    <div className="modern-reading-metric">
+      <Icon size={20} />
+      <strong>
+        {value}
+        {value !== "N/A" ? unit : ""}
+      </strong>
+      <span>{label}</span>
+    </div>
+  );
 }
 
 export default function SensorReadingsPage() {
   const [readings, setReadings] = useState([]);
-  const [tanks, setTanks] = useState([]);
-  const [tableUsed, setTableUsed] = useState("sensor_readings");
+  const [source, setSource] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [tankFilter, setTankFilter] = useState("all");
-  const [sensorFilter, setSensorFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [sensorFilter, setSensorFilter] = useState("all");
   const [isLoading, setIsLoading] = useState(true);
-  const [lastUpdated, setLastUpdated] = useState(null);
 
   const loadReadings = async () => {
     if (!isSupabaseConfigured || !supabase) {
@@ -211,27 +238,15 @@ export default function SensorReadingsPage() {
 
       if (!currentUser.id) {
         setReadings([]);
-        setTanks([]);
         return;
       }
 
-      const [readingResult, tankResult] = await Promise.all([
-        fetchUserRows(readingTableNames, currentUser.id, 250),
-        fetchUserRows(tankTableNames, currentUser.id, 120),
-      ]);
+      const result = await fetchRows(readingTables, currentUser.id);
 
-      const sortedReadings = [...readingResult.rows].sort((a, b) => {
-        const aDate = new Date(a.created_at || a.updated_at || 0).getTime();
-        const bDate = new Date(b.created_at || b.updated_at || 0).getTime();
-        return bDate - aDate;
-      });
-
-      setReadings(sortedReadings);
-      setTanks(tankResult.rows);
-      setTableUsed(readingResult.tableUsed);
-      setLastUpdated(new Date());
+      setReadings(result.rows);
+      setSource(result.tableUsed);
     } catch (error) {
-      console.error("Sensor readings loading error:", error);
+      console.error("Readings loading error:", error);
     } finally {
       setIsLoading(false);
     }
@@ -241,321 +256,343 @@ export default function SensorReadingsPage() {
     loadReadings();
   }, []);
 
-  const tankMap = useMemo(() => {
-    const map = {};
-
-    tanks.forEach((tank) => {
-      const id = getTankId(tank);
-      if (id) {
-        map[id] = {
-          id,
-          name: getTankName(tank),
-        };
-      }
-    });
-
-    return map;
-  }, [tanks]);
-
-  const tankOptions = useMemo(() => {
-    const options = new Map();
-
-    tanks.forEach((tank) => {
-      const id = getTankId(tank);
-      if (id) options.set(id, getTankName(tank));
-    });
-
-    readings.forEach((reading) => {
-      const id = getReadingTankId(reading);
-      if (id && !options.has(id)) {
-        options.set(id, id);
-      }
-    });
-
-    return Array.from(options.entries()).map(([id, name]) => ({
-      id,
-      name,
-    }));
-  }, [tanks, readings]);
-
-  const filteredReadings = useMemo(() => {
-    return readings.filter((reading) => {
-      const search = lower(searchTerm);
-      const tankId = getReadingTankId(reading);
-      const tankName = lower(getReadingTankName(reading, tankMap));
+  const enrichedReadings = useMemo(() => {
+    return readings.map((reading, index) => {
       const status = getReadingStatus(reading);
 
-      const temp = getTemperature(reading);
-      const ph = getPh(reading);
-      const turbidity = getTurbidity(reading);
-      const waterLevel = getWaterLevel(reading);
+      const tankName =
+        reading?.tank_name ||
+        reading?.tank_label ||
+        reading?.name ||
+        reading?.tank_id ||
+        `Reading ${index + 1}`;
 
-      const createdAt = reading.created_at || reading.updated_at;
-      const createdDate = createdAt ? new Date(createdAt) : null;
+      const date =
+        reading?.created_at || reading?.timestamp || reading?.date || reading?.updated_at;
+
+      return {
+        reading,
+        index,
+        status,
+        tankName: String(tankName),
+        date,
+      };
+    });
+  }, [readings]);
+
+  const filteredReadings = useMemo(() => {
+    return enrichedReadings.filter((item) => {
+      const search = searchTerm.trim().toLowerCase();
+
+      const temperature = getValue(item.reading, [
+        "temperature",
+        "temp",
+        "water_temperature",
+      ]);
+
+      const ph = getValue(item.reading, ["ph", "pH", "ph_level"]);
+
+      const turbidity = getValue(item.reading, [
+        "turbidity",
+        "turbidity_level",
+        "ntu",
+      ]);
+
+      const waterLevel = getValue(item.reading, [
+        "water_level",
+        "level",
+        "water_height",
+      ]);
 
       const matchesSearch =
         !search ||
-        tankName.includes(search) ||
-        lower(tankId).includes(search) ||
-        lower(status).includes(search);
+        item.tankName.toLowerCase().includes(search) ||
+        item.status.includes(search) ||
+        String(temperature).toLowerCase().includes(search) ||
+        String(ph).toLowerCase().includes(search) ||
+        String(turbidity).toLowerCase().includes(search) ||
+        String(waterLevel).toLowerCase().includes(search);
 
-      const matchesTank = tankFilter === "all" || String(tankId) === tankFilter;
-
-      const matchesStatus = statusFilter === "all" || status === statusFilter;
+      const matchesStatus =
+        statusFilter === "all" || item.status === statusFilter;
 
       const matchesSensor =
         sensorFilter === "all" ||
-        (sensorFilter === "temperature" && temp !== null) ||
-        (sensorFilter === "ph" && ph !== null) ||
-        (sensorFilter === "turbidity" && turbidity !== null) ||
-        (sensorFilter === "water_level" && waterLevel !== null);
+        (sensorFilter === "temperature" && temperature !== "N/A") ||
+        (sensorFilter === "ph" && ph !== "N/A") ||
+        (sensorFilter === "turbidity" && turbidity !== "N/A") ||
+        (sensorFilter === "water_level" && waterLevel !== "N/A");
 
-      const matchesFrom =
-        !dateFrom ||
-        !createdDate ||
-        createdDate >= new Date(`${dateFrom}T00:00:00`);
-
-      const matchesTo =
-        !dateTo ||
-        !createdDate ||
-        createdDate <= new Date(`${dateTo}T23:59:59`);
-
-      return (
-        matchesSearch &&
-        matchesTank &&
-        matchesStatus &&
-        matchesSensor &&
-        matchesFrom &&
-        matchesTo
-      );
+      return matchesSearch && matchesStatus && matchesSensor;
     });
-  }, [
-    readings,
-    tankMap,
-    searchTerm,
-    tankFilter,
-    sensorFilter,
-    statusFilter,
-    dateFrom,
-    dateTo,
-  ]);
+  }, [enrichedReadings, searchTerm, statusFilter, sensorFilter]);
 
-  const latestReading = filteredReadings[0] || readings[0] || {};
+  const summary = useMemo(() => {
+    const normal = enrichedReadings.filter((item) => item.status === "normal").length;
+    const warning = enrichedReadings.filter((item) => item.status === "warning").length;
+    const critical = enrichedReadings.filter(
+      (item) => item.status === "critical"
+    ).length;
 
-  const stats = [
-    {
-      label: "Total readings",
-      value: filteredReadings.length,
-      icon: Database,
-    },
-    {
-      label: "Latest temp",
-      value:
-        getTemperature(latestReading) !== null
-          ? `${getTemperature(latestReading)}°C`
-          : "N/A",
-      icon: Thermometer,
-    },
-    {
-      label: "Latest pH",
-      value: getPh(latestReading) !== null ? getPh(latestReading) : "N/A",
-      icon: FlaskConical,
-    },
-    {
-      label: "Latest water level",
-      value:
-        getWaterLevel(latestReading) !== null
-          ? getWaterLevel(latestReading)
-          : "N/A",
-      icon: Droplets,
-    },
-  ];
+    return {
+      total: enrichedReadings.length,
+      normal,
+      warning,
+      critical,
+      avgTemp: average(readings, ["temperature", "temp", "water_temperature"]),
+      avgPh: average(readings, ["ph", "pH", "ph_level"]),
+      avgTurbidity: average(readings, ["turbidity", "turbidity_level", "ntu"]),
+      avgWaterLevel: average(readings, ["water_level", "level", "water_height"]),
+    };
+  }, [enrichedReadings, readings]);
+
+  const latestReading = enrichedReadings[0]?.reading || null;
+
+  if (isLoading) {
+    return (
+      <section className="modern-reading-loading">
+        <Loader2 className="spin-icon" size={34} />
+        <h3>Loading readings...</h3>
+        <p>CrayThrive is syncing your sensor records from Supabase.</p>
+      </section>
+    );
+  }
 
   return (
-    <div className="readings-page">
-      <section className="readings-header-card">
+    <div className="modern-readings-page">
+      <section className="modern-readings-hero">
         <div>
-          <p className="dashboard-eyebrow">Sensor Monitoring</p>
-          <h2>Sensor Readings</h2>
+          <p className="dashboard-eyebrow">Sensor Readings</p>
+          <h2>Track your tank water condition in one view.</h2>
           <p>
-            Review tank sensor data synced from your CrayThrive mobile account
-            and IoT devices. Filter readings by tank, sensor type, status, and
-            date range.
+            Review live and historical readings for temperature, pH, turbidity,
+            and water level. This page is designed to help you quickly spot
+            warnings and critical water conditions.
           </p>
 
-          <div className="readings-header-actions">
+          <div className="modern-readings-actions">
             <button className="dashboard-primary-button" onClick={loadReadings}>
-              {isLoading ? (
-                <Loader2 className="spin-icon" size={18} />
-              ) : (
-                <RefreshCw size={18} />
-              )}
+              <RefreshCw size={18} />
               Refresh Readings
             </button>
 
-            <span>
-              {lastUpdated
-                ? `Last updated ${lastUpdated.toLocaleTimeString()}`
-                : `Source table: ${tableUsed}`}
-            </span>
+            <span>Source: {source || "sensor_readings"}</span>
           </div>
+        </div>
+
+        <div className="modern-readings-live-card">
+          <Activity size={36} />
+          <strong>{summary.total}</strong>
+          <span>Total synced readings</span>
         </div>
       </section>
 
-      <section className="reading-summary-grid">
-        {stats.map((item) => {
-          const Icon = item.icon;
+      <section className="modern-reading-summary-grid">
+        <SummaryCard
+          icon={Database}
+          label="Total Readings"
+          value={summary.total}
+          helper="Synced sensor logs"
+        />
 
-          return (
-            <article className="reading-summary-card" key={item.label}>
-              <span>
-                <Icon size={22} />
-              </span>
-              <strong>{item.value}</strong>
-              <p>{item.label}</p>
-            </article>
-          );
-        })}
+        <SummaryCard
+          icon={CheckCircle2}
+          label="Normal"
+          value={summary.normal}
+          helper="Safe condition records"
+          tone="success"
+        />
+
+        <SummaryCard
+          icon={AlertTriangle}
+          label="Warnings"
+          value={summary.warning}
+          helper="Needs monitoring"
+          tone="warning"
+        />
+
+        <SummaryCard
+          icon={AlertTriangle}
+          label="Critical"
+          value={summary.critical}
+          helper="Needs immediate review"
+          tone="danger"
+        />
       </section>
 
-      <section className="reading-toolbar">
-        <label className="reading-search-box">
+      <section className="modern-readings-grid">
+        <article className="modern-readings-panel">
+          <div className="modern-panel-heading">
+            <div>
+              <p className="dashboard-eyebrow">Average Metrics</p>
+              <h3>Overall water condition</h3>
+            </div>
+            <Gauge size={22} />
+          </div>
+
+          <div className="modern-reading-metric-grid">
+            <MetricCard
+              icon={Thermometer}
+              label="Temperature"
+              value={summary.avgTemp}
+              unit="°C"
+            />
+            <MetricCard icon={Droplets} label="pH Level" value={summary.avgPh} unit="" />
+            <MetricCard
+              icon={Waves}
+              label="Turbidity"
+              value={summary.avgTurbidity}
+              unit=""
+            />
+            <MetricCard
+              icon={Gauge}
+              label="Water Level"
+              value={summary.avgWaterLevel}
+              unit=""
+            />
+          </div>
+        </article>
+
+        <article className="modern-readings-panel">
+          <div className="modern-panel-heading">
+            <div>
+              <p className="dashboard-eyebrow">Latest Sync</p>
+              <h3>Newest reading snapshot</h3>
+            </div>
+            <Activity size={22} />
+          </div>
+
+          {latestReading ? (
+            <div className="modern-latest-reading">
+              <strong>
+                {latestReading?.tank_name ||
+                  latestReading?.tank_label ||
+                  latestReading?.tank_id ||
+                  "Latest Reading"}
+              </strong>
+
+              <span>
+                {formatDate(
+                  latestReading?.created_at ||
+                    latestReading?.timestamp ||
+                    latestReading?.date
+                )}
+              </span>
+
+              <div>
+                <b className={`modern-reading-status ${getReadingStatus(latestReading)}`}>
+                  {getReadingStatus(latestReading)}
+                </b>
+              </div>
+            </div>
+          ) : (
+            <div className="modern-reading-empty-small">
+              <span>No latest reading yet.</span>
+            </div>
+          )}
+        </article>
+      </section>
+
+      <section className="modern-reading-toolbar">
+        <div className="modern-reading-search">
           <Search size={18} />
           <input
+            placeholder="Search by tank, value, or status..."
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="Search tank, ID, or status..."
           />
-        </label>
+        </div>
 
-        <label className="reading-filter">
+        <label className="modern-reading-filter">
           <Filter size={18} />
-          <select
-            value={tankFilter}
-            onChange={(event) => setTankFilter(event.target.value)}
-          >
-            <option value="all">All tanks</option>
-            {tankOptions.map((tank) => (
-              <option key={tank.id} value={tank.id}>
-                {tank.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="reading-filter">
-          <Activity size={18} />
-          <select
-            value={sensorFilter}
-            onChange={(event) => setSensorFilter(event.target.value)}
-          >
-            <option value="all">All sensors</option>
-            <option value="temperature">Temperature</option>
-            <option value="ph">pH</option>
-            <option value="turbidity">Turbidity</option>
-            <option value="water_level">Water Level</option>
-          </select>
-        </label>
-
-        <label className="reading-filter">
-          <Gauge size={18} />
           <select
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value)}
           >
-            <option value="all">All status</option>
+            <option value="all">All Status</option>
             <option value="normal">Normal</option>
             <option value="warning">Warning</option>
             <option value="critical">Critical</option>
           </select>
         </label>
 
-        <label className="reading-date-box">
-          <CalendarDays size={18} />
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(event) => setDateFrom(event.target.value)}
-          />
-        </label>
-
-        <label className="reading-date-box">
-          <CalendarDays size={18} />
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(event) => setDateTo(event.target.value)}
-          />
+        <label className="modern-reading-filter">
+          <Database size={18} />
+          <select
+            value={sensorFilter}
+            onChange={(event) => setSensorFilter(event.target.value)}
+          >
+            <option value="all">All Sensors</option>
+            <option value="temperature">Temperature</option>
+            <option value="ph">pH Level</option>
+            <option value="turbidity">Turbidity</option>
+            <option value="water_level">Water Level</option>
+          </select>
         </label>
       </section>
 
-      {isLoading ? (
-        <section className="reading-empty-state">
-          <Loader2 className="spin-icon" size={30} />
-          <h3>Loading sensor readings...</h3>
-          <p>Please wait while CrayThrive checks your readings.</p>
-        </section>
-      ) : filteredReadings.length === 0 ? (
-        <section className="reading-empty-state">
-          <AlertTriangle size={34} />
+      {filteredReadings.length === 0 ? (
+        <section className="modern-reading-empty">
+          <Database size={34} />
           <h3>No readings found</h3>
           <p>
-            No records matched your filters. Try clearing filters or syncing
-            sensor data from the mobile app.
+            No readings matched your current filters. Sync sensor data from the
+            mobile/IoT side or adjust the filters.
           </p>
         </section>
       ) : (
-        <section className="reading-table-card">
-          <div className="reading-table-header">
-            <div>
-              <p className="dashboard-eyebrow">Reading History</p>
-              <h3>Latest records</h3>
-            </div>
-            <span>{filteredReadings.length} result(s)</span>
+        <section className="modern-reading-table-card">
+          <div className="modern-reading-table-header">
+            <span>Tank / Source</span>
+            <span>Temperature</span>
+            <span>pH</span>
+            <span>Turbidity</span>
+            <span>Water Level</span>
+            <span>Status</span>
+            <span>Date</span>
           </div>
 
-          <div className="reading-table">
-            <div className="reading-table-row reading-table-head">
-              <span>Tank</span>
-              <span>Temperature</span>
-              <span>pH</span>
-              <span>Turbidity</span>
-              <span>Water Level</span>
-              <span>Status</span>
-              <span>Date</span>
-            </div>
+          <div className="modern-reading-table-body">
+            {filteredReadings.map((item) => {
+              const row = item.reading;
 
-            {filteredReadings.map((reading, index) => {
-              const status = getReadingStatus(reading);
+              const temperature = getValue(row, [
+                "temperature",
+                "temp",
+                "water_temperature",
+              ]);
+
+              const ph = getValue(row, ["ph", "pH", "ph_level"]);
+
+              const turbidity = getValue(row, [
+                "turbidity",
+                "turbidity_level",
+                "ntu",
+              ]);
+
+              const waterLevel = getValue(row, [
+                "water_level",
+                "level",
+                "water_height",
+              ]);
 
               return (
-                <div
-                  className="reading-table-row"
-                  key={getReadingId(reading, index)}
-                >
-                  <span>{getReadingTankName(reading, tankMap)}</span>
-                  <span>
-                    {getTemperature(reading) !== null
-                      ? `${getTemperature(reading)}°C`
-                      : "N/A"}
+                <div className="modern-reading-table-row" key={row?.id || item.index}>
+                  <span data-label="Tank / Source">{item.tankName}</span>
+                  <span data-label="Temperature">
+                    {temperature !== "N/A" ? `${temperature}°C` : "N/A"}
                   </span>
-                  <span>{getPh(reading) !== null ? getPh(reading) : "N/A"}</span>
-                  <span>
-                    {getTurbidity(reading) !== null
-                      ? getTurbidity(reading)
-                      : "N/A"}
-                  </span>
-                  <span>
-                    {getWaterLevel(reading) !== null
-                      ? getWaterLevel(reading)
-                      : "N/A"}
-                  </span>
-                  <span>
-                    <b className={`reading-status-pill ${status}`}>
-                      {status}
+                  <span data-label="pH">{ph}</span>
+                  <span data-label="Turbidity">{turbidity}</span>
+                  <span data-label="Water Level">{waterLevel}</span>
+                  <span data-label="Status">
+                    <b className={`modern-reading-status ${item.status}`}>
+                      {item.status}
                     </b>
                   </span>
-                  <span>{formatDate(reading.created_at || reading.updated_at)}</span>
+                  <span data-label="Date">
+                    {formatDate(row?.created_at || row?.timestamp || row?.date)}
+                  </span>
                 </div>
               );
             })}

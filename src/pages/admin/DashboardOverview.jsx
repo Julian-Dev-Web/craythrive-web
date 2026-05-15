@@ -2,66 +2,94 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertTriangle,
-  Bell,
+  ArrowRight,
   Camera,
   CheckCircle2,
+  Database,
   Droplets,
+  Gauge,
   Loader2,
+  PackageCheck,
   RefreshCw,
   ShoppingBag,
-  
+  Thermometer,
+  Waves,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { isSupabaseConfigured, supabase } from "../../lib/supabase";
+
+const tableGroups = {
+  tanks: ["tanks", "user_tanks", "tank_profiles"],
+  readings: ["sensor_readings", "tank_readings", "readings"],
+  ammonia: ["ammonia_readings", "ammonia_results"],
+  alerts: ["alerts", "notifications", "tank_alerts"],
+  listings: ["marketplace_listings", "listings", "products"],
+  orders: [
+    "marketplace_orders",
+    "orders",
+    "reservations",
+    "marketplace_reservations",
+  ],
+};
 
 const userFilterColumns = [
   "user_id",
   "owner_id",
   "profile_id",
   "created_by",
+  "farmer_id",
   "seller_id",
   "buyer_id",
 ];
 
-const countConfigs = [
-  {
-    key: "tanks",
-    title: "My Tanks",
-    tableNames: ["tanks"],
-    icon: Droplets,
-    helper: "Tank records linked to this account.",
-  },
-  {
-    key: "readings",
-    title: "Sensor Readings",
-    tableNames: ["sensor_readings", "tank_readings", "readings"],
-    icon: Activity,
-    helper: "Temperature, pH, turbidity, and water level logs.",
-  },
-  {
-    key: "alerts",
-    title: "Alerts",
-    tableNames: ["alerts", "notifications", "tank_alerts"],
-    icon: AlertTriangle,
-    helper: "Warnings, reminders, and tank notifications.",
-  },
-  {
-    key: "marketplace",
-    title: "Listings",
-    tableNames: ["marketplace_listings", "listings", "products"],
-    icon: ShoppingBag,
-    helper: "Crayfish-only marketplace listings.",
-  },
-];
+function clean(value) {
+  return String(value || "").trim();
+}
 
-function formatCount(value) {
-  return new Intl.NumberFormat("en-US").format(value || 0);
+function lower(value) {
+  return clean(value).toLowerCase();
+}
+
+function getStatus(row) {
+  const raw = lower(
+    row?.status ||
+      row?.condition ||
+      row?.severity ||
+      row?.listing_status ||
+      row?.order_status ||
+      row?.alert_status
+  );
+
+  if (raw.includes("critical") || raw.includes("danger") || raw.includes("high")) {
+    return "critical";
+  }
+
+  if (raw.includes("warn") || raw.includes("dirty") || raw.includes("medium")) {
+    return "warning";
+  }
+
+  if (raw.includes("sold")) return "sold";
+  if (raw.includes("complete")) return "completed";
+  if (raw.includes("confirm")) return "confirmed";
+  if (raw.includes("pending")) return "pending";
+  if (raw.includes("resolved")) return "resolved";
+  if (raw.includes("active")) return "active";
+  if (raw.includes("normal") || raw.includes("safe") || raw.includes("good")) {
+    return "normal";
+  }
+
+  return raw || "normal";
+}
+
+function getDateValue(row) {
+  return row?.created_at || row?.updated_at || row?.date || row?.timestamp || "";
 }
 
 function formatDate(value) {
-  if (!value) return "Recently";
+  if (!value) return "No date";
 
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Recently";
+  if (Number.isNaN(date.getTime())) return "No date";
 
   return date.toLocaleString([], {
     month: "short",
@@ -71,65 +99,70 @@ function formatDate(value) {
   });
 }
 
-function getDisplayName(profile, fallbackEmail) {
-  return (
-    profile?.username ||
-    profile?.nickname ||
-    profile?.display_name ||
-    profile?.full_name ||
-    [profile?.first_name, profile?.middle_name, profile?.last_name]
-      .filter(Boolean)
-      .join(" ") ||
-    fallbackEmail ||
-    "CrayThrive User"
-  );
+function formatNumber(value) {
+  return new Intl.NumberFormat("en-US").format(value || 0);
 }
 
-function getAlertTitle(alert) {
-  return (
-    alert?.title ||
-    alert?.alert_title ||
-    alert?.type ||
-    alert?.notification_type ||
-    "CrayThrive Alert"
-  );
+function formatPrice(value) {
+  const amount = Number(value);
+
+  if (!Number.isFinite(amount)) return "₱0";
+
+  return new Intl.NumberFormat("en-PH", {
+    style: "currency",
+    currency: "PHP",
+    maximumFractionDigits: 0,
+  }).format(amount);
 }
 
-function getAlertMessage(alert) {
-  return (
-    alert?.message ||
-    alert?.body ||
-    alert?.description ||
-    alert?.notes ||
-    "New notification from your CrayThrive account."
-  );
-}
-
-function getSeverity(alert) {
-  return String(alert?.severity || alert?.status || "info").toLowerCase();
-}
-
-function getReadingTankName(reading) {
-  return (
-    reading?.tank_name ||
-    reading?.tank_label ||
-    reading?.tank_id ||
-    "Tank Reading"
-  );
-}
-
-function getReadingStatus(reading) {
-  return String(reading?.status || reading?.condition || "normal").toLowerCase();
-}
-
-function getReadingValue(reading, keys) {
+function getValue(row, keys) {
   for (const key of keys) {
-    if (reading?.[key] !== null && reading?.[key] !== undefined) {
-      return reading[key];
-    }
+    if (row?.[key] !== null && row?.[key] !== undefined) return row[key];
   }
 
   return null;
+}
+
+function averageNumber(rows, keys) {
+  const values = rows
+    .map((row) => Number(getValue(row, keys)))
+    .filter((value) => Number.isFinite(value));
+
+  if (!values.length) return "N/A";
+
+  const total = values.reduce((sum, value) => sum + value, 0);
+  return (total / values.length).toFixed(2);
+}
+
+function getOrderTotal(order) {
+  return (
+    order?.total_price ||
+    order?.total ||
+    order?.amount ||
+    order?.price_total ||
+    order?.subtotal ||
+    0
+  );
+}
+
+function uniqueRows(rows) {
+  const map = new Map();
+
+  rows.forEach((row, index) => {
+    const id =
+      row?.id ||
+      row?.uuid ||
+      row?.tank_id ||
+      row?.reading_id ||
+      row?.alert_id ||
+      row?.listing_id ||
+      row?.order_id ||
+      `row-${index}`;
+
+    map.set(id, row);
+  });
+
+  return Array.from(map.values());
 }
 
 async function getCurrentUser() {
@@ -142,71 +175,42 @@ async function getCurrentUser() {
   };
 }
 
-async function getProfile(userId, email) {
-  const byId = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", userId)
-    .maybeSingle();
-
-  if (!byId.error && byId.data) {
-    return byId.data;
-  }
-
-  if (email) {
-    const byEmail = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("email", email)
-      .maybeSingle();
-
-    if (!byEmail.error && byEmail.data) {
-      return byEmail.data;
-    }
-  }
-
-  return null;
-}
-
-async function countUserRows(tableNames, userId) {
+async function fetchRows(tableNames, userId, limit = 120) {
   for (const tableName of tableNames) {
-    for (const column of userFilterColumns) {
-      const { count, error } = await supabase
-        .from(tableName)
-        .select("*", { count: "exact", head: true })
-        .eq(column, userId);
+    const mergedRows = [];
+    let successful = false;
 
-      if (!error) {
-        return {
-          count: count || 0,
-          tableUsed: tableName,
-        };
-      }
-    }
-  }
-
-  return {
-    count: 0,
-    tableUsed: tableNames[0],
-  };
-}
-
-async function getRecentRows(tableNames, userId, limit = 5) {
-  for (const tableName of tableNames) {
-    for (const column of userFilterColumns) {
-      const { data, error } = await supabase
+    for (const userColumn of userFilterColumns) {
+      const ordered = await supabase
         .from(tableName)
         .select("*")
-        .eq(column, userId)
+        .eq(userColumn, userId)
         .order("created_at", { ascending: false })
         .limit(limit);
 
-      if (!error && Array.isArray(data)) {
-        return {
-          rows: data,
-          tableUsed: tableName,
-        };
+      if (!ordered.error && Array.isArray(ordered.data)) {
+        successful = true;
+        mergedRows.push(...ordered.data);
+        continue;
       }
+
+      const plain = await supabase
+        .from(tableName)
+        .select("*")
+        .eq(userColumn, userId)
+        .limit(limit);
+
+      if (!plain.error && Array.isArray(plain.data)) {
+        successful = true;
+        mergedRows.push(...plain.data);
+      }
+    }
+
+    if (successful) {
+      return {
+        rows: uniqueRows(mergedRows),
+        tableUsed: tableName,
+      };
     }
   }
 
@@ -216,21 +220,66 @@ async function getRecentRows(tableNames, userId, limit = 5) {
   };
 }
 
+function getRecordTitle(row, fallback) {
+  return (
+    row?.title ||
+    row?.name ||
+    row?.tank_name ||
+    row?.product_name ||
+    row?.listing_title ||
+    row?.alert_title ||
+    row?.type ||
+    row?.notification_type ||
+    fallback
+  );
+}
+
+function MiniBar({ label, value, max }) {
+  const width = max > 0 ? `${Math.min((value / max) * 100, 100)}%` : "0%";
+
+  return (
+    <div className="modern-mini-bar">
+      <div>
+        <span>{label}</span>
+        <strong>{formatNumber(value)}</strong>
+      </div>
+
+      <i>
+        <b style={{ width }} />
+      </i>
+    </div>
+  );
+}
+
+function StatCard({ icon: Icon, label, value, helper, tone = "default" }) {
+  return (
+    <article className={`modern-overview-stat ${tone}`}>
+      <span className="modern-overview-stat-icon">
+        <Icon size={22} />
+      </span>
+
+      <div>
+        <strong>{value}</strong>
+        <p>{label}</p>
+        <small>{helper}</small>
+      </div>
+    </article>
+  );
+}
+
 export default function DashboardOverview() {
-  const [profile, setProfile] = useState(null);
-  const [authEmail, setAuthEmail] = useState("");
-  const [counts, setCounts] = useState({});
-  const [tableMap, setTableMap] = useState({});
-  const [recentAlerts, setRecentAlerts] = useState([]);
-  const [recentReadings, setRecentReadings] = useState([]);
-  const [latestAmmonia, setLatestAmmonia] = useState(null);
+  const [datasets, setDatasets] = useState({
+    tanks: [],
+    readings: [],
+    ammonia: [],
+    alerts: [],
+    listings: [],
+    orders: [],
+  });
+
+  const [sources, setSources] = useState({});
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
-
-  const displayName = useMemo(
-    () => getDisplayName(profile, authEmail),
-    [profile, authEmail]
-  );
 
   const loadDashboard = async () => {
     if (!isSupabaseConfigured || !supabase) {
@@ -244,61 +293,48 @@ export default function DashboardOverview() {
       const currentUser = await getCurrentUser();
 
       if (!currentUser.id) {
-        setIsLoading(false);
+        setDatasets({
+          tanks: [],
+          readings: [],
+          ammonia: [],
+          alerts: [],
+          listings: [],
+          orders: [],
+        });
         return;
       }
 
-      const profileData = await getProfile(currentUser.id, currentUser.email);
-      setProfile(profileData);
-      setAuthEmail(currentUser.email);
+      const [tanks, readings, ammonia, alerts, listings, orders] =
+        await Promise.all([
+          fetchRows(tableGroups.tanks, currentUser.id),
+          fetchRows(tableGroups.readings, currentUser.id),
+          fetchRows(tableGroups.ammonia, currentUser.id),
+          fetchRows(tableGroups.alerts, currentUser.id),
+          fetchRows(tableGroups.listings, currentUser.id),
+          fetchRows(tableGroups.orders, currentUser.id),
+        ]);
 
-      const countResults = await Promise.all(
-        countConfigs.map(async (config) => {
-          const result = await countUserRows(config.tableNames, currentUser.id);
-
-          return {
-            key: config.key,
-            count: result.count,
-            tableUsed: result.tableUsed,
-          };
-        })
-      );
-
-      const nextCounts = {};
-      const nextTableMap = {};
-
-      countResults.forEach((item) => {
-        nextCounts[item.key] = item.count;
-        nextTableMap[item.key] = item.tableUsed;
+      setDatasets({
+        tanks: tanks.rows,
+        readings: readings.rows,
+        ammonia: ammonia.rows,
+        alerts: alerts.rows,
+        listings: listings.rows,
+        orders: orders.rows,
       });
 
-      setCounts(nextCounts);
-      setTableMap(nextTableMap);
+      setSources({
+        tanks: tanks.tableUsed,
+        readings: readings.tableUsed,
+        ammonia: ammonia.tableUsed,
+        alerts: alerts.tableUsed,
+        listings: listings.tableUsed,
+        orders: orders.tableUsed,
+      });
 
-      const alertsResult = await getRecentRows(
-        ["alerts", "notifications", "tank_alerts"],
-        currentUser.id,
-        5
-      );
-
-      const readingsResult = await getRecentRows(
-        ["sensor_readings", "tank_readings", "readings"],
-        currentUser.id,
-        5
-      );
-
-      const ammoniaResult = await getRecentRows(
-        ["ammonia_readings", "ammonia_results"],
-        currentUser.id,
-        1
-      );
-
-      setRecentAlerts(alertsResult.rows);
-      setRecentReadings(readingsResult.rows);
-      setLatestAmmonia(ammoniaResult.rows[0] || null);
       setLastUpdated(new Date());
     } catch (error) {
-      console.error("Dashboard overview loading error:", error);
+      console.error("Dashboard loading error:", error);
     } finally {
       setIsLoading(false);
     }
@@ -308,204 +344,277 @@ export default function DashboardOverview() {
     loadDashboard();
   }, []);
 
+  const stats = useMemo(() => {
+    const criticalAlerts = datasets.alerts.filter(
+      (alert) => getStatus(alert) === "critical"
+    ).length;
+
+    const activeListings = datasets.listings.filter(
+      (listing) => getStatus(listing) === "active"
+    ).length;
+
+    const completedOrders = datasets.orders.filter((order) => {
+      const status = getStatus(order);
+      return status === "completed" || status === "confirmed";
+    }).length;
+
+    const totalSales = datasets.orders.reduce(
+      (sum, order) => sum + Number(getOrderTotal(order) || 0),
+      0
+    );
+
+    return {
+      criticalAlerts,
+      activeListings,
+      completedOrders,
+      totalSales,
+    };
+  }, [datasets]);
+
+  const avgTemp = averageNumber(datasets.readings, [
+    "temperature",
+    "temp",
+    "water_temperature",
+  ]);
+
+  const avgPh = averageNumber(datasets.readings, ["ph", "pH", "ph_level"]);
+
+  const avgTurbidity = averageNumber(datasets.readings, [
+    "turbidity",
+    "turbidity_level",
+    "ntu",
+  ]);
+
+  const avgWaterLevel = averageNumber(datasets.readings, [
+    "water_level",
+    "level",
+    "water_height",
+  ]);
+
+  const activityBars = [
+    {
+      label: "Readings",
+      value: datasets.readings.length,
+    },
+    {
+      label: "Alerts",
+      value: datasets.alerts.length,
+    },
+    {
+      label: "Listings",
+      value: datasets.listings.length,
+    },
+    {
+      label: "Orders",
+      value: datasets.orders.length,
+    },
+  ];
+
+  const maxActivity = Math.max(1, ...activityBars.map((item) => item.value));
+
+  const latestRecords = [
+    ...datasets.alerts,
+    ...datasets.readings,
+    ...datasets.ammonia,
+    ...datasets.orders,
+  ]
+    .sort((a, b) => new Date(getDateValue(b)) - new Date(getDateValue(a)))
+    .slice(0, 6);
+
+  if (isLoading) {
+    return (
+      <section className="modern-overview-loading">
+        <Loader2 className="spin-icon" size={34} />
+        <h3>Loading dashboard...</h3>
+        <p>CrayThrive is syncing your web dashboard records.</p>
+      </section>
+    );
+  }
+
   return (
-    <div className="dashboard-overview">
-      <section className="dashboard-hero-card">
+    <div className="modern-overview-page">
+      <section className="modern-overview-hero">
         <div>
-          <p className="dashboard-eyebrow">Welcome back</p>
-          <h2>{displayName}</h2>
+          <p className="dashboard-eyebrow">Live Account Overview</p>
+          <h2>A smarter look at your crayfish system.</h2>
           <p>
-            This dashboard shows tank monitoring, sensor readings, alerts,
-            ammonia records, and marketplace activity connected to your
-            CrayThrive mobile account.
+            Monitor tanks, readings, ammonia checks, alerts, marketplace activity,
+            and order performance from the same account used in your mobile app.
           </p>
 
-          <div className="dashboard-hero-actions">
+          <div className="modern-overview-actions">
             <button className="dashboard-primary-button" onClick={loadDashboard}>
-              {isLoading ? (
-                <Loader2 className="spin-icon" size={18} />
-              ) : (
-                <RefreshCw size={18} />
-              )}
+              <RefreshCw size={18} />
               Refresh Data
             </button>
+
+            <Link to="/admin/tanks" className="modern-secondary-link">
+              View Tanks
+              <ArrowRight size={18} />
+            </Link>
 
             <span>
               {lastUpdated
                 ? `Last updated ${lastUpdated.toLocaleTimeString()}`
-                : "Waiting for first sync"}
+                : "Waiting for sync"}
             </span>
           </div>
         </div>
 
-
-      </section>
-
-      <section className="dashboard-stat-grid">
-        {countConfigs.map((config) => {
-          const Icon = config.icon;
-
-          return (
-            <article className="dashboard-stat-card" key={config.key}>
-              <div className="dashboard-stat-top">
-                <span className="dashboard-stat-icon">
-                  <Icon size={24} />
-                </span>
-
-                <span className="dashboard-table-label">
-                  {tableMap[config.key] || config.tableNames[0]}
-                </span>
-              </div>
-
-              <strong>{formatCount(counts[config.key])}</strong>
-              <h3>{config.title}</h3>
-              <p>{config.helper}</p>
-            </article>
-          );
-        })}
-      </section>
-
-      <section className="dashboard-insight-grid">
-        <article className="dashboard-panel">
-          <div className="dashboard-panel-header">
-            <div>
-              <p className="dashboard-eyebrow">Recent Alerts</p>
-              <h3>Latest notifications</h3>
-            </div>
-            <Bell size={22} />
+        <div className="modern-overview-health">
+          <div className="modern-health-ring">
+            <Waves size={38} />
           </div>
 
-          <div className="overview-list">
-            {recentAlerts.length === 0 ? (
-              <div className="overview-empty">
-                <CheckCircle2 size={24} />
-                <strong>No alerts yet</strong>
-                <span>
-                  Tank warnings, ammonia alerts, and marketplace notifications
-                  will appear here.
-                </span>
-              </div>
-            ) : (
-              recentAlerts.map((alert, index) => (
-                <div className="overview-alert-item" key={alert.id || index}>
-                  <span className={`overview-dot severity-${getSeverity(alert)}`} />
+          <strong>
+            {stats.criticalAlerts > 0 ? "Needs Review" : "System Stable"}
+          </strong>
 
-                  <div>
-                    <strong>{getAlertTitle(alert)}</strong>
-                    <p>{getAlertMessage(alert)}</p>
-                    <small>{formatDate(alert.created_at)}</small>
-                  </div>
-                </div>
-              ))
-            )}
+          <span>
+            {stats.criticalAlerts > 0
+              ? `${stats.criticalAlerts} critical alert(s) need attention`
+              : "No critical alerts detected"}
+          </span>
+        </div>
+      </section>
+
+      <section className="modern-overview-stat-grid">
+        <StatCard
+          icon={Droplets}
+          label="Tanks"
+          value={formatNumber(datasets.tanks.length)}
+          helper={`Source: ${sources.tanks || "tanks"}`}
+        />
+
+        <StatCard
+          icon={Activity}
+          label="Sensor readings"
+          value={formatNumber(datasets.readings.length)}
+          helper={`Avg temperature: ${avgTemp}`}
+        />
+
+        <StatCard
+          icon={AlertTriangle}
+          label="Critical alerts"
+          value={formatNumber(stats.criticalAlerts)}
+          helper={`${datasets.alerts.length} total alert records`}
+          tone={stats.criticalAlerts > 0 ? "danger" : "success"}
+        />
+
+        <StatCard
+          icon={ShoppingBag}
+          label="Active listings"
+          value={formatNumber(stats.activeListings)}
+          helper={`${datasets.listings.length} marketplace listings`}
+        />
+
+        <StatCard
+          icon={PackageCheck}
+          label="Orders"
+          value={formatNumber(datasets.orders.length)}
+          helper={`${stats.completedOrders} completed/confirmed`}
+        />
+
+        <StatCard
+          icon={Gauge}
+          label="Sales value"
+          value={formatPrice(stats.totalSales)}
+          helper="Computed from order records"
+        />
+      </section>
+
+      <section className="modern-overview-grid">
+        <article className="modern-overview-panel">
+          <div className="modern-panel-heading">
+            <div>
+              <p className="dashboard-eyebrow">Water Metrics</p>
+              <h3>Average sensor condition</h3>
+            </div>
+            <Thermometer size={22} />
+          </div>
+
+          <div className="modern-metric-grid">
+            <div>
+              <Thermometer size={20} />
+              <strong>{avgTemp === "N/A" ? "N/A" : `${avgTemp}°C`}</strong>
+              <span>Temperature</span>
+            </div>
+
+            <div>
+              <Droplets size={20} />
+              <strong>{avgPh}</strong>
+              <span>pH Level</span>
+            </div>
+
+            <div>
+              <Waves size={20} />
+              <strong>{avgTurbidity}</strong>
+              <span>Turbidity</span>
+            </div>
+
+            <div>
+              <Gauge size={20} />
+              <strong>{avgWaterLevel}</strong>
+              <span>Water Level</span>
+            </div>
           </div>
         </article>
 
-        <article className="dashboard-panel">
-          <div className="dashboard-panel-header">
+        <article className="modern-overview-panel">
+          <div className="modern-panel-heading">
             <div>
-              <p className="dashboard-eyebrow">Sensor Readings</p>
-              <h3>Latest tank data</h3>
+              <p className="dashboard-eyebrow">Activity</p>
+              <h3>Record distribution</h3>
             </div>
-            <Activity size={22} />
+            <Database size={22} />
           </div>
 
-          <div className="overview-list">
-            {recentReadings.length === 0 ? (
-              <div className="overview-empty">
-                <Droplets size={24} />
-                <strong>No readings yet</strong>
-                <span>
-                  Sensor data from the mobile app or IoT devices will appear
-                  here.
-                </span>
-              </div>
-            ) : (
-              recentReadings.map((reading, index) => {
-                const temp = getReadingValue(reading, [
-                  "temperature",
-                  "temp",
-                  "water_temperature",
-                ]);
-
-                const ph = getReadingValue(reading, ["ph", "pH", "ph_level"]);
-
-                const turbidity = getReadingValue(reading, [
-                  "turbidity",
-                  "turbidity_level",
-                  "ntu",
-                ]);
-
-                const waterLevel = getReadingValue(reading, [
-                  "water_level",
-                  "level",
-                  "water_height",
-                ]);
-
-                return (
-                  <div
-                    className="overview-reading-item"
-                    key={reading.id || index}
-                  >
-                    <div>
-                      <strong>{getReadingTankName(reading)}</strong>
-                      <small>{formatDate(reading.created_at)}</small>
-                    </div>
-
-                    <div className="reading-chip-row">
-                      {temp !== null && <span>{temp}°C</span>}
-                      {ph !== null && <span>pH {ph}</span>}
-                      {turbidity !== null && <span>{turbidity} NTU</span>}
-                      {waterLevel !== null && <span>{waterLevel}</span>}
-                      <span className={`reading-status ${getReadingStatus(reading)}`}>
-                        {getReadingStatus(reading)}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })
-            )}
+          <div className="modern-mini-bars">
+            {activityBars.map((item) => (
+              <MiniBar
+                key={item.label}
+                label={item.label}
+                value={item.value}
+                max={maxActivity}
+              />
+            ))}
           </div>
         </article>
 
-        <article className="dashboard-panel dashboard-ammonia-panel">
-          <div className="dashboard-panel-header">
+        <article className="modern-overview-panel modern-wide-panel">
+          <div className="modern-panel-heading">
             <div>
-              <p className="dashboard-eyebrow">Ammonia Reader</p>
-              <h3>Latest ammonia result</h3>
+              <p className="dashboard-eyebrow">Latest Records</p>
+              <h3>Recent system activity</h3>
             </div>
             <Camera size={22} />
           </div>
 
-          {latestAmmonia ? (
-            <div className="ammonia-summary">
-              <strong>
-                {getReadingValue(latestAmmonia, [
-                  "ammonia_level",
-                  "ammonia",
-                  "nh3",
-                  "result",
-                ]) || "Recorded"}
-              </strong>
-              <span>
-                {String(
-                  latestAmmonia.status ||
-                    latestAmmonia.condition ||
-                    latestAmmonia.chart_label ||
-                    "Result saved"
-                )}
-              </span>
-              <p>{formatDate(latestAmmonia.created_at)}</p>
-            </div>
-          ) : (
-            <div className="overview-empty">
-              <Camera size={24} />
-              <strong>No ammonia result yet</strong>
-              <span>
-                ESP32-CAM or mobile ammonia check results will appear here.
-              </span>
-            </div>
-          )}
+          <div className="modern-record-list">
+            {latestRecords.length === 0 ? (
+              <div className="modern-empty-state">
+                <CheckCircle2 size={26} />
+                <strong>No recent records yet</strong>
+                <span>
+                  Your latest readings, alerts, ammonia checks, and orders will
+                  appear here once synced.
+                </span>
+              </div>
+            ) : (
+              latestRecords.map((row, index) => (
+                <div className="modern-record-row" key={row?.id || index}>
+                  <div>
+                    <strong>{getRecordTitle(row, "CrayThrive Record")}</strong>
+                    <span>{formatDate(getDateValue(row))}</span>
+                  </div>
+
+                  <b className={`modern-status-chip ${getStatus(row)}`}>
+                    {getStatus(row)}
+                  </b>
+                </div>
+              ))
+            )}
+          </div>
         </article>
       </section>
     </div>
