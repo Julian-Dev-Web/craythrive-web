@@ -6,12 +6,14 @@ import {
   CheckCircle2,
   Database,
   DollarSign,
+  Download,
   Droplets,
   FileText,
   Gauge,
   Loader2,
   PackageCheck,
   PieChart,
+  Printer,
   RefreshCw,
   ShoppingBag,
   Thermometer,
@@ -19,6 +21,11 @@ import {
   Waves,
 } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "../../lib/supabase";
+import {
+  normalizeSensorReading,
+  toNumberOrNull,
+} from "../../utils/sensorReadingUtils";
+import { downloadCsv, printReport } from "../../utils/exportPrintUtils";
 
 const tableGroups = {
   tanks: ["tanks", "user_tanks", "tank_profiles"],
@@ -51,6 +58,10 @@ function clean(value) {
 
 function lower(value) {
   return clean(value).toLowerCase();
+}
+
+function normalizeStatusText(value) {
+  return lower(value).replaceAll("_", " ").replaceAll("-", " ");
 }
 
 function formatPeso(value) {
@@ -94,14 +105,56 @@ function getValue(row, keys, fallback = null) {
   return fallback;
 }
 
-function toNumber(value) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
+function getStatusSeverity(statuses) {
+  const joined = statuses.map(normalizeStatusText).join(" ");
+
+  if (
+    joined.includes("critical") ||
+    joined.includes("danger") ||
+    joined.includes("unsafe") ||
+    joined.includes("high ph") ||
+    joined.includes("low ph") ||
+    joined.includes("warm") ||
+    joined.includes("cold")
+  ) {
+    return "critical";
+  }
+
+  if (
+    joined.includes("warning") ||
+    joined.includes("dirty") ||
+    joined.includes("slightly") ||
+    joined.includes("needs") ||
+    joined.includes("moderate")
+  ) {
+    return "warning";
+  }
+
+  if (
+    joined.includes("ideal") ||
+    joined.includes("safe") ||
+    joined.includes("normal") ||
+    joined.includes("clear") ||
+    joined.includes("measured")
+  ) {
+    return "normal";
+  }
+
+  return "normal";
 }
 
-function average(rows, keys) {
-  const values = rows
-    .map((row) => toNumber(getValue(row, keys)))
+function getOverallReadingStatus(normalizedReading) {
+  return getStatusSeverity([
+    normalizedReading.temperatureStatus,
+    normalizedReading.phStatus,
+    normalizedReading.turbidityStatus,
+    normalizedReading.waterStatus,
+  ]);
+}
+
+function averageFromNormalized(items, key) {
+  const values = items
+    .map((item) => toNumberOrNull(item.normalized[key]))
     .filter((value) => value !== null);
 
   if (!values.length) return "N/A";
@@ -110,51 +163,58 @@ function average(rows, keys) {
   return (total / values.length).toFixed(2);
 }
 
-function getWaterStatus(row) {
-  const raw = lower(row?.status || row?.condition || row?.water_status || row?.severity);
-
-  if (raw.includes("critical") || raw.includes("danger")) return "critical";
-  if (raw.includes("warning") || raw.includes("dirty")) return "warning";
-  if (raw.includes("normal") || raw.includes("safe") || raw.includes("good")) return "normal";
-
-  const temp = toNumber(getValue(row, ["temperature", "temp", "water_temperature"]));
-  const ph = toNumber(getValue(row, ["ph", "pH", "ph_level"]));
-  const turbidity = toNumber(getValue(row, ["turbidity", "turbidity_level", "ntu"]));
-  const waterLevel = toNumber(getValue(row, ["water_level", "level", "water_height"]));
-
-  if (
-    (temp !== null && (temp < 18 || temp > 32)) ||
-    (ph !== null && (ph < 6 || ph > 9)) ||
-    (turbidity !== null && turbidity > 70) ||
-    (waterLevel !== null && waterLevel < 20)
-  ) {
-    return "critical";
-  }
-
-  if (
-    (temp !== null && (temp < 20 || temp > 30)) ||
-    (ph !== null && (ph < 6.5 || ph > 8.5)) ||
-    (turbidity !== null && turbidity > 40) ||
-    (waterLevel !== null && waterLevel < 35)
-  ) {
-    return "warning";
-  }
-
-  return "normal";
-}
-
 function getMarketStatus(row) {
-  const raw = lower(row?.status || row?.listing_status || row?.order_status || row?.payment_status);
+  const raw = normalizeStatusText(
+    row?.status ||
+      row?.listing_status ||
+      row?.order_status ||
+      row?.payment_status ||
+      row?.reservation_status ||
+      row?.availability ||
+      ""
+  );
 
   if (raw.includes("complete")) return "completed";
   if (raw.includes("confirm")) return "confirmed";
   if (raw.includes("paid")) return "paid";
   if (raw.includes("sold")) return "sold";
   if (raw.includes("cancel")) return "cancelled";
+  if (raw.includes("reject")) return "rejected";
   if (raw.includes("pending")) return "pending";
   if (raw.includes("active") || raw.includes("available")) return "active";
 
   return raw || "pending";
+}
+
+function getAlertSeverity(alert) {
+  const raw = normalizeStatusText(
+    alert?.severity ||
+      alert?.priority ||
+      alert?.level ||
+      alert?.status ||
+      alert?.type ||
+      ""
+  );
+
+  if (
+    raw.includes("critical") ||
+    raw.includes("danger") ||
+    raw.includes("high") ||
+    raw.includes("unsafe")
+  ) {
+    return "critical";
+  }
+
+  if (
+    raw.includes("warning") ||
+    raw.includes("medium") ||
+    raw.includes("dirty") ||
+    raw.includes("low")
+  ) {
+    return "warning";
+  }
+
+  return "normal";
 }
 
 function getOrderTotal(order) {
@@ -167,6 +227,29 @@ function getOrderTotal(order) {
 
 function getRecordDate(row) {
   return row?.created_at || row?.updated_at || row?.timestamp || row?.date || "";
+}
+
+function getReadingName(reading, index) {
+  return (
+    reading?.tank_name ||
+    reading?.tank_label ||
+    reading?.name ||
+    reading?.tank_id ||
+    reading?.iot_device_id ||
+    reading?.device_uid ||
+    `Reading ${index + 1}`
+  );
+}
+
+function getMarketTitle(record, index) {
+  return (
+    record?.title ||
+    record?.product_name ||
+    record?.listing_title ||
+    record?.item_name ||
+    record?.name ||
+    `Market Record ${index + 1}`
+  );
 }
 
 function uniqueRows(rows) {
@@ -184,23 +267,91 @@ function uniqueRows(rows) {
       row?.created_at ||
       `row-${index}`;
 
-    map.set(id, row);
+    map.set(String(id), row);
   });
 
   return Array.from(map.values());
 }
 
-async function getCurrentUser() {
+async function getCurrentUserWithRole() {
   const { data } = await supabase.auth.getSession();
   const user = data?.session?.user;
 
+  if (!user) {
+    return {
+      id: "",
+      email: "",
+      role: "",
+      isAdmin: false,
+    };
+  }
+
+  let profile = null;
+
+  const byId = await supabase
+    .from("profiles")
+    .select("id,email,role")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (!byId.error && byId.data) {
+    profile = byId.data;
+  }
+
+  if (!profile && user.email) {
+    const byEmail = await supabase
+      .from("profiles")
+      .select("id,email,role")
+      .ilike("email", user.email)
+      .maybeSingle();
+
+    if (!byEmail.error && byEmail.data) {
+      profile = byEmail.data;
+    }
+  }
+
+  const role = lower(profile?.role);
+
   return {
-    id: user?.id || "",
-    email: user?.email || "",
+    id: user.id || "",
+    email: user.email || "",
+    role,
+    isAdmin: role === "admin",
   };
 }
 
-async function fetchRows(tableNames, userId, limit = 250) {
+async function fetchAdminRows(tableNames, limit = 500) {
+  for (const tableName of tableNames) {
+    const ordered = await supabase
+      .from(tableName)
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (!ordered.error && Array.isArray(ordered.data)) {
+      return {
+        rows: uniqueRows(ordered.data),
+        tableUsed: tableName,
+      };
+    }
+
+    const plain = await supabase.from(tableName).select("*").limit(limit);
+
+    if (!plain.error && Array.isArray(plain.data)) {
+      return {
+        rows: uniqueRows(plain.data),
+        tableUsed: tableName,
+      };
+    }
+  }
+
+  return {
+    rows: [],
+    tableUsed: tableNames[0],
+  };
+}
+
+async function fetchUserRows(tableNames, userId, limit = 300) {
   for (const tableName of tableNames) {
     const mergedRows = [];
     let successful = false;
@@ -245,6 +396,14 @@ async function fetchRows(tableNames, userId, limit = 250) {
   };
 }
 
+async function fetchRowsByScope(tableNames, currentUser, limit = 400) {
+  if (currentUser.isAdmin) {
+    return fetchAdminRows(tableNames, limit);
+  }
+
+  return fetchUserRows(tableNames, currentUser.id, limit);
+}
+
 function SummaryCard({ icon: Icon, label, value, helper, tone = "default" }) {
   return (
     <article className={`modern-report-summary-card ${tone}`}>
@@ -283,11 +442,7 @@ function DonutStat({ label, value, total, tone = "default" }) {
 
   return (
     <div className={`modern-report-donut ${tone}`}>
-      <div
-        style={{
-          "--percent": `${percent}%`,
-        }}
-      >
+      <div style={{ "--percent": `${percent}%` }}>
         <strong>{percent}%</strong>
       </div>
 
@@ -301,6 +456,7 @@ function DonutStat({ label, value, total, tone = "default" }) {
 
 export default function ReportsPage() {
   const [activeReport, setActiveReport] = useState("tanks");
+  const [exportScope, setExportScope] = useState("both");
   const [datasets, setDatasets] = useState({
     tanks: [],
     readings: [],
@@ -309,6 +465,7 @@ export default function ReportsPage() {
     orders: [],
   });
   const [sources, setSources] = useState({});
+  const [scopeLabel, setScopeLabel] = useState("User view");
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
 
@@ -321,7 +478,7 @@ export default function ReportsPage() {
     try {
       setIsLoading(true);
 
-      const currentUser = await getCurrentUser();
+      const currentUser = await getCurrentUserWithRole();
 
       if (!currentUser.id) {
         setDatasets({
@@ -331,15 +488,16 @@ export default function ReportsPage() {
           listings: [],
           orders: [],
         });
+        setScopeLabel("No session");
         return;
       }
 
       const [tanks, readings, alerts, listings, orders] = await Promise.all([
-        fetchRows(tableGroups.tanks, currentUser.id),
-        fetchRows(tableGroups.readings, currentUser.id),
-        fetchRows(tableGroups.alerts, currentUser.id),
-        fetchRows(tableGroups.listings, currentUser.id),
-        fetchRows(tableGroups.orders, currentUser.id),
+        fetchRowsByScope(tableGroups.tanks, currentUser, 500),
+        fetchRowsByScope(tableGroups.readings, currentUser, 500),
+        fetchRowsByScope(tableGroups.alerts, currentUser, 500),
+        fetchRowsByScope(tableGroups.listings, currentUser, 500),
+        fetchRowsByScope(tableGroups.orders, currentUser, 500),
       ]);
 
       setDatasets({
@@ -358,6 +516,9 @@ export default function ReportsPage() {
         orders: orders.tableUsed,
       });
 
+      setScopeLabel(
+        currentUser.isAdmin ? "Admin all-records view" : "User account view"
+      );
       setLastUpdated(new Date());
     } catch (error) {
       console.error("Reports loading error:", error);
@@ -370,31 +531,66 @@ export default function ReportsPage() {
     loadReports();
   }, []);
 
-  const tankAnalytics = useMemo(() => {
-    const readingStatus = datasets.readings.map(getWaterStatus);
-    const normal = readingStatus.filter((status) => status === "normal").length;
-    const warning = readingStatus.filter((status) => status === "warning").length;
-    const critical = readingStatus.filter((status) => status === "critical").length;
+  const enrichedReadings = useMemo(() => {
+    return datasets.readings.map((reading, index) => {
+      const normalized = normalizeSensorReading(reading);
+      const status = getOverallReadingStatus(normalized);
 
-    const alertCritical = datasets.alerts.filter((alert) => {
-      const status = lower(alert?.severity || alert?.status || alert?.priority);
-      return status.includes("critical") || status.includes("danger") || status.includes("high");
-    }).length;
+      return {
+        reading,
+        normalized,
+        status,
+        name: getReadingName(reading, index),
+        date:
+          normalized.createdAt ||
+          reading?.timestamp ||
+          reading?.date ||
+          reading?.updated_at,
+      };
+    });
+  }, [datasets.readings]);
+
+  const latestReading = enrichedReadings[0] || null;
+
+  const tankAnalytics = useMemo(() => {
+    const normal = enrichedReadings.filter((item) => item.status === "normal").length;
+    const warning = enrichedReadings.filter((item) => item.status === "warning").length;
+    const critical = enrichedReadings.filter((item) => item.status === "critical").length;
+
+    const phWarning = enrichedReadings.filter((item) =>
+      ["warning", "critical"].includes(getStatusSeverity([item.normalized.phStatus]))
+    ).length;
+
+    const turbidityWarning = enrichedReadings.filter((item) =>
+      ["warning", "critical"].includes(
+        getStatusSeverity([item.normalized.turbidityStatus])
+      )
+    ).length;
+
+    const alertCritical = datasets.alerts.filter(
+      (alert) => getAlertSeverity(alert) === "critical"
+    ).length;
 
     return {
       totalTanks: datasets.tanks.length,
-      totalReadings: datasets.readings.length,
+      totalReadings: enrichedReadings.length,
       totalAlerts: datasets.alerts.length,
       normal,
       warning,
       critical,
       alertCritical,
-      avgTemp: average(datasets.readings, ["temperature", "temp", "water_temperature"]),
-      avgPh: average(datasets.readings, ["ph", "pH", "ph_level"]),
-      avgTurbidity: average(datasets.readings, ["turbidity", "turbidity_level", "ntu"]),
-      avgWaterLevel: average(datasets.readings, ["water_level", "level", "water_height"]),
+      phWarning,
+      turbidityWarning,
+      avgTemp: averageFromNormalized(enrichedReadings, "temperatureValue"),
+      avgWaterLevel: averageFromNormalized(enrichedReadings, "waterValue"),
+      latestPhStatus: latestReading?.normalized?.phStatus || "No Reading",
+      latestTurbidityStatus:
+        latestReading?.normalized?.turbidityStatus || "No Reading",
+      latestTemperatureStatus:
+        latestReading?.normalized?.temperatureStatus || "No Reading",
+      latestWaterStatus: latestReading?.normalized?.waterStatus || "No Reading",
     };
-  }, [datasets]);
+  }, [datasets.tanks, datasets.alerts, enrichedReadings, latestReading]);
 
   const marketAnalytics = useMemo(() => {
     const activeListings = datasets.listings.filter(
@@ -432,13 +628,23 @@ export default function ReportsPage() {
       cancelledOrders,
       totalSales,
     };
-  }, [datasets]);
+  }, [datasets.listings, datasets.orders]);
 
   const tankBars = [
     { label: "Normal readings", value: tankAnalytics.normal, tone: "success" },
     { label: "Warning readings", value: tankAnalytics.warning, tone: "warning" },
     { label: "Critical readings", value: tankAnalytics.critical, tone: "danger" },
-    { label: "Critical alerts", value: tankAnalytics.alertCritical, tone: "danger" },
+    { label: "pH issues", value: tankAnalytics.phWarning, tone: "warning" },
+    {
+      label: "Turbidity issues",
+      value: tankAnalytics.turbidityWarning,
+      tone: "warning",
+    },
+    {
+      label: "Critical alerts",
+      value: tankAnalytics.alertCritical,
+      tone: "danger",
+    },
   ];
 
   const marketBars = [
@@ -452,13 +658,174 @@ export default function ReportsPage() {
   const maxTankBar = Math.max(1, ...tankBars.map((item) => item.value));
   const maxMarketBar = Math.max(1, ...marketBars.map((item) => item.value));
 
-  const recentTankRecords = [...datasets.alerts, ...datasets.readings]
-    .sort((a, b) => new Date(getRecordDate(b)) - new Date(getRecordDate(a)))
-    .slice(0, 6);
+  const recentTankRecords = useMemo(() => {
+    const alerts = datasets.alerts.map((alert, index) => ({
+      type: "Alert",
+      title:
+        alert?.title ||
+        alert?.alert_title ||
+        alert?.notification_title ||
+        alert?.type ||
+        `Alert ${index + 1}`,
+      status: getAlertSeverity(alert),
+      date: getRecordDate(alert),
+    }));
 
-  const recentMarketRecords = [...datasets.orders, ...datasets.listings]
-    .sort((a, b) => new Date(getRecordDate(b)) - new Date(getRecordDate(a)))
-    .slice(0, 6);
+    const readings = enrichedReadings.map((item) => ({
+      type: "Reading",
+      title: item.name,
+      status: item.status,
+      date: item.date,
+      ph: item.normalized.phStatus,
+      turbidity: item.normalized.turbidityStatus,
+    }));
+
+    return [...alerts, ...readings]
+      .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
+      .slice(0, 6);
+  }, [datasets.alerts, enrichedReadings]);
+
+  const recentMarketRecords = useMemo(() => {
+    return [...datasets.orders, ...datasets.listings]
+      .map((record, index) => ({
+        title: getMarketTitle(record, index),
+        status: getMarketStatus(record),
+        date: getRecordDate(record),
+      }))
+      .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
+      .slice(0, 6);
+  }, [datasets.orders, datasets.listings]);
+
+  const tankExportRows = useMemo(() => {
+    const readingRows = enrichedReadings.map((item, index) => ({
+      Type: "Sensor Reading",
+      Name: item.name || `Reading ${index + 1}`,
+      Temperature: item.normalized.temperatureLabel,
+      "Temperature Status": item.normalized.temperatureStatus,
+      "pH Status": item.normalized.phStatus,
+      "Turbidity Status": item.normalized.turbidityStatus,
+      "Water Depth": item.normalized.waterLabel,
+      "Water Status": item.normalized.waterStatus,
+      "Overall Status": item.status,
+      Date: formatDate(item.date),
+    }));
+
+    const alertRows = datasets.alerts.map((alert, index) => ({
+      Type: "Alert",
+      Name:
+        alert?.title ||
+        alert?.alert_title ||
+        alert?.notification_title ||
+        alert?.type ||
+        `Alert ${index + 1}`,
+      Severity: getAlertSeverity(alert),
+      Status: alert?.status || alert?.alert_status || "open",
+      Message: alert?.message || alert?.description || alert?.body || "N/A",
+      Date: formatDate(getRecordDate(alert)),
+    }));
+
+    return [...readingRows, ...alertRows];
+  }, [enrichedReadings, datasets.alerts]);
+
+  const marketExportRows = useMemo(() => {
+    const listingRows = datasets.listings.map((listing, index) => ({
+      Type: "Marketplace Listing",
+      Name: getMarketTitle(listing, index),
+      Status: getMarketStatus(listing),
+      Price: getValue(
+        listing,
+        ["price", "amount", "unit_price", "selling_price"],
+        "N/A"
+      ),
+      Stock: getValue(listing, ["stock", "quantity", "available_count"], "N/A"),
+      Date: formatDate(getRecordDate(listing)),
+    }));
+
+    const orderRows = datasets.orders.map((order, index) => ({
+      Type: "Marketplace Order",
+      Name: getMarketTitle(order, index),
+      Status: getMarketStatus(order),
+      Amount: formatPeso(getOrderTotal(order)),
+      Quantity: getValue(order, ["quantity", "qty", "count", "order_quantity"], "N/A"),
+      Date: formatDate(getRecordDate(order)),
+    }));
+
+    return [...listingRows, ...orderRows];
+  }, [datasets.listings, datasets.orders]);
+
+  function getSelectedReportSections() {
+    if (exportScope === "tanks") {
+      return [
+        {
+          title: "Tank Reports",
+          description:
+            "Sensor readings, pH status, turbidity status, water depth, and tank alerts.",
+          rows: tankExportRows,
+        },
+      ];
+    }
+
+    if (exportScope === "market") {
+      return [
+        {
+          title: "Marketplace Reports",
+          description:
+            "Marketplace listings, orders, reservations, and sales-related records.",
+          rows: marketExportRows,
+        },
+      ];
+    }
+
+    return [
+      {
+        title: "Tank Reports",
+        description:
+          "Sensor readings, pH status, turbidity status, water depth, and tank alerts.",
+        rows: tankExportRows,
+      },
+      {
+        title: "Marketplace Reports",
+        description:
+          "Marketplace listings, orders, reservations, and sales-related records.",
+        rows: marketExportRows,
+      },
+    ];
+  }
+
+  function handleExportReportsCsv() {
+    const sections = getSelectedReportSections();
+
+    const rows = sections.flatMap((section) =>
+      section.rows.map((row) => ({
+        Section: section.title,
+        ...row,
+      }))
+    );
+
+    const filename =
+      exportScope === "tanks"
+        ? "craythrive-tank-reports.csv"
+        : exportScope === "market"
+          ? "craythrive-marketplace-reports.csv"
+          : "craythrive-combined-reports.csv";
+
+    downloadCsv(filename, rows);
+  }
+
+  function handlePrintReports() {
+    const sections = getSelectedReportSections();
+
+    printReport({
+      title: "CrayThrive Reports",
+      subtitle:
+        exportScope === "tanks"
+          ? "Tank Reports Only"
+          : exportScope === "market"
+            ? "Marketplace Reports Only"
+            : "Tank and Marketplace Reports",
+      sections,
+    });
+  }
 
   if (isLoading) {
     return (
@@ -477,8 +844,8 @@ export default function ReportsPage() {
           <p className="dashboard-eyebrow">Reports & Analytics</p>
           <h2>Understand tank health and marketplace performance.</h2>
           <p>
-            Switch between aquaculture reports and marketplace analytics. This
-            view summarizes sensor conditions, alerts, listings, orders, and sales.
+            Switch between aquaculture reports and marketplace analytics. You
+            can export or print tank reports, marketplace reports, or both.
           </p>
 
           <div className="modern-report-actions">
@@ -489,8 +856,8 @@ export default function ReportsPage() {
 
             <span>
               {lastUpdated
-                ? `Last updated ${lastUpdated.toLocaleTimeString()}`
-                : "Waiting for report sync"}
+                ? `Last updated ${lastUpdated.toLocaleTimeString()} • ${scopeLabel}`
+                : `Waiting for report sync • ${scopeLabel}`}
             </span>
           </div>
         </div>
@@ -522,6 +889,30 @@ export default function ReportsPage() {
         </button>
       </section>
 
+      <section className="modern-report-exportbar">
+        <label>
+          <FileText size={18} />
+          <select
+            value={exportScope}
+            onChange={(event) => setExportScope(event.target.value)}
+          >
+            <option value="tanks">Tank Reports Only</option>
+            <option value="market">Marketplace Reports Only</option>
+            <option value="both">Tank + Marketplace Reports</option>
+          </select>
+        </label>
+
+        <button type="button" onClick={handleExportReportsCsv}>
+          <Download size={18} />
+          Export CSV
+        </button>
+
+        <button type="button" onClick={handlePrintReports}>
+          <Printer size={18} />
+          Print Report
+        </button>
+      </section>
+
       {activeReport === "tanks" ? (
         <>
           <section className="modern-report-summary-grid">
@@ -543,19 +934,16 @@ export default function ReportsPage() {
               icon={AlertTriangle}
               label="Critical Alerts"
               value={tankAnalytics.alertCritical}
-              helper={`${tankAnalytics.totalAlerts} total alerts`}
+              helper={`${tankAnalytics.totalAlerts} total alert(s)`}
               tone={tankAnalytics.alertCritical > 0 ? "danger" : "success"}
             />
 
             <SummaryCard
-              icon={Thermometer}
-              label="Avg Temperature"
-              value={
-                tankAnalytics.avgTemp === "N/A"
-                  ? "N/A"
-                  : `${tankAnalytics.avgTemp}°C`
-              }
-              helper="Average sensor value"
+              icon={Waves}
+              label="Turbidity Issues"
+              value={tankAnalytics.turbidityWarning}
+              helper="Dirty / critical turbidity statuses"
+              tone={tankAnalytics.turbidityWarning > 0 ? "warning" : "success"}
             />
           </section>
 
@@ -564,7 +952,7 @@ export default function ReportsPage() {
               <div className="modern-panel-heading">
                 <div>
                   <p className="dashboard-eyebrow">Water Metrics</p>
-                  <h3>Average tank condition</h3>
+                  <h3>Latest readable condition</h3>
                 </div>
                 <Gauge size={22} />
               </div>
@@ -577,25 +965,29 @@ export default function ReportsPage() {
                       ? "N/A"
                       : `${tankAnalytics.avgTemp}°C`}
                   </strong>
-                  <span>Temperature</span>
+                  <span>{tankAnalytics.latestTemperatureStatus}</span>
                 </div>
 
                 <div>
                   <Droplets size={20} />
-                  <strong>{tankAnalytics.avgPh}</strong>
-                  <span>pH Level</span>
+                  <strong>{tankAnalytics.latestPhStatus}</strong>
+                  <span>Latest pH Status</span>
                 </div>
 
                 <div>
                   <Waves size={20} />
-                  <strong>{tankAnalytics.avgTurbidity}</strong>
-                  <span>Turbidity</span>
+                  <strong>{tankAnalytics.latestTurbidityStatus}</strong>
+                  <span>Latest Turbidity Status</span>
                 </div>
 
                 <div>
                   <Gauge size={20} />
-                  <strong>{tankAnalytics.avgWaterLevel}</strong>
-                  <span>Water Level</span>
+                  <strong>
+                    {tankAnalytics.avgWaterLevel === "N/A"
+                      ? "N/A"
+                      : `${tankAnalytics.avgWaterLevel} cm`}
+                  </strong>
+                  <span>{tankAnalytics.latestWaterStatus}</span>
                 </div>
               </div>
             </article>
@@ -604,7 +996,7 @@ export default function ReportsPage() {
               <div className="modern-panel-heading">
                 <div>
                   <p className="dashboard-eyebrow">Status Graph</p>
-                  <h3>Reading distribution</h3>
+                  <h3>Sensor issue distribution</h3>
                 </div>
                 <BarChart3 size={22} />
               </div>
@@ -626,7 +1018,7 @@ export default function ReportsPage() {
               <div className="modern-panel-heading">
                 <div>
                   <p className="dashboard-eyebrow">Condition Share</p>
-                  <h3>Tank safety percentage</h3>
+                  <h3>Reading safety percentage</h3>
                 </div>
                 <PieChart size={22} />
               </div>
@@ -673,20 +1065,22 @@ export default function ReportsPage() {
                   </div>
                 ) : (
                   recentTankRecords.map((record, index) => (
-                    <div className="modern-report-row" key={record?.id || index}>
+                    <div className="modern-report-row" key={`${record.type}-${index}`}>
                       <div>
                         <strong>
-                          {record?.title ||
-                            record?.tank_name ||
-                            record?.type ||
-                            record?.sensor_type ||
-                            `Tank Record ${index + 1}`}
+                          {record.type}: {record.title}
                         </strong>
-                        <span>{formatDate(getRecordDate(record))}</span>
+                        <span>
+                          {formatDate(record.date)}
+                          {record.ph ? ` • pH: ${record.ph}` : ""}
+                          {record.turbidity
+                            ? ` • Turbidity: ${record.turbidity}`
+                            : ""}
+                        </span>
                       </div>
 
-                      <b className={`modern-report-chip ${getWaterStatus(record)}`}>
-                        {getWaterStatus(record)}
+                      <b className={`modern-report-chip ${record.status}`}>
+                        {record.status}
                       </b>
                     </div>
                   ))
@@ -829,20 +1223,14 @@ export default function ReportsPage() {
                   </div>
                 ) : (
                   recentMarketRecords.map((record, index) => (
-                    <div className="modern-report-row" key={record?.id || index}>
+                    <div className="modern-report-row" key={`market-${index}`}>
                       <div>
-                        <strong>
-                          {record?.title ||
-                            record?.product_name ||
-                            record?.listing_title ||
-                            record?.item_name ||
-                            `Market Record ${index + 1}`}
-                        </strong>
-                        <span>{formatDate(getRecordDate(record))}</span>
+                        <strong>{record.title}</strong>
+                        <span>{formatDate(record.date)}</span>
                       </div>
 
-                      <b className={`modern-report-chip ${getMarketStatus(record)}`}>
-                        {getMarketStatus(record)}
+                      <b className={`modern-report-chip ${record.status}`}>
+                        {record.status}
                       </b>
                     </div>
                   ))

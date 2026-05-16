@@ -14,11 +14,12 @@ import {
   ShieldCheck,
   Siren,
   Waves,
-  XCircle,
 } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "../../lib/supabase";
 
 const alertTables = ["alerts", "notifications", "tank_alerts"];
+
+const ALERTS_PER_PAGE = 10;
 
 const userFilterColumns = [
   "user_id",
@@ -29,12 +30,27 @@ const userFilterColumns = [
   "farmer_id",
 ];
 
+const categoryOptions = [
+  { value: "all", label: "All Categories" },
+  { value: "temperature", label: "Temperature" },
+  { value: "ph", label: "pH" },
+  { value: "turbidity", label: "Turbidity" },
+  { value: "water_level", label: "Water Level" },
+  { value: "ammonia", label: "Ammonia" },
+  { value: "marketplace", label: "Marketplace" },
+  { value: "general", label: "General" },
+];
+
 function clean(value) {
   return String(value || "").trim();
 }
 
 function lower(value) {
   return clean(value).toLowerCase();
+}
+
+function normalizeText(value) {
+  return lower(value).replaceAll("_", " ").replaceAll("-", " ");
 }
 
 function formatDate(value) {
@@ -85,60 +101,110 @@ function getAlertMessage(row) {
 }
 
 function getAlertSeverity(row) {
-  const raw = lower(row?.severity || row?.status || row?.priority || row?.level);
+  const raw = normalizeText(
+    row?.severity ||
+      row?.priority ||
+      row?.level ||
+      row?.status ||
+      row?.alert_status ||
+      row?.type ||
+      ""
+  );
 
-  if (raw.includes("critical") || raw.includes("danger") || raw.includes("high")) {
+  if (
+    raw.includes("critical") ||
+    raw.includes("danger") ||
+    raw.includes("high") ||
+    raw.includes("unsafe")
+  ) {
     return "critical";
   }
 
-  if (raw.includes("warning") || raw.includes("medium") || raw.includes("dirty")) {
+  if (
+    raw.includes("warning") ||
+    raw.includes("medium") ||
+    raw.includes("dirty") ||
+    raw.includes("low")
+  ) {
     return "warning";
   }
 
-  if (raw.includes("low") || raw.includes("info")) {
-    return "info";
-  }
-
-  if (raw.includes("resolved") || raw.includes("safe") || raw.includes("normal")) {
+  if (
+    raw.includes("resolved") ||
+    raw.includes("normal") ||
+    raw.includes("safe") ||
+    raw.includes("read") ||
+    raw.includes("done")
+  ) {
     return "normal";
   }
 
-  return raw || "info";
+  return "info";
 }
 
 function getAlertStatus(row) {
-  const raw = lower(row?.status || row?.alert_status || row?.read_status);
+  const raw = normalizeText(
+    row?.status ||
+      row?.alert_status ||
+      row?.read_status ||
+      row?.notification_status ||
+      ""
+  );
 
-  if (raw.includes("resolved") || raw.includes("done") || raw.includes("read")) {
+  if (
+    row?.is_read === true ||
+    row?.resolved_at ||
+    raw.includes("resolved") ||
+    raw.includes("read") ||
+    raw.includes("done") ||
+    raw.includes("handled")
+  ) {
     return "resolved";
   }
 
-  if (raw.includes("critical") || raw.includes("danger")) return "open";
-  if (raw.includes("warning")) return "open";
-  if (raw.includes("open") || raw.includes("unread") || raw.includes("active")) {
-    return "open";
-  }
-
-  return raw || "open";
+  return "open";
 }
 
 function getAlertCategory(row) {
-  const raw = lower(
+  const raw = normalizeText(
     row?.category ||
       row?.type ||
       row?.alert_type ||
       row?.sensor_type ||
-      row?.notification_type
+      row?.notification_type ||
+      row?.title ||
+      row?.message ||
+      ""
   );
 
   if (raw.includes("temp")) return "temperature";
   if (raw.includes("ph")) return "ph";
   if (raw.includes("turb")) return "turbidity";
-  if (raw.includes("water") || raw.includes("level")) return "water_level";
+  if (raw.includes("water") || raw.includes("level") || raw.includes("depth")) {
+    return "water_level";
+  }
   if (raw.includes("ammonia")) return "ammonia";
-  if (raw.includes("market") || raw.includes("order")) return "marketplace";
+  if (
+    raw.includes("market") ||
+    raw.includes("order") ||
+    raw.includes("listing") ||
+    raw.includes("reservation")
+  ) {
+    return "marketplace";
+  }
 
-  return raw || "general";
+  return "general";
+}
+
+function getAlertDate(row) {
+  return row?.created_at || row?.updated_at || row?.timestamp || row?.date || "";
+}
+
+function getSeverityRank(severity) {
+  if (severity === "critical") return 1;
+  if (severity === "warning") return 2;
+  if (severity === "info") return 3;
+  return 4;
 }
 
 function getCategoryIcon(category) {
@@ -164,23 +230,91 @@ function uniqueRows(rows) {
       row?.created_at ||
       `row-${index}`;
 
-    map.set(id, row);
+    map.set(String(id), row);
   });
 
   return Array.from(map.values());
 }
 
-async function getCurrentUser() {
+async function getCurrentUserWithRole() {
   const { data } = await supabase.auth.getSession();
   const user = data?.session?.user;
 
+  if (!user) {
+    return {
+      id: "",
+      email: "",
+      role: "",
+      isAdmin: false,
+    };
+  }
+
+  let profile = null;
+
+  const byId = await supabase
+    .from("profiles")
+    .select("id,email,role")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (!byId.error && byId.data) {
+    profile = byId.data;
+  }
+
+  if (!profile && user.email) {
+    const byEmail = await supabase
+      .from("profiles")
+      .select("id,email,role")
+      .ilike("email", user.email)
+      .maybeSingle();
+
+    if (!byEmail.error && byEmail.data) {
+      profile = byEmail.data;
+    }
+  }
+
+  const role = lower(profile?.role);
+
   return {
-    id: user?.id || "",
-    email: user?.email || "",
+    id: user.id || "",
+    email: user.email || "",
+    role,
+    isAdmin: role === "admin",
   };
 }
 
-async function fetchRows(tableNames, userId, limit = 220) {
+async function fetchAdminRows(tableNames, limit = 500) {
+  for (const tableName of tableNames) {
+    const ordered = await supabase
+      .from(tableName)
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (!ordered.error && Array.isArray(ordered.data)) {
+      return {
+        rows: uniqueRows(ordered.data),
+        tableUsed: tableName,
+      };
+    }
+
+    const plain = await supabase.from(tableName).select("*").limit(limit);
+
+    if (!plain.error && Array.isArray(plain.data)) {
+      return {
+        rows: uniqueRows(plain.data),
+        tableUsed: tableName,
+      };
+    }
+  }
+
+  return {
+    rows: [],
+    tableUsed: tableNames[0],
+  };
+}
+
+async function fetchUserRows(tableNames, userId, limit = 300) {
   for (const tableName of tableNames) {
     const mergedRows = [];
     let successful = false;
@@ -244,9 +378,12 @@ function SummaryCard({ icon: Icon, label, value, helper, tone = "default" }) {
 export default function AlertsPage() {
   const [alerts, setAlerts] = useState([]);
   const [source, setSource] = useState("");
+  const [scopeLabel, setScopeLabel] = useState("User view");
   const [searchTerm, setSearchTerm] = useState("");
   const [severityFilter, setSeverityFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [alertsPage, setAlertsPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
 
   const loadAlerts = async () => {
@@ -258,17 +395,23 @@ export default function AlertsPage() {
     try {
       setIsLoading(true);
 
-      const currentUser = await getCurrentUser();
+      const currentUser = await getCurrentUserWithRole();
 
       if (!currentUser.id) {
         setAlerts([]);
+        setScopeLabel("No session");
         return;
       }
 
-      const result = await fetchRows(alertTables, currentUser.id);
+      const result = currentUser.isAdmin
+        ? await fetchAdminRows(alertTables)
+        : await fetchUserRows(alertTables, currentUser.id);
 
       setAlerts(result.rows);
       setSource(result.tableUsed);
+      setScopeLabel(
+        currentUser.isAdmin ? "Admin all-records view" : "User account view"
+      );
     } catch (error) {
       console.error("Alerts loading error:", error);
     } finally {
@@ -280,6 +423,10 @@ export default function AlertsPage() {
     loadAlerts();
   }, []);
 
+  useEffect(() => {
+    setAlertsPage(1);
+  }, [searchTerm, severityFilter, statusFilter, categoryFilter]);
+
   const enrichedAlerts = useMemo(() => {
     return alerts.map((alert, index) => {
       const severity = getAlertSeverity(alert);
@@ -287,7 +434,7 @@ export default function AlertsPage() {
       const category = getAlertCategory(alert);
       const title = getAlertTitle(alert, index);
       const message = getAlertMessage(alert);
-      const date = alert?.created_at || alert?.updated_at || alert?.timestamp || alert?.date;
+      const date = getAlertDate(alert);
 
       return {
         alert,
@@ -302,36 +449,78 @@ export default function AlertsPage() {
     });
   }, [alerts]);
 
-  const categories = useMemo(() => {
-    return Array.from(new Set(enrichedAlerts.map((item) => item.category))).filter(Boolean);
-  }, [enrichedAlerts]);
-
   const filteredAlerts = useMemo(() => {
-    return enrichedAlerts.filter((item) => {
+    const filtered = enrichedAlerts.filter((item) => {
       const search = searchTerm.trim().toLowerCase();
 
-      const matchesSearch =
-        !search ||
-        item.title.toLowerCase().includes(search) ||
-        item.message.toLowerCase().includes(search) ||
-        item.severity.toLowerCase().includes(search) ||
-        item.category.toLowerCase().includes(search);
+      const searchableText = [
+        item.title,
+        item.message,
+        item.severity,
+        item.status,
+        item.category,
+        getValue(item.alert, ["tank_name", "tank_id"], ""),
+        getValue(item.alert, ["value", "reading_value", "sensor_value"], ""),
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      const matchesSearch = !search || searchableText.includes(search);
 
       const matchesSeverity =
         severityFilter === "all" || item.severity === severityFilter;
 
+      const matchesStatus =
+        statusFilter === "all" || item.status === statusFilter;
+
       const matchesCategory =
         categoryFilter === "all" || item.category === categoryFilter;
 
-      return matchesSearch && matchesSeverity && matchesCategory;
+      return matchesSearch && matchesSeverity && matchesStatus && matchesCategory;
     });
-  }, [enrichedAlerts, searchTerm, severityFilter, categoryFilter]);
+
+    return filtered.sort((a, b) => {
+      const openRankA = a.status === "open" ? 0 : 1;
+      const openRankB = b.status === "open" ? 0 : 1;
+
+      if (openRankA !== openRankB) return openRankA - openRankB;
+
+      const severityDifference =
+        getSeverityRank(a.severity) - getSeverityRank(b.severity);
+
+      if (severityDifference !== 0) return severityDifference;
+
+      return new Date(b.date || 0) - new Date(a.date || 0);
+    });
+  }, [enrichedAlerts, searchTerm, severityFilter, statusFilter, categoryFilter]);
+
+  const totalAlertPages = Math.max(
+    1,
+    Math.ceil(filteredAlerts.length / ALERTS_PER_PAGE)
+  );
+
+  const currentAlertPage = Math.min(alertsPage, totalAlertPages);
+
+  const paginatedAlerts = filteredAlerts.slice(
+    (currentAlertPage - 1) * ALERTS_PER_PAGE,
+    currentAlertPage * ALERTS_PER_PAGE
+  );
+
+  const showingStart =
+    filteredAlerts.length === 0
+      ? 0
+      : (currentAlertPage - 1) * ALERTS_PER_PAGE + 1;
+
+  const showingEnd = Math.min(
+    currentAlertPage * ALERTS_PER_PAGE,
+    filteredAlerts.length
+  );
 
   const summary = useMemo(() => {
     const critical = enrichedAlerts.filter((item) => item.severity === "critical").length;
     const warning = enrichedAlerts.filter((item) => item.severity === "warning").length;
     const resolved = enrichedAlerts.filter((item) => item.status === "resolved").length;
-    const open = enrichedAlerts.filter((item) => item.status !== "resolved").length;
+    const open = enrichedAlerts.filter((item) => item.status === "open").length;
 
     return {
       total: enrichedAlerts.length,
@@ -342,9 +531,14 @@ export default function AlertsPage() {
     };
   }, [enrichedAlerts]);
 
-  const latestCritical = useMemo(() => {
-    return enrichedAlerts.find((item) => item.severity === "critical") || null;
+  const categories = useMemo(() => {
+    return Array.from(new Set(enrichedAlerts.map((item) => item.category))).filter(Boolean);
   }, [enrichedAlerts]);
+
+  const latestCritical =
+    enrichedAlerts.find(
+      (item) => item.status === "open" && item.severity === "critical"
+    ) || null;
 
   if (isLoading) {
     return (
@@ -363,8 +557,8 @@ export default function AlertsPage() {
           <p className="dashboard-eyebrow">Alerts Center</p>
           <h2>Review water risks before they become problems.</h2>
           <p>
-            Monitor critical warnings, sensor alerts, ammonia concerns, and
-            marketplace notifications from your CrayThrive account.
+            Monitor open alerts, resolved notifications, sensor warnings,
+            ammonia concerns, and marketplace notices in one alert center.
           </p>
 
           <div className="modern-alert-actions">
@@ -373,7 +567,9 @@ export default function AlertsPage() {
               Refresh Alerts
             </button>
 
-            <span>Source: {source || "alerts"}</span>
+            <span>
+              Source: {source || "alerts"} • {scopeLabel}
+            </span>
           </div>
         </div>
 
@@ -414,14 +610,14 @@ export default function AlertsPage() {
           icon={Clock3}
           label="Open"
           value={summary.open}
-          helper="Not yet resolved"
+          helper="Not yet resolved/read"
         />
 
         <SummaryCard
           icon={CheckCircle2}
           label="Resolved"
           value={summary.resolved}
-          helper="Already handled"
+          helper="Already handled/read"
           tone="success"
         />
       </section>
@@ -431,7 +627,7 @@ export default function AlertsPage() {
           <div className="modern-panel-heading">
             <div>
               <p className="dashboard-eyebrow">Priority Alert</p>
-              <h3>Most important item</h3>
+              <h3>Most important open item</h3>
             </div>
             <Siren size={22} />
           </div>
@@ -450,8 +646,8 @@ export default function AlertsPage() {
           ) : (
             <div className="modern-alert-empty-small">
               <ShieldCheck size={30} />
-              <strong>No critical alert</strong>
-              <span>Your system has no critical alert records right now.</span>
+              <strong>No critical open alert</strong>
+              <span>Your system has no critical open alert right now.</span>
             </div>
           )}
         </article>
@@ -501,7 +697,7 @@ export default function AlertsPage() {
         <div className="modern-alert-search">
           <Search size={18} />
           <input
-            placeholder="Search alert title, message, category, or severity..."
+            placeholder="Search alert title, message, tank, value, or status..."
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
           />
@@ -522,15 +718,26 @@ export default function AlertsPage() {
         </label>
 
         <label className="modern-alert-filter">
+          <Clock3 size={18} />
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value)}
+          >
+            <option value="all">All Status</option>
+            <option value="open">Open</option>
+            <option value="resolved">Resolved</option>
+          </select>
+        </label>
+
+        <label className="modern-alert-filter">
           <Database size={18} />
           <select
             value={categoryFilter}
             onChange={(event) => setCategoryFilter(event.target.value)}
           >
-            <option value="all">All Categories</option>
-            {categories.map((category) => (
-              <option key={category} value={category}>
-                {category.replace("_", " ")}
+            {categoryOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
               </option>
             ))}
           </select>
@@ -547,47 +754,86 @@ export default function AlertsPage() {
           </p>
         </section>
       ) : (
-        <section className="modern-alert-list">
-          {filteredAlerts.map((item) => {
-            const Icon = getCategoryIcon(item.category);
+        <section className="modern-alert-list-card">
+          <div className="modern-alert-list">
+            {paginatedAlerts.map((item) => {
+              const Icon = getCategoryIcon(item.category);
 
-            return (
-              <article className="modern-alert-card" key={item.alert?.id || item.index}>
-                <div className={`modern-alert-icon ${item.severity}`}>
-                  <Icon size={22} />
-                </div>
-
-                <div className="modern-alert-content">
-                  <div className="modern-alert-card-top">
-                    <div>
-                      <strong>{item.title}</strong>
-                      <span>{formatDate(item.date)}</span>
-                    </div>
-
-                    <div className="modern-alert-chip-row">
-                      <b className={`modern-alert-severity ${item.severity}`}>
-                        {item.severity}
-                      </b>
-
-                      <small className={`modern-alert-status ${item.status}`}>
-                        {item.status}
-                      </small>
-                    </div>
+              return (
+                <article className="modern-alert-card" key={item.alert?.id || item.index}>
+                  <div className={`modern-alert-icon ${item.severity}`}>
+                    <Icon size={22} />
                   </div>
 
-                  <p>{item.message}</p>
+                  <div className="modern-alert-content">
+                    <div className="modern-alert-card-top">
+                      <div>
+                        <strong>{item.title}</strong>
+                        <span>{formatDate(item.date)}</span>
+                      </div>
 
-                  <div className="modern-alert-meta">
-                    <span>Category: {item.category.replace("_", " ")}</span>
-                    <span>Tank: {getValue(item.alert, ["tank_name", "tank_id"], "N/A")}</span>
-                    <span>
-                      Value: {getValue(item.alert, ["value", "reading_value", "sensor_value"], "N/A")}
-                    </span>
+                      <div className="modern-alert-chip-row">
+                        <b className={`modern-alert-severity ${item.severity}`}>
+                          {item.severity}
+                        </b>
+
+                        <small className={`modern-alert-status ${item.status}`}>
+                          {item.status}
+                        </small>
+                      </div>
+                    </div>
+
+                    <p>{item.message}</p>
+
+                    <div className="modern-alert-meta">
+                      <span>Category: {item.category.replace("_", " ")}</span>
+                      <span>
+                        Tank: {getValue(item.alert, ["tank_name", "tank_id"], "N/A")}
+                      </span>
+                      <span>
+                        Value:{" "}
+                        {getValue(
+                          item.alert,
+                          ["value", "reading_value", "sensor_value"],
+                          "N/A"
+                        )}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              </article>
-            );
-          })}
+                </article>
+              );
+            })}
+          </div>
+
+          <div className="modern-alert-pagination">
+            <span>
+              Showing {showingStart}-{showingEnd} of {filteredAlerts.length}
+            </span>
+
+            <div>
+              <button
+                type="button"
+                disabled={currentAlertPage === 1}
+                onClick={() => setAlertsPage((page) => Math.max(1, page - 1))}
+              >
+                Previous
+              </button>
+
+              <strong>
+                Page {currentAlertPage} of {totalAlertPages}
+              </strong>
+
+              <button
+                type="button"
+                disabled={currentAlertPage === totalAlertPages}
+                onClick={() =>
+                  setAlertsPage((page) => Math.min(totalAlertPages, page + 1))
+                }
+              >
+                Next
+              </button>
+            </div>
+          </div>
         </section>
       )}
     </div>
