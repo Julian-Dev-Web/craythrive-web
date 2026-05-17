@@ -13,10 +13,11 @@ import {
   LineChart,
   LockKeyhole,
   MonitorCog,
-  ShieldCheck,
   ShoppingBag,
 } from "lucide-react";
 import { APP_INFO } from "../constants/theme";
+
+const APK_DOWNLOAD_URL = "/downloads/craythrive.apk";
 
 const previewStats = [
   {
@@ -184,6 +185,9 @@ export default function LandingPage() {
             <a href="#home">Home</a>
             <a href="#features">Features</a>
             <a href="#details">Details</a>
+            <a href={APK_DOWNLOAD_URL} download className="nav-login-pill">
+              Get App
+            </a>
             <Link to="/login" className="nav-login-pill">
               Login
             </Link>
@@ -192,8 +196,6 @@ export default function LandingPage() {
 
         <div className="app-hero-content">
           <div className="app-hero-copy">
-           
-
             <h1>
               MOBILE APP <br />
               FOR <span>CRAYFISH KEEPERS</span>
@@ -206,7 +208,7 @@ export default function LandingPage() {
             </p>
 
             <div className="hero-buttons">
-              <a href="#download" className="store-button">
+              <a href={APK_DOWNLOAD_URL} download className="store-button">
                 <Download size={18} />
                 Get Our Mobile App
               </a>
@@ -394,15 +396,23 @@ export default function LandingPage() {
 
       <section id="download" className="bottom-cta-app">
         <MonitorCog size={42} />
-        <h2>Ready to manage CrayThrive records?</h2>
+        <h2>Get the CrayThrive Android app.</h2>
         <p>
-          Login to continue to the protected web dashboard for tank monitoring,
-          reports, alerts, seller records, and marketplace history.
+          Download the Android APK to monitor tanks, view readings, manage
+          marketplace activity, and connect with the CrayThrive web dashboard.
         </p>
-        <Link to="/login" className="bottom-login-button">
-          Login
-          <ArrowRight size={18} />
-        </Link>
+
+        <div className="hero-buttons">
+          <a href={APK_DOWNLOAD_URL} download className="store-button">
+            <Download size={18} />
+            Download Android APK
+          </a>
+
+          <Link to="/login" className="learn-button">
+            Login to Web
+            <ArrowRight size={18} />
+          </Link>
+        </div>
       </section>
 
       <footer className="app-footer">
