@@ -11,9 +11,12 @@ import {
   Droplets,
   Gauge,
   Loader2,
+  Play,
+  Power,
   RefreshCw,
   Settings,
   Thermometer,
+  TimerReset,
   UserRound,
   Waves,
 } from "lucide-react";
@@ -416,6 +419,8 @@ export default function TankDetailsPage() {
   const [scopeLabel, setScopeLabel] = useState("User view");
   const [isLoading, setIsLoading] = useState(true);
   const [readingsPage, setReadingsPage] = useState(1);
+  const [isSendingCommand, setIsSendingCommand] = useState(false);
+  const [commandMessage, setCommandMessage] = useState("");
 
   const loadTankDetails = async () => {
     if (!isSupabaseConfigured || !supabase) {
@@ -459,6 +464,7 @@ export default function TankDetailsPage() {
             item?.uuid,
             item?.device_uid,
             item?.iot_device_id,
+            item?.actuator_device_uid,
           ]
             .filter(Boolean)
             .map((value) => String(value));
@@ -588,6 +594,74 @@ export default function TankDetailsPage() {
 
   const tankStatus = latestReading ? latestReading.status : "normal";
 
+  function getTankCommandDeviceUid() {
+    return (
+      tank?.actuator_device_uid ||
+      tank?.device_uid ||
+      tank?.iot_device_id ||
+      "CRAYTHRIVE-001"
+    );
+  }
+
+  async function sendDeviceCommand(commandType, durationMs = null) {
+    setCommandMessage("");
+
+    if (!isSupabaseConfigured || !supabase) {
+      setCommandMessage("Supabase is not configured.");
+      return;
+    }
+
+    if (!tank) {
+      setCommandMessage("No selected tank.");
+      return;
+    }
+
+    const commandDeviceUid = getTankCommandDeviceUid();
+    const commandTankId = String(tank?.id || tank?.tank_id || tankId || "");
+
+    if (!commandTankId || !commandDeviceUid) {
+      setCommandMessage("Missing tank ID or device UID.");
+      return;
+    }
+
+    try {
+      setIsSendingCommand(true);
+
+      const payload = {
+        tank_id: commandTankId,
+        device_uid: commandDeviceUid,
+        command_type: commandType,
+        status: "pending",
+        result_message: "Command sent from web dashboard.",
+      };
+
+      if (durationMs) {
+        payload.duration_ms = durationMs;
+      }
+
+      const { error } = await supabase.from("device_commands").insert(payload);
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      const label =
+        commandType === "feed_now"
+          ? "Feed Now"
+          : commandType === "fill_pump"
+            ? "Fill Pump"
+            : commandType === "drain_pump"
+              ? "Drain Pump"
+              : "Stop All";
+
+      setCommandMessage(`${label} command sent to actuator node.`);
+    } catch (error) {
+      setCommandMessage(error.message || "Failed to send device command.");
+    } finally {
+      setIsSendingCommand(false);
+    }
+  }
+
   if (isLoading) {
     return (
       <section className="modern-tank-loading">
@@ -628,7 +702,7 @@ export default function TankDetailsPage() {
           <h2>{getTankName(tank)}</h2>
           <p>
             Detailed view for latest sensor condition, reading history, ammonia
-            results, control logs, and tank alerts.
+            results, device controls, control logs, and tank alerts.
           </p>
 
           <div className="modern-tank-detail-actions">
@@ -666,7 +740,12 @@ export default function TankDetailsPage() {
 
         <article className="modern-tank-detail-info-card">
           <Camera size={22} />
-          <strong>{tank?.device_uid || tank?.iot_device_id || "N/A"}</strong>
+          <strong>
+            {tank?.actuator_device_uid ||
+              tank?.device_uid ||
+              tank?.iot_device_id ||
+              "N/A"}
+          </strong>
           <span>Device / IoT reference</span>
         </article>
 
@@ -675,6 +754,74 @@ export default function TankDetailsPage() {
           <strong>{formatReadingTime(latestReading?.date)}</strong>
           <span>Latest sensor sync</span>
         </article>
+      </section>
+
+      <section className="modern-tank-detail-panel">
+        <div className="modern-panel-heading">
+          <div>
+            <p className="dashboard-eyebrow">Device Controls</p>
+            <h3>Feeder and pump commands</h3>
+          </div>
+          <Settings size={22} />
+        </div>
+
+        <div className="modern-device-command-grid">
+          <button
+            type="button"
+            disabled={isSendingCommand}
+            onClick={() => sendDeviceCommand("feed_now")}
+          >
+            <Play size={20} />
+            <strong>Feed Now</strong>
+            <span>Send one safe feeding command</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={isSendingCommand}
+            onClick={() => sendDeviceCommand("fill_pump", 10000)}
+          >
+            <Droplets size={20} />
+            <strong>Fill Pump</strong>
+            <span>Run fill pump max 10 seconds</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={isSendingCommand}
+            onClick={() => sendDeviceCommand("drain_pump", 10000)}
+          >
+            <Waves size={20} />
+            <strong>Drain Pump</strong>
+            <span>Run drain pump max 10 seconds</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={isSendingCommand}
+            onClick={() => sendDeviceCommand("stop_all")}
+            className="danger"
+          >
+            <Power size={20} />
+            <strong>Stop All</strong>
+            <span>Stop pumps and return feeder to rest</span>
+          </button>
+        </div>
+
+        <div className="modern-device-command-note">
+          <TimerReset size={17} />
+          <span>
+            Commands are saved as pending in Supabase. The ESP32 actuator node
+            will poll and execute them automatically.
+          </span>
+        </div>
+
+        {commandMessage && (
+          <div className="modern-device-command-message">
+            <CheckCircle2 size={18} />
+            <span>{commandMessage}</span>
+          </div>
+        )}
       </section>
 
       <section className="modern-tank-detail-panel">

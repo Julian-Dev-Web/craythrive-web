@@ -1439,3 +1439,116 @@
   font-size: 0.84rem;
   font-weight: 900;
 }
+.modern-device-command-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.modern-device-command-grid button {
+  min-height: 150px;
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  padding: 18px;
+  text-align: left;
+  color: var(--ct-text);
+  border: 1px solid var(--ct-border);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at top right, rgba(0, 217, 199, 0.12), transparent 10rem),
+    var(--ct-surface-soft);
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+
+.modern-device-command-grid button:hover {
+  border-color: rgba(0, 217, 199, 0.34);
+  background:
+    radial-gradient(circle at top right, rgba(0, 217, 199, 0.18), transparent 10rem),
+    var(--ct-surface-soft);
+  transform: translateY(-2px);
+}
+
+.modern-device-command-grid button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+  transform: none;
+}
+
+.modern-device-command-grid button svg {
+  color: var(--ct-brand);
+}
+
+.modern-device-command-grid button strong {
+  color: var(--ct-text);
+  font-size: 1rem;
+  font-weight: 950;
+}
+
+.modern-device-command-grid button span {
+  color: var(--ct-muted);
+  line-height: 1.45;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.modern-device-command-grid button.danger svg {
+  color: var(--ct-danger);
+}
+
+.modern-device-command-grid button.danger:hover {
+  border-color: rgba(255, 92, 122, 0.35);
+  background:
+    radial-gradient(circle at top right, rgba(255, 92, 122, 0.12), transparent 10rem),
+    var(--ct-surface-soft);
+}
+
+.modern-device-command-note,
+.modern-device-command-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 13px 14px;
+  border: 1px solid var(--ct-border);
+  border-radius: 16px;
+  background: var(--ct-surface-soft);
+  color: var(--ct-muted);
+  font-size: 0.84rem;
+  font-weight: 850;
+  line-height: 1.5;
+}
+
+.modern-device-command-note svg {
+  color: var(--ct-warning);
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.modern-device-command-message {
+  color: var(--ct-text);
+  border-color: rgba(0, 217, 199, 0.25);
+  background: var(--ct-brand-soft);
+}
+
+.modern-device-command-message svg {
+  color: var(--ct-brand);
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+@media (max-width: 1180px) {
+  .modern-device-command-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .modern-device-command-grid {
+    grid-template-columns: 1fr;
+  }
+}
