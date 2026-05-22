@@ -168,6 +168,96 @@ function getReadingDate(reading) {
   );
 }
 
+function toNumberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+
+  const numberValue = Number(value);
+
+  return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function getReadingPhValue(reading) {
+  return toNumberOrNull(reading?.ph_value ?? reading?.ph);
+}
+
+function isSafePhStatus(status) {
+  const value = normalizeStatusText(status);
+
+  return (
+    value.includes("ideal") ||
+    value.includes("safe") ||
+    value.includes("normal")
+  );
+}
+
+function isUnsafePhStatus(status) {
+  const value = normalizeStatusText(status);
+
+  return (
+    value.includes("unsafe") ||
+    value.includes("critical") ||
+    value.includes("danger") ||
+    value.includes("high ph") ||
+    value.includes("low ph") ||
+    value.includes("high alkaline") ||
+    value.includes("low alkaline") ||
+    value.includes("acidic")
+  );
+}
+
+function isUnsafePhReading(reading) {
+  if (!reading) return false;
+
+  const phValue = getReadingPhValue(reading);
+  const phStatus = reading?.ph_status || "";
+
+  if (isSafePhStatus(phStatus)) return false;
+
+  if (phValue !== null && (phValue < 6.5 || phValue > 8.5)) {
+    return true;
+  }
+
+  return isUnsafePhStatus(phStatus);
+}
+
+function sortReadingsNewestFirst(readings = []) {
+  return [...readings].sort((a, b) => {
+    return new Date(getReadingDate(b)) - new Date(getReadingDate(a));
+  });
+}
+
+function pickStableLatestReading(readings = []) {
+  const sorted = sortReadingsNewestFirst(readings);
+
+  if (sorted.length === 0) return null;
+
+  const latest = sorted[0];
+
+  // If latest pH is safe or not pH-danger, use it normally.
+  if (!isUnsafePhReading(latest)) {
+    return latest;
+  }
+
+  // If latest pH is unsafe, require 3 consecutive unsafe pH readings.
+  // Example:
+  // 10.16, 7.50, 7.49 = spike only, use newest safe reading
+  // 10.16, 10.12, 10.15 = confirmed unsafe, use latest unsafe reading
+  const latestThree = sorted.slice(0, 3);
+
+  const confirmedUnsafePh =
+    latestThree.length >= 3 && latestThree.every(isUnsafePhReading);
+
+  if (confirmedUnsafePh) {
+    return latest;
+  }
+
+  const newestSafeReading = sorted.find((reading) => {
+    return !isUnsafePhReading(reading);
+  });
+
+  return newestSafeReading || latest;
+}
+
 function getLatestReadingForTank(tank, readings) {
   const tankKeys = getTankMatchKeys(tank);
 
@@ -176,9 +266,7 @@ function getLatestReadingForTank(tank, readings) {
     return readingKeys.some((key) => tankKeys.includes(key));
   });
 
-  return matched.sort(
-    (a, b) => new Date(getReadingDate(b)) - new Date(getReadingDate(a))
-  )[0] || null;
+  return pickStableLatestReading(matched);
 }
 
 function uniqueRows(rows) {
