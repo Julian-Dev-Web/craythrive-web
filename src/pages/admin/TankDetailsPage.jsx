@@ -15,10 +15,13 @@ import {
   Power,
   RefreshCw,
   Settings,
+  ShieldCheck,
   Thermometer,
   TimerReset,
   UserRound,
   Waves,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "../../lib/supabase";
 import {
@@ -30,7 +33,9 @@ const tankTables = ["tanks", "user_tanks", "tank_profiles"];
 const readingTables = ["sensor_readings", "tank_readings", "readings"];
 const ammoniaTables = ["ammonia_readings", "ammonia_results"];
 const alertTables = ["alerts", "notifications", "tank_alerts"];
-const controlLogTables = ["control_logs"];
+
+// device_commands first para makita command history ng actuator
+const controlLogTables = ["device_commands", "control_logs"];
 
 const READINGS_PER_PAGE = 5;
 
@@ -64,7 +69,10 @@ function getStatusSeverity(statuses) {
     joined.includes("high ph") ||
     joined.includes("low ph") ||
     joined.includes("warm") ||
-    joined.includes("cold")
+    joined.includes("cold") ||
+    joined.includes("failed") ||
+    joined.includes("rejected") ||
+    joined.includes("offline")
   ) {
     return "critical";
   }
@@ -74,7 +82,11 @@ function getStatusSeverity(statuses) {
     joined.includes("dirty") ||
     joined.includes("slightly") ||
     joined.includes("needs") ||
-    joined.includes("moderate")
+    joined.includes("moderate") ||
+    joined.includes("pending") ||
+    joined.includes("running") ||
+    joined.includes("stale") ||
+    joined.includes("setup")
   ) {
     return "warning";
   }
@@ -84,7 +96,10 @@ function getStatusSeverity(statuses) {
     joined.includes("safe") ||
     joined.includes("normal") ||
     joined.includes("clear") ||
-    joined.includes("measured")
+    joined.includes("measured") ||
+    joined.includes("done") ||
+    joined.includes("online") ||
+    joined.includes("connected")
   ) {
     return "normal";
   }
@@ -128,6 +143,10 @@ function getValue(row, keys, fallback = "N/A") {
 
 function getTankId(tank, index = 0) {
   return tank?.id || tank?.tank_id || tank?.uuid || `tank-${index}`;
+}
+
+function getPrimaryTankId(tank, routeTankId = "") {
+  return String(tank?.id || tank?.tank_id || tank?.uuid || routeTankId || "");
 }
 
 function getTankName(tank, index = 0) {
@@ -221,6 +240,64 @@ function uniqueRows(rows) {
   });
 
   return Array.from(map.values());
+}
+
+function getActuatorConnectionState(device) {
+  if (!device) {
+    return {
+      label: "Not connected",
+      severity: "critical",
+      icon: WifiOff,
+      isConnected: false,
+      detail: "No claimed actuator hub found for this tank.",
+    };
+  }
+
+  if (device.setup_mode) {
+    return {
+      label: "Setup mode",
+      severity: "warning",
+      icon: WifiOff,
+      isConnected: false,
+      detail: "Actuator is currently in WiFi setup mode.",
+    };
+  }
+
+  const rawStatus = lower(device.connection_status);
+  const lastSeenValue = device.last_seen || device.updated_at || device.created_at;
+  const lastSeenDate = lastSeenValue ? new Date(lastSeenValue) : null;
+  const isLastSeenValid = lastSeenDate && !Number.isNaN(lastSeenDate.getTime());
+  const minutesSinceSeen = isLastSeenValid
+    ? (Date.now() - lastSeenDate.getTime()) / 60000
+    : null;
+
+  if (rawStatus.includes("offline")) {
+    return {
+      label: "Offline",
+      severity: "critical",
+      icon: WifiOff,
+      isConnected: false,
+      detail: `Last seen: ${formatDate(lastSeenValue)}`,
+    };
+  }
+
+  if (minutesSinceSeen !== null && minutesSinceSeen > 3) {
+    return {
+      label: "Connected but stale",
+      severity: "warning",
+      icon: Wifi,
+      isConnected: false,
+      detail: `Last seen: ${formatDate(lastSeenValue)}`,
+    };
+  }
+
+  return {
+    label: "Connected",
+    severity: "normal",
+    icon: Wifi,
+    isConnected: true,
+    detail: `Device UID: ${device.device_uid || "N/A"}`,
+  };
 }
 
 async function getCurrentUserWithRole() {
@@ -378,6 +455,92 @@ async function fetchProfiles(currentUser) {
   };
 }
 
+async function fetchActuatorDeviceForTank(selectedTank, routeTankId) {
+  if (!selectedTank) return null;
+
+  const commandTankId = getPrimaryTankId(selectedTank, routeTankId);
+  const actuatorUidFromTank =
+    selectedTank?.actuator_device_uid ||
+    selectedTank?.actuator_uid ||
+    selectedTank?.actuator_device ||
+    "";
+
+  if (actuatorUidFromTank) {
+    const byUid = await supabase
+      .from("iot_devices")
+      .select("*")
+      .eq("device_uid", actuatorUidFromTank)
+      .eq("device_type", "actuator_hub")
+      .maybeSingle();
+
+    if (!byUid.error && byUid.data) {
+      return byUid.data;
+    }
+  }
+
+  if (commandTankId) {
+    const byTank = await supabase
+      .from("iot_devices")
+      .select("*")
+      .eq("tank_id", commandTankId)
+      .eq("device_type", "actuator_hub")
+      .eq("is_claimed", true)
+      .order("updated_at", { ascending: false })
+      .limit(1);
+
+    if (!byTank.error && Array.isArray(byTank.data) && byTank.data.length > 0) {
+      return byTank.data[0];
+    }
+  }
+
+  const ownerId = getTankOwnerId(selectedTank);
+
+  if (ownerId) {
+    const byOwner = await supabase
+      .from("iot_devices")
+      .select("*")
+      .eq("user_id", ownerId)
+      .eq("device_type", "actuator_hub")
+      .eq("is_claimed", true)
+      .order("updated_at", { ascending: false })
+      .limit(10);
+
+    if (!byOwner.error && Array.isArray(byOwner.data)) {
+      const tankKeys = getTankMatchKeys(selectedTank);
+
+      return (
+        byOwner.data.find((device) =>
+          [device?.tank_id, device?.device_uid, device?.id]
+            .filter(Boolean)
+            .map(String)
+            .some((key) => tankKeys.includes(key))
+        ) || byOwner.data[0] || null
+      );
+    }
+  }
+
+  return null;
+}
+
+async function fetchActiveCommandsForActuator(selectedTank, actuatorDevice, routeTankId) {
+  if (!selectedTank || !actuatorDevice?.device_uid) return [];
+
+  const commandTankId = getPrimaryTankId(selectedTank, routeTankId);
+
+  const { data, error } = await supabase
+    .from("device_commands")
+    .select("*")
+    .eq("tank_id", commandTankId)
+    .eq("device_uid", actuatorDevice.device_uid)
+    .in("command_status", ["pending", "running"])
+    .order("created_at", { ascending: false })
+    .limit(10);
+
+  if (error || !Array.isArray(data)) return [];
+
+  return data;
+}
+
 function DetailMetricCard({ icon: Icon, label, value, status }) {
   const severity = getStatusSeverity([status]);
 
@@ -409,18 +572,22 @@ function EmptyBlock({ icon: Icon, title, text }) {
 export default function TankDetailsPage() {
   const { tankId } = useParams();
 
+  const [currentUser, setCurrentUser] = useState(null);
   const [tank, setTank] = useState(null);
   const [profiles, setProfiles] = useState([]);
   const [readings, setReadings] = useState([]);
   const [ammoniaReadings, setAmmoniaReadings] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [controlLogs, setControlLogs] = useState([]);
+  const [actuatorDevice, setActuatorDevice] = useState(null);
+  const [activeCommands, setActiveCommands] = useState([]);
   const [sources, setSources] = useState({});
   const [scopeLabel, setScopeLabel] = useState("User view");
   const [isLoading, setIsLoading] = useState(true);
   const [readingsPage, setReadingsPage] = useState(1);
   const [isSendingCommand, setIsSendingCommand] = useState(false);
   const [commandMessage, setCommandMessage] = useState("");
+  const [durationSeconds, setDurationSeconds] = useState("10");
 
   const loadTankDetails = async () => {
     if (!isSupabaseConfigured || !supabase) {
@@ -431,10 +598,13 @@ export default function TankDetailsPage() {
     try {
       setIsLoading(true);
 
-      const currentUser = await getCurrentUserWithRole();
+      const loadedUser = await getCurrentUserWithRole();
+      setCurrentUser(loadedUser);
 
-      if (!currentUser.id) {
+      if (!loadedUser.id) {
         setTank(null);
+        setActuatorDevice(null);
+        setActiveCommands([]);
         setScopeLabel("No session");
         return;
       }
@@ -447,12 +617,12 @@ export default function TankDetailsPage() {
         logResult,
         profileResult,
       ] = await Promise.all([
-        fetchRowsByScope(tankTables, currentUser, 400),
-        fetchRowsByScope(readingTables, currentUser, 400),
-        fetchRowsByScope(ammoniaTables, currentUser, 300),
-        fetchRowsByScope(alertTables, currentUser, 300),
-        fetchRowsByScope(controlLogTables, currentUser, 300),
-        fetchProfiles(currentUser),
+        fetchRowsByScope(tankTables, loadedUser, 400),
+        fetchRowsByScope(readingTables, loadedUser, 400),
+        fetchRowsByScope(ammoniaTables, loadedUser, 300),
+        fetchRowsByScope(alertTables, loadedUser, 300),
+        fetchRowsByScope(controlLogTables, loadedUser, 300),
+        fetchProfiles(loadedUser),
       ]);
 
       const selectedTank =
@@ -475,7 +645,17 @@ export default function TankDetailsPage() {
       setTank(selectedTank);
       setProfiles(profileResult.rows);
 
+      let loadedActuator = null;
+      let loadedActiveCommands = [];
+
       if (selectedTank) {
+        loadedActuator = await fetchActuatorDeviceForTank(selectedTank, tankId);
+        loadedActiveCommands = await fetchActiveCommandsForActuator(
+          selectedTank,
+          loadedActuator,
+          tankId
+        );
+
         setReadings(
           readingResult.rows
             .filter((row) => recordMatchesTank(row, selectedTank))
@@ -506,6 +686,9 @@ export default function TankDetailsPage() {
         setControlLogs([]);
       }
 
+      setActuatorDevice(loadedActuator);
+      setActiveCommands(loadedActiveCommands);
+
       setSources({
         tanks: tankResult.tableUsed,
         readings: readingResult.tableUsed,
@@ -513,10 +696,11 @@ export default function TankDetailsPage() {
         alerts: alertResult.tableUsed,
         logs: logResult.tableUsed,
         profiles: profileResult.tableUsed,
+        actuator: "iot_devices",
       });
 
       setScopeLabel(
-        currentUser.isAdmin ? "Admin all-records view" : "User account view"
+        loadedUser.isAdmin ? "Admin all-records view" : "User account view"
       );
     } catch (error) {
       console.error("Tank details loading error:", error);
@@ -593,17 +777,21 @@ export default function TankDetailsPage() {
   );
 
   const tankStatus = latestReading ? latestReading.status : "normal";
+  const actuatorState = getActuatorConnectionState(actuatorDevice);
+  const ActuatorIcon = actuatorState.icon;
+  const hasActiveCommand = activeCommands.length > 0;
 
-  function getTankCommandDeviceUid() {
-    return (
-      tank?.actuator_device_uid ||
-      tank?.device_uid ||
-      tank?.iot_device_id ||
-      "CRAYTHRIVE-001"
-    );
+  function getCommandDurationMs() {
+    const seconds = Number(durationSeconds);
+
+    if (!Number.isFinite(seconds) || seconds <= 0) {
+      return 5000;
+    }
+
+    return Math.min(seconds, 15) * 1000;
   }
 
-  async function sendDeviceCommand(commandType, durationMs = null) {
+  async function sendDeviceCommand(commandType, durationMs = 0) {
     setCommandMessage("");
 
     if (!isSupabaseConfigured || !supabase) {
@@ -616,28 +804,56 @@ export default function TankDetailsPage() {
       return;
     }
 
-    const commandDeviceUid = getTankCommandDeviceUid();
-    const commandTankId = String(tank?.id || tank?.tank_id || tankId || "");
-
-    if (!commandTankId || !commandDeviceUid) {
-      setCommandMessage("Missing tank ID or device UID.");
+    if (!actuatorDevice?.device_uid) {
+      setCommandMessage(
+        "No connected actuator hub found. Pair the actuator ESP32 to this tank in the mobile app first."
+      );
       return;
     }
+
+    if (!actuatorState.isConnected && commandType !== "STOP_ALL") {
+      setCommandMessage(
+        "Actuator is not currently online. Refresh or check ESP32 power/WiFi before sending commands."
+      );
+      return;
+    }
+
+    if (hasActiveCommand && commandType !== "STOP_ALL") {
+      setCommandMessage(
+        "There is already a pending/running actuator command. Use Stop All or wait until it finishes."
+      );
+      return;
+    }
+
+    const commandTankId = getPrimaryTankId(tank, tankId);
+    const commandUserId =
+      actuatorDevice?.user_id || getTankOwnerId(tank) || currentUser?.id || "";
+
+    if (!commandTankId || !commandUserId) {
+      setCommandMessage("Missing tank ID or user ID.");
+      return;
+    }
+
+    const commandValueMap = {
+      FEED_ONCE: "once",
+      DRAIN_FOR: "on",
+      REFILL_FOR: "on",
+      STOP_ALL: "stop",
+    };
 
     try {
       setIsSendingCommand(true);
 
       const payload = {
+        user_id: commandUserId,
         tank_id: commandTankId,
-        device_uid: commandDeviceUid,
+        device_uid: actuatorDevice.device_uid,
         command_type: commandType,
-        status: "pending",
-        result_message: "Command sent from web dashboard.",
+        command_value: commandValueMap[commandType] || "manual",
+        duration_ms: durationMs || 0,
+        command_status: "pending",
+        result_message: "Command queued from web dashboard.",
       };
-
-      if (durationMs) {
-        payload.duration_ms = durationMs;
-      }
 
       const { error } = await supabase.from("device_commands").insert(payload);
 
@@ -646,15 +862,16 @@ export default function TankDetailsPage() {
       }
 
       const label =
-        commandType === "feed_now"
-          ? "Feed Now"
-          : commandType === "fill_pump"
-            ? "Fill Pump"
-            : commandType === "drain_pump"
+        commandType === "FEED_ONCE"
+          ? "Feed Once"
+          : commandType === "REFILL_FOR"
+            ? "Refill Pump"
+            : commandType === "DRAIN_FOR"
               ? "Drain Pump"
               : "Stop All";
 
-      setCommandMessage(`${label} command sent to actuator node.`);
+      setCommandMessage(`${label} command sent to actuator hub.`);
+      await loadTankDetails();
     } catch (error) {
       setCommandMessage(error.message || "Failed to send device command.");
     } finally {
@@ -702,7 +919,7 @@ export default function TankDetailsPage() {
           <h2>{getTankName(tank)}</h2>
           <p>
             Detailed view for latest sensor condition, reading history, ammonia
-            results, device controls, control logs, and tank alerts.
+            results, actuator controls, command logs, and tank alerts.
           </p>
 
           <div className="modern-tank-detail-actions">
@@ -741,18 +958,35 @@ export default function TankDetailsPage() {
         <article className="modern-tank-detail-info-card">
           <Camera size={22} />
           <strong>
-            {tank?.actuator_device_uid ||
+            {actuatorDevice?.device_uid ||
+              tank?.actuator_device_uid ||
               tank?.device_uid ||
               tank?.iot_device_id ||
               "N/A"}
           </strong>
-          <span>Device / IoT reference</span>
+          <span>Actuator / IoT reference</span>
         </article>
 
         <article className="modern-tank-detail-info-card">
           <Activity size={22} />
           <strong>{formatReadingTime(latestReading?.date)}</strong>
           <span>Latest sensor sync</span>
+        </article>
+
+        <article className="modern-tank-detail-info-card">
+          <ActuatorIcon size={22} />
+          <strong>
+            <b className={`modern-tank-status ${actuatorState.severity}`}>
+              {actuatorState.label}
+            </b>
+          </strong>
+          <span>{actuatorState.detail}</span>
+        </article>
+
+        <article className="modern-tank-detail-info-card">
+          <ShieldCheck size={22} />
+          <strong>{hasActiveCommand ? activeCommands.length : "None"}</strong>
+          <span>Pending / running actuator commands</span>
         </article>
       </section>
 
@@ -765,56 +999,106 @@ export default function TankDetailsPage() {
           <Settings size={22} />
         </div>
 
+        <div className="modern-device-command-note">
+          <TimerReset size={17} />
+          <span>
+            Actuator status:{" "}
+            <b className={`modern-tank-status ${actuatorState.severity}`}>
+              {actuatorState.label}
+            </b>
+            {" "}• Commands are inserted into Supabase and executed by the ESP32
+            after rule-based safety checks.
+          </span>
+        </div>
+
+        <div className="modern-device-command-note">
+          <Gauge size={17} />
+          <span>
+            Pump duration:
+            <input
+              type="number"
+              min="1"
+              max="15"
+              value={durationSeconds}
+              onChange={(event) => setDurationSeconds(event.target.value)}
+              style={{
+                width: 80,
+                marginLeft: 10,
+                marginRight: 6,
+                padding: "6px 8px",
+                borderRadius: 8,
+                border: "1px solid #d1d5db",
+              }}
+            />
+            seconds. ESP32 safety limit is 15 seconds.
+          </span>
+        </div>
+
         <div className="modern-device-command-grid">
           <button
             type="button"
-            disabled={isSendingCommand}
-            onClick={() => sendDeviceCommand("feed_now")}
+            disabled={
+              isSendingCommand ||
+              !actuatorState.isConnected ||
+              hasActiveCommand
+            }
+            onClick={() => sendDeviceCommand("FEED_ONCE", 500)}
           >
             <Play size={20} />
-            <strong>Feed Now</strong>
-            <span>Send one safe feeding command</span>
+            <strong>Feed Once</strong>
+            <span>Servo feeder one safe cycle</span>
           </button>
 
           <button
             type="button"
-            disabled={isSendingCommand}
-            onClick={() => sendDeviceCommand("fill_pump", 10000)}
+            disabled={
+              isSendingCommand ||
+              !actuatorState.isConnected ||
+              hasActiveCommand
+            }
+            onClick={() => sendDeviceCommand("REFILL_FOR", getCommandDurationMs())}
           >
             <Droplets size={20} />
-            <strong>Fill Pump</strong>
-            <span>Run fill pump max 10 seconds</span>
+            <strong>Refill Pump</strong>
+            <span>Run refill pump with water-level safety</span>
           </button>
 
           <button
             type="button"
-            disabled={isSendingCommand}
-            onClick={() => sendDeviceCommand("drain_pump", 10000)}
+            disabled={
+              isSendingCommand ||
+              !actuatorState.isConnected ||
+              hasActiveCommand
+            }
+            onClick={() => sendDeviceCommand("DRAIN_FOR", getCommandDurationMs())}
           >
             <Waves size={20} />
             <strong>Drain Pump</strong>
-            <span>Run drain pump max 10 seconds</span>
+            <span>Run drain pump only if water level is safe</span>
           </button>
 
           <button
             type="button"
-            disabled={isSendingCommand}
-            onClick={() => sendDeviceCommand("stop_all")}
+            disabled={isSendingCommand || !actuatorDevice?.device_uid}
+            onClick={() => sendDeviceCommand("STOP_ALL", 0)}
             className="danger"
           >
             <Power size={20} />
             <strong>Stop All</strong>
-            <span>Stop pumps and return feeder to rest</span>
+            <span>Emergency stop for pumps and feeder</span>
           </button>
         </div>
 
-        <div className="modern-device-command-note">
-          <TimerReset size={17} />
-          <span>
-            Commands are saved as pending in Supabase. The ESP32 actuator node
-            will poll and execute them automatically.
-          </span>
-        </div>
+        {hasActiveCommand && (
+          <div className="modern-device-command-message">
+            <AlertTriangle size={18} />
+            <span>
+              Active command found:{" "}
+              {activeCommands[0]?.command_type || "Unknown command"} /{" "}
+              {activeCommands[0]?.command_status || "pending"}.
+            </span>
+          </div>
+        )}
 
         {commandMessage && (
           <div className="modern-device-command-message">
@@ -983,7 +1267,14 @@ export default function TankDetailsPage() {
                   <b>
                     {getValue(
                       item,
-                      ["ammonia_ppm", "ammonia_value", "value", "ppm"],
+                      [
+                        "ammonia_mg_l",
+                        "ammonia_level",
+                        "ammonia_ppm",
+                        "ammonia_value",
+                        "value",
+                        "ppm",
+                      ],
                       "N/A"
                     )}
                   </b>
@@ -1064,24 +1355,37 @@ export default function TankDetailsPage() {
             />
           ) : (
             <div className="modern-tank-detail-list">
-              {controlLogs.slice(0, 8).map((item, index) => (
-                <div className="modern-tank-detail-list-row" key={item?.id || index}>
-                  <div>
-                    <strong>
-                      {getValue(
-                        item,
-                        ["action", "control_action", "command", "type"],
-                        `Control Log ${index + 1}`
-                      )}
-                    </strong>
-                    <span>{formatDate(getRecordDate(item))}</span>
-                  </div>
+              {controlLogs.slice(0, 8).map((item, index) => {
+                const status = getValue(
+                  item,
+                  ["command_status", "status", "result", "state"],
+                  "Logged"
+                );
 
-                  <b>
-                    {getValue(item, ["status", "result", "state"], "Logged")}
-                  </b>
-                </div>
-              ))}
+                const severity = getStatusSeverity([status]);
+
+                return (
+                  <div className="modern-tank-detail-list-row" key={item?.id || index}>
+                    <div>
+                      <strong>
+                        {getValue(
+                          item,
+                          ["command_type", "action", "control_action", "command", "type"],
+                          `Control Log ${index + 1}`
+                        )}
+                      </strong>
+                      <span>
+                        {formatDate(getRecordDate(item))}
+                        {item?.result_message ? ` • ${item.result_message}` : ""}
+                      </span>
+                    </div>
+
+                    <b className={`modern-tank-status ${severity}`}>
+                      {status}
+                    </b>
+                  </div>
+                );
+              })}
             </div>
           )}
         </article>

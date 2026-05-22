@@ -1552,3 +1552,133 @@
     grid-template-columns: 1fr;
   }
 }
+/* =========================================
+   ACTUATOR CONTROLS ADD-ON FOR TANK DETAILS
+   Paste at the bottom of tanks.css
+========================================= */
+
+/* Actuator status card polish */
+.modern-tank-detail-info-card .modern-tank-status {
+  width: fit-content;
+  margin-top: 2px;
+}
+
+/* Normal connected badge */
+.modern-tank-status.normal {
+  color: #04191d;
+  background: var(--ct-brand);
+}
+
+/* Warning actuator state */
+.modern-tank-status.warning {
+  color: #04191d;
+  background: var(--ct-warning);
+}
+
+/* Critical/offline actuator state */
+.modern-tank-status.critical {
+  color: white;
+  background: var(--ct-danger);
+}
+
+/* Device command notes spacing */
+.modern-device-command-note + .modern-device-command-note {
+  margin-top: 10px;
+}
+
+.modern-device-command-note b.modern-tank-status {
+  margin: 0 4px;
+}
+
+/* Pump duration input inside note */
+.modern-device-command-note input {
+  width: 82px;
+  min-height: 34px;
+  margin: 0 6px 0 10px;
+  padding: 6px 9px;
+  color: var(--ct-text);
+  border: 1px solid var(--ct-border);
+  border-radius: 10px;
+  outline: none;
+  background: var(--ct-surface);
+  font-weight: 900;
+}
+
+.modern-device-command-note input:focus {
+  border-color: rgba(0, 217, 199, 0.42);
+  box-shadow: 0 0 0 3px rgba(0, 217, 199, 0.12);
+}
+
+/* Space between notes and command buttons */
+.modern-device-command-grid {
+  margin-top: 16px;
+}
+
+/* Better disabled style */
+.modern-device-command-grid button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+  transform: none;
+  filter: grayscale(0.2);
+}
+
+/* Stop all button always visually urgent */
+.modern-device-command-grid button.danger {
+  border-color: rgba(255, 92, 122, 0.24);
+}
+
+.modern-device-command-grid button.danger strong {
+  color: var(--ct-text);
+}
+
+.modern-device-command-grid button.danger span {
+  color: var(--ct-muted);
+}
+
+/* Active command / message style */
+.modern-device-command-message {
+  margin-top: 14px;
+}
+
+.modern-device-command-message .modern-tank-status {
+  margin: 0 4px;
+}
+
+/* Make command history result text readable */
+.modern-tank-detail-list-row .modern-tank-status {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* More readable long command result messages */
+.modern-tank-detail-list-row span {
+  word-break: break-word;
+}
+
+/* Actuator icon cards should not overflow long device UID */
+.modern-tank-detail-info-card strong,
+.modern-tank-detail-info-card span {
+  overflow-wrap: anywhere;
+}
+
+/* Responsive polish for 6 info cards */
+@media (max-width: 1180px) {
+  .modern-tank-detail-info-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .modern-device-command-note {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .modern-device-command-note input {
+    margin-left: 0;
+  }
+
+  .modern-tank-detail-info-grid {
+    grid-template-columns: 1fr;
+  }
+}
