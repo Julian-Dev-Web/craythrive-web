@@ -13,7 +13,6 @@ import {
   RefreshCw,
   ShoppingBag,
   Thermometer,
-  UsersRound,
   Waves,
 } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "../../lib/supabase";
@@ -24,7 +23,6 @@ import {
 } from "../../utils/sensorReadingUtils";
 
 const tableGroups = {
-  profiles: ["profiles"],
   tanks: ["tanks", "user_tanks", "tank_profiles"],
   readings: ["sensor_readings", "tank_readings", "readings"],
   alerts: ["alerts", "notifications", "tank_alerts"],
@@ -237,26 +235,6 @@ function getRecordDate(row) {
   return row?.created_at || row?.updated_at || row?.timestamp || row?.date || "";
 }
 
-function getProfileName(profile) {
-  return (
-    profile?.username ||
-    profile?.full_name ||
-    profile?.first_name ||
-    profile?.email ||
-    "User"
-  );
-}
-
-function getTankName(tank, index) {
-  return (
-    tank?.name ||
-    tank?.tank_name ||
-    tank?.title ||
-    tank?.label ||
-    `Tank ${index + 1}`
-  );
-}
-
 function getListingTitle(listing, index) {
   return (
     listing?.title ||
@@ -311,7 +289,7 @@ function uniqueRows(rows) {
   return Array.from(map.values());
 }
 
-async function getCurrentUserWithRole() {
+async function getCurrentUser() {
   const { data } = await supabase.auth.getSession();
   const user = data?.session?.user;
 
@@ -319,73 +297,12 @@ async function getCurrentUserWithRole() {
     return {
       id: "",
       email: "",
-      role: "",
-      isAdmin: false,
     };
   }
-
-  let profile = null;
-
-  const byId = await supabase
-    .from("profiles")
-    .select("id,email,role")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (!byId.error && byId.data) {
-    profile = byId.data;
-  }
-
-  if (!profile && user.email) {
-    const byEmail = await supabase
-      .from("profiles")
-      .select("id,email,role")
-      .ilike("email", user.email)
-      .maybeSingle();
-
-    if (!byEmail.error && byEmail.data) {
-      profile = byEmail.data;
-    }
-  }
-
-  const role = lower(profile?.role);
 
   return {
     id: user.id || "",
     email: user.email || "",
-    role,
-    isAdmin: role === "admin",
-  };
-}
-
-async function fetchAdminRows(tableNames, limit = 300) {
-  for (const tableName of tableNames) {
-    const ordered = await supabase
-      .from(tableName)
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(limit);
-
-    if (!ordered.error && Array.isArray(ordered.data)) {
-      return {
-        rows: uniqueRows(ordered.data),
-        tableUsed: tableName,
-      };
-    }
-
-    const plain = await supabase.from(tableName).select("*").limit(limit);
-
-    if (!plain.error && Array.isArray(plain.data)) {
-      return {
-        rows: uniqueRows(plain.data),
-        tableUsed: tableName,
-      };
-    }
-  }
-
-  return {
-    rows: [],
-    tableUsed: tableNames[0],
   };
 }
 
@@ -434,14 +351,6 @@ async function fetchUserRows(tableNames, userId, limit = 220) {
   };
 }
 
-async function fetchRowsByScope(tableNames, currentUser, limit = 250) {
-  if (currentUser.isAdmin) {
-    return fetchAdminRows(tableNames, limit);
-  }
-
-  return fetchUserRows(tableNames, currentUser.id, limit);
-}
-
 function averageFromReadings(enrichedReadings, key) {
   const values = enrichedReadings
     .map((item) => toNumberOrNull(item.normalized[key]))
@@ -488,7 +397,6 @@ function MiniBar({ label, value, max, tone = "default" }) {
 
 export default function DashboardOverview() {
   const [datasets, setDatasets] = useState({
-    profiles: [],
     tanks: [],
     readings: [],
     alerts: [],
@@ -497,7 +405,7 @@ export default function DashboardOverview() {
   });
 
   const [sources, setSources] = useState({});
-  const [scopeLabel, setScopeLabel] = useState("User view");
+  const [scopeLabel, setScopeLabel] = useState("Your Dashboard");
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
 
@@ -510,11 +418,10 @@ export default function DashboardOverview() {
     try {
       setIsLoading(true);
 
-      const currentUser = await getCurrentUserWithRole();
+      const currentUser = await getCurrentUser();
 
       if (!currentUser.id) {
         setDatasets({
-          profiles: [],
           tanks: [],
           readings: [],
           alerts: [],
@@ -525,20 +432,16 @@ export default function DashboardOverview() {
         return;
       }
 
-      const [profiles, tanks, readings, alerts, listings, orders] =
-        await Promise.all([
-          currentUser.isAdmin
-            ? fetchAdminRows(tableGroups.profiles, 300)
-            : fetchUserRows(tableGroups.profiles, currentUser.id, 1),
-          fetchRowsByScope(tableGroups.tanks, currentUser, 300),
-          fetchRowsByScope(tableGroups.readings, currentUser, 300),
-          fetchRowsByScope(tableGroups.alerts, currentUser, 300),
-          fetchRowsByScope(tableGroups.listings, currentUser, 300),
-          fetchRowsByScope(tableGroups.orders, currentUser, 300),
-        ]);
+      // Fetch ONLY data that belongs to the logged-in user
+      const [tanks, readings, alerts, listings, orders] = await Promise.all([
+        fetchUserRows(tableGroups.tanks, currentUser.id, 300),
+        fetchUserRows(tableGroups.readings, currentUser.id, 300),
+        fetchUserRows(tableGroups.alerts, currentUser.id, 300),
+        fetchUserRows(tableGroups.listings, currentUser.id, 300),
+        fetchUserRows(tableGroups.orders, currentUser.id, 300),
+      ]);
 
       setDatasets({
-        profiles: profiles.rows,
         tanks: tanks.rows,
         readings: readings.rows,
         alerts: alerts.rows,
@@ -547,7 +450,6 @@ export default function DashboardOverview() {
       });
 
       setSources({
-        profiles: profiles.tableUsed,
         tanks: tanks.tableUsed,
         readings: readings.tableUsed,
         alerts: alerts.tableUsed,
@@ -555,9 +457,7 @@ export default function DashboardOverview() {
         orders: orders.tableUsed,
       });
 
-      setScopeLabel(
-        currentUser.isAdmin ? "Admin all-records view" : "User account view"
-      );
+      setScopeLabel("Your account view");
       setLastUpdated(new Date());
     } catch (error) {
       console.error("Dashboard loading error:", error);
@@ -633,7 +533,6 @@ export default function DashboardOverview() {
     ).length;
 
     return {
-      totalUsers: datasets.profiles.length,
       totalTanks: datasets.tanks.length,
       activeAlerts,
       criticalAlerts,
@@ -651,11 +550,6 @@ export default function DashboardOverview() {
   const avgWaterDepth = averageFromReadings(enrichedReadings, "waterValue");
 
   const activityBars = [
-    {
-      label: "Users",
-      value: stats.totalUsers,
-      tone: "default",
-    },
     {
       label: "Tanks",
       value: stats.totalTanks,
@@ -753,10 +647,10 @@ export default function DashboardOverview() {
     <div className="modern-overview-page">
       <section className="modern-overview-hero">
         <div>
-          <p className="dashboard-eyebrow">CrayThrive Admin Overview</p>
+          <p className="dashboard-eyebrow">CrayThrive Dashboard</p>
           <h2>A smarter look at your crayfish system.</h2>
           <p>
-            Monitor users, tanks, IoT sensor statuses, alerts, marketplace
+            Monitor your tanks, IoT sensor statuses, alerts, marketplace
             listings, and reservations from one clean web dashboard.
           </p>
 
@@ -795,13 +689,6 @@ export default function DashboardOverview() {
       </section>
 
       <section className="modern-overview-stat-grid">
-        <StatCard
-          icon={UsersRound}
-          label="Total Users"
-          value={formatNumber(stats.totalUsers)}
-          helper={`Source: ${sources.profiles || "profiles"}`}
-        />
-
         <StatCard
           icon={Droplets}
           label="Total Tanks"

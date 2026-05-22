@@ -37,101 +37,6 @@ export function normalizeStatus(value) {
     .trim();
 }
 
-export function normalizeStatusUpper(value) {
-  return normalizeStatus(value).toUpperCase();
-}
-
-export function getReadingDate(reading) {
-  return (
-    reading?.created_at ||
-    reading?.timestamp ||
-    reading?.date ||
-    reading?.updated_at ||
-    ""
-  );
-}
-
-export function sortReadingsNewestFirst(readings = []) {
-  return [...(readings || [])].sort((a, b) => {
-    return new Date(getReadingDate(b)) - new Date(getReadingDate(a));
-  });
-}
-
-export function getReadingPhValue(reading) {
-  return toNumberOrNull(getFirstValue(reading?.ph_value, reading?.ph));
-}
-
-export function isSafePhStatus(status) {
-  const value = normalizeStatusUpper(status);
-
-  return (
-    value.includes("IDEAL") ||
-    value.includes("SAFE") ||
-    value.includes("NORMAL")
-  );
-}
-
-export function isUnsafePhStatus(status) {
-  const value = normalizeStatusUpper(status);
-
-  return (
-    value.includes("UNSAFE") ||
-    value.includes("CRITICAL") ||
-    value.includes("DANGER") ||
-    value.includes("HIGH PH") ||
-    value.includes("LOW PH") ||
-    value.includes("HIGH ALKALINE") ||
-    value.includes("LOW ALKALINE") ||
-    value.includes("ACIDIC")
-  );
-}
-
-export function isUnsafePhReading(reading) {
-  if (!reading) return false;
-
-  const phValue = getReadingPhValue(reading);
-  const phStatus = getFirstValue(reading.ph_status, getPhStatus(phValue));
-
-  if (isSafePhStatus(phStatus)) return false;
-
-  if (phValue !== null && (phValue < 6.5 || phValue > 8.5)) {
-    return true;
-  }
-
-  return isUnsafePhStatus(phStatus);
-}
-
-export function pickStableLatestReading(readings = []) {
-  const sorted = sortReadingsNewestFirst(readings);
-
-  if (sorted.length === 0) return null;
-
-  const latest = sorted[0];
-
-  // If latest pH is safe, use it normally.
-  if (!isUnsafePhReading(latest)) {
-    return latest;
-  }
-
-  // If latest pH is unsafe, require 3 consecutive unsafe pH readings.
-  // This prevents 1 random pH spike from becoming the tank status.
-  const latestThree = sorted.slice(0, 3);
-
-  const confirmedUnsafePh =
-    latestThree.length >= 3 && latestThree.every(isUnsafePhReading);
-
-  if (confirmedUnsafePh) {
-    return latest;
-  }
-
-  // If it is only a spike, use the newest safe reading instead.
-  const newestSafeReading = sorted.find((reading) => {
-    return !isUnsafePhReading(reading);
-  });
-
-  return newestSafeReading || latest;
-}
-
 export function normalizeSensorReading(reading) {
   if (!reading) {
     return {
@@ -165,7 +70,13 @@ export function normalizeSensorReading(reading) {
     reading.temperature
   );
 
-  const phValue = getFirstValue(reading.ph_value, reading.ph);
+  // IMPORTANT:
+  // Use ph first because this is the more correct/actual pH reading in your DB.
+  // ph_value is only fallback because some old rows/code may still use it.
+  const phValue = getFirstValue(
+    reading.ph,
+    reading.ph_value
+  );
 
   const turbidityValue = getFirstValue(
     reading.turbidity_voltage,
@@ -183,7 +94,10 @@ export function normalizeSensorReading(reading) {
     reading.temperature_status || getTemperatureStatus(temperatureValue)
   );
 
-  const phStatus = normalizeStatus(reading.ph_status || getPhStatus(phValue));
+  // IMPORTANT:
+  // Recompute pH status from the selected phValue.
+  // This prevents HIGH_ALKALINE from ph_value=10.xx from overriding ph=7.xx.
+  const phStatus = normalizeStatus(getPhStatus(phValue));
 
   const turbidityStatus = normalizeStatus(
     reading.turbidity_status || getTurbidityStatusFromVoltage(turbidityValue)

@@ -18,23 +18,25 @@ import {
 import { isSupabaseConfigured, supabase } from "../../lib/supabase";
 
 const STORAGE_KEY = "craythrive_threshold_settings";
+const THRESHOLD_TABLE = "threshold_settings";
 
 const DEFAULT_THRESHOLDS = {
   temperatureMin: 20,
   temperatureMax: 30,
   phMin: 6.5,
   phMax: 8.5,
-  turbidityMax: 40,
-  waterLevelMin: 35,
+
+  // Your turbidity sensor uses voltage.
+  // Higher voltage = clearer water.
+  // 2.5V and above = CLEAR based on your UNO logic.
+  turbidityMax: 2.5,
+
+  // Your ESP32 uploads water_depth_cm / water_level in cm.
+  // 4.5cm is the safe minimum based on your current ESP32 logic.
+  waterLevelMin: 4.5,
+
   ammoniaMax: 0.25,
 };
-
-const thresholdTableCandidates = [
-  "user_settings",
-  "threshold_settings",
-  "tank_thresholds",
-  "settings",
-];
 
 const thresholdRows = [
   {
@@ -79,23 +81,23 @@ const thresholdRows = [
   },
   {
     key: "turbidityMax",
-    label: "Turbidity Maximum",
-    helper: "Maximum dirty water/turbidity value.",
-    unit: "NTU",
+    label: "Turbidity Clear Minimum",
+    helper: "Minimum voltage considered clear/safe.",
+    unit: "V",
     icon: Waves,
     min: 0,
-    max: 100,
-    step: 1,
+    max: 5,
+    step: 0.01,
   },
   {
     key: "waterLevelMin",
-    label: "Water Level Minimum",
-    helper: "Minimum safe tank water level.",
-    unit: "%",
+    label: "Water Depth Minimum",
+    helper: "Minimum safe tank water depth.",
+    unit: "cm",
     icon: Gauge,
     min: 0,
-    max: 100,
-    step: 1,
+    max: 20,
+    step: 0.1,
   },
   {
     key: "ammoniaMax",
@@ -115,13 +117,15 @@ function getLocalThresholds() {
 
     if (!saved) return DEFAULT_THRESHOLDS;
 
-    return {
-      ...DEFAULT_THRESHOLDS,
-      ...JSON.parse(saved),
-    };
+    return normalizeThresholds(JSON.parse(saved));
   } catch {
     return DEFAULT_THRESHOLDS;
   }
+}
+
+function toNumber(value, fallback) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : fallback;
 }
 
 function normalizeThresholds(data) {
@@ -130,23 +134,28 @@ function normalizeThresholds(data) {
   const source = data.thresholds || data.safe_thresholds || data;
 
   return {
-    temperatureMin:
-      Number(source.temperatureMin ?? source.temperature_min) ||
-      DEFAULT_THRESHOLDS.temperatureMin,
-    temperatureMax:
-      Number(source.temperatureMax ?? source.temperature_max) ||
-      DEFAULT_THRESHOLDS.temperatureMax,
-    phMin: Number(source.phMin ?? source.ph_min) || DEFAULT_THRESHOLDS.phMin,
-    phMax: Number(source.phMax ?? source.ph_max) || DEFAULT_THRESHOLDS.phMax,
-    turbidityMax:
-      Number(source.turbidityMax ?? source.turbidity_max) ||
-      DEFAULT_THRESHOLDS.turbidityMax,
-    waterLevelMin:
-      Number(source.waterLevelMin ?? source.water_level_min) ||
-      DEFAULT_THRESHOLDS.waterLevelMin,
-    ammoniaMax:
-      Number(source.ammoniaMax ?? source.ammonia_max) ||
-      DEFAULT_THRESHOLDS.ammoniaMax,
+    temperatureMin: toNumber(
+      source.temperatureMin ?? source.temperature_min,
+      DEFAULT_THRESHOLDS.temperatureMin
+    ),
+    temperatureMax: toNumber(
+      source.temperatureMax ?? source.temperature_max,
+      DEFAULT_THRESHOLDS.temperatureMax
+    ),
+    phMin: toNumber(source.phMin ?? source.ph_min, DEFAULT_THRESHOLDS.phMin),
+    phMax: toNumber(source.phMax ?? source.ph_max, DEFAULT_THRESHOLDS.phMax),
+    turbidityMax: toNumber(
+      source.turbidityMax ?? source.turbidity_max,
+      DEFAULT_THRESHOLDS.turbidityMax
+    ),
+    waterLevelMin: toNumber(
+      source.waterLevelMin ?? source.water_level_min,
+      DEFAULT_THRESHOLDS.waterLevelMin
+    ),
+    ammoniaMax: toNumber(
+      source.ammoniaMax ?? source.ammonia_max,
+      DEFAULT_THRESHOLDS.ammoniaMax
+    ),
   };
 }
 
@@ -204,69 +213,67 @@ async function getCurrentUserAndProfile() {
 }
 
 async function loadThresholdsFromSupabase(userId) {
-  for (const tableName of thresholdTableCandidates) {
-    const response = await supabase
-      .from(tableName)
-      .select("*")
-      .eq("user_id", userId)
-      .maybeSingle();
+  const { data, error } = await supabase
+    .from(THRESHOLD_TABLE)
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle();
 
-    if (!response.error && response.data) {
-      return {
-        thresholds: normalizeThresholds(response.data),
-        tableUsed: tableName,
-      };
-    }
+  if (error) {
+    console.log("LOAD THRESHOLDS ERROR:", error);
+    return {
+      thresholds: getLocalThresholds(),
+      tableUsed: "localStorage",
+    };
+  }
 
-    const byOwner = await supabase
-      .from(tableName)
-      .select("*")
-      .eq("owner_id", userId)
-      .maybeSingle();
-
-    if (!byOwner.error && byOwner.data) {
-      return {
-        thresholds: normalizeThresholds(byOwner.data),
-        tableUsed: tableName,
-      };
-    }
+  if (!data) {
+    return {
+      thresholds: getLocalThresholds(),
+      tableUsed: "localStorage",
+    };
   }
 
   return {
-    thresholds: getLocalThresholds(),
-    tableUsed: "localStorage",
+    thresholds: normalizeThresholds(data),
+    tableUsed: THRESHOLD_TABLE,
   };
 }
 
 async function saveThresholdsToSupabase(userId, thresholds) {
+  const cleanThresholds = normalizeThresholds(thresholds);
+
   const payload = {
     user_id: userId,
-    thresholds,
-    temperature_min: Number(thresholds.temperatureMin),
-    temperature_max: Number(thresholds.temperatureMax),
-    ph_min: Number(thresholds.phMin),
-    ph_max: Number(thresholds.phMax),
-    turbidity_max: Number(thresholds.turbidityMax),
-    water_level_min: Number(thresholds.waterLevelMin),
-    ammonia_max: Number(thresholds.ammoniaMax),
+
+    thresholds: cleanThresholds,
+
+    temperature_min: Number(cleanThresholds.temperatureMin),
+    temperature_max: Number(cleanThresholds.temperatureMax),
+
+    ph_min: Number(cleanThresholds.phMin),
+    ph_max: Number(cleanThresholds.phMax),
+
+    turbidity_max: Number(cleanThresholds.turbidityMax),
+    water_level_min: Number(cleanThresholds.waterLevelMin),
+    ammonia_max: Number(cleanThresholds.ammoniaMax),
+
     updated_at: new Date().toISOString(),
   };
 
-  for (const tableName of thresholdTableCandidates) {
-    const response = await supabase
-      .from(tableName)
-      .upsert(payload, {
-        onConflict: "user_id",
-      })
-      .select()
-      .maybeSingle();
+  const { data, error } = await supabase
+    .from(THRESHOLD_TABLE)
+    .upsert(payload, {
+      onConflict: "user_id",
+    })
+    .select("*")
+    .maybeSingle();
 
-    if (!response.error) {
-      return tableName;
-    }
+  if (error) {
+    throw error;
   }
 
-  return "localStorage";
+  return data;
 }
 
 function ThresholdControl({ item, value, onChange }) {
@@ -329,6 +336,7 @@ export default function SettingsPage() {
 
     if (!isSupabaseConfigured || !supabase) {
       setDataSource("localStorage");
+      setThresholds(getLocalThresholds());
       setIsLoading(false);
       return;
     }
@@ -343,6 +351,7 @@ export default function SettingsPage() {
 
       if (!result.user?.id) {
         setDataSource("localStorage");
+        setThresholds(getLocalThresholds());
         return;
       }
 
@@ -350,11 +359,14 @@ export default function SettingsPage() {
 
       setThresholds(loaded.thresholds);
       setDataSource(loaded.tableUsed);
+
       localStorage.setItem(STORAGE_KEY, JSON.stringify(loaded.thresholds));
     } catch (error) {
       console.error("Settings loading error:", error);
+
       setDataSource("localStorage");
       setThresholds(getLocalThresholds());
+      setMessage("Loaded local settings because Supabase threshold table is not available.");
     } finally {
       setIsLoading(false);
     }
@@ -389,25 +401,27 @@ export default function SettingsPage() {
     try {
       setIsSaving(true);
 
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(thresholds));
+      const cleanThresholds = normalizeThresholds(thresholds);
 
-      let savedSource = "localStorage";
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(cleanThresholds));
 
-      if (isSupabaseConfigured && supabase && user?.id) {
-        savedSource = await saveThresholdsToSupabase(user.id, thresholds);
+      if (!isSupabaseConfigured || !supabase || !user?.id) {
+        setDataSource("localStorage");
+        setMessage("Saved locally only. Login and connect Supabase to sync with mobile.");
+        return;
       }
 
-      setDataSource(savedSource);
-      setMessage(
-        savedSource === "localStorage"
-          ? "Saved locally. Add a Supabase threshold table later to sync with mobile."
-          : `Threshold settings saved to ${savedSource}.`
-      );
+      await saveThresholdsToSupabase(user.id, cleanThresholds);
+
+      setThresholds(cleanThresholds);
+      setDataSource(THRESHOLD_TABLE);
+      setMessage("Threshold settings saved to Supabase. Mobile can now fetch these values.");
     } catch (error) {
       console.error("Settings saving error:", error);
+
       localStorage.setItem(STORAGE_KEY, JSON.stringify(thresholds));
       setDataSource("localStorage");
-      setMessage("Saved locally because Supabase settings table is not available yet.");
+      setMessage("Saved locally because Supabase threshold_settings table is not ready.");
     } finally {
       setIsSaving(false);
     }
@@ -430,13 +444,18 @@ export default function SettingsPage() {
           <p className="dashboard-eyebrow">Settings</p>
           <h2>Control your safe water thresholds.</h2>
           <p>
-            Adjust the values used to classify tank readings as normal, warning,
-            or critical. These settings are prepared for syncing with the mobile
-            app and IoT monitoring logic.
+            Adjust the values used to classify tank readings as safe, warning,
+            or critical. These settings are saved to Supabase and can be reused
+            by the mobile app and alert logic.
           </p>
 
           <div className="modern-settings-actions">
-            <button className="dashboard-primary-button" onClick={handleSave}>
+            <button
+              type="button"
+              className="dashboard-primary-button"
+              onClick={handleSave}
+              disabled={isSaving}
+            >
               {isSaving ? (
                 <>
                   Saving...
@@ -520,17 +539,17 @@ export default function SettingsPage() {
           <div className="modern-settings-info-list">
             <div>
               <ShieldCheck size={19} />
-              <span>Critical water alerts should stay visible until resolved.</span>
+              <span>Critical alerts stay visible until the latest safe reading resolves them.</span>
             </div>
 
             <div>
               <Database size={19} />
-              <span>Threshold values can be reused by mobile and IoT logic later.</span>
+              <span>Threshold values are saved in Supabase for mobile sync.</span>
             </div>
 
             <div>
               <AlertTriangle size={19} />
-              <span>Unsafe values will help classify readings into warning or critical.</span>
+              <span>Unsafe values classify readings into warning or critical.</span>
             </div>
           </div>
         </article>
