@@ -2454,3 +2454,83 @@
   font-size: 0.84rem;
   font-weight: 900;
 }
+.command-status-card.sensor-wait {
+  border-color: rgba(0, 217, 199, 0.42);
+  background:
+    linear-gradient(90deg, rgba(0, 217, 199, 0.09), rgba(244, 183, 64, 0.06)),
+    var(--ct-surface-soft);
+}
+
+.command-status-card.sensor-wait::after {
+  content: "";
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 0;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--ct-brand),
+    var(--ct-warning),
+    transparent
+  );
+  background-size: 220% 100%;
+  animation: command-loading-line 1.2s linear infinite;
+  opacity: 0.9;
+}
+
+.command-status-card small {
+  display: block;
+  margin-top: 6px;
+  color: var(--ct-soft-muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.modern-list-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--ct-border);
+  border-radius: 18px;
+  background: var(--ct-surface-soft);
+}
+
+.modern-list-pagination button {
+  min-height: 38px;
+  padding: 0 14px;
+  color: #04191d;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ct-brand);
+  cursor: pointer;
+  font-weight: 950;
+}
+
+.modern-list-pagination button:disabled {
+  color: var(--ct-muted);
+  background: var(--ct-border);
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.modern-list-pagination span {
+  color: var(--ct-muted);
+  font-size: 0.84rem;
+  font-weight: 900;
+}
+
+@keyframes command-loading-line {
+  from {
+    background-position: 220% 0;
+  }
+
+  to {
+    background-position: -220% 0;
+  }
+}

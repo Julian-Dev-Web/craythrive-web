@@ -37,6 +37,8 @@ const controlLogTables = ["device_commands"];
 
 const READINGS_PER_PAGE = 5;
 const LOGS_PER_PAGE = 5;
+const ACTION_WAIT_MS = 5 * 60 * 1000;
+const ACTION_COMMAND_TYPES = ["FEED_ONCE", "DRAIN_FOR", "REFILL_FOR"];
 
 function clean(value) {
   return String(value || "").trim();
@@ -310,6 +312,35 @@ function getShortResultMessage(message = "") {
   }
 
   return text;
+}
+
+function getTimeMs(value) {
+  if (!value) return 0;
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 0;
+
+  return date.getTime();
+}
+
+function formatCountdown(ms) {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function isActionCommand(commandType) {
+  return ACTION_COMMAND_TYPES.includes(commandType);
+}
+
+function isCompletedActionCommand(command) {
+  const commandType = command?.command_type || command?.action || "";
+  const commandStatus =
+    command?.command_status || command?.status || command?.result || "";
+
+  return isActionCommand(commandType) && lower(commandStatus) === "done";
 }
 
 function getSimpleAlertTitle(item) {
@@ -681,6 +712,7 @@ export default function TankDetailsPage() {
   const [durationSeconds, setDurationSeconds] = useState("10");
   const [activeTankTab, setActiveTankTab] = useState("overview");
   const [commandWaitSeconds, setCommandWaitSeconds] = useState(0);
+  const [nowMs, setNowMs] = useState(Date.now());
 
   const loadTankDetails = async (silent = false) => {
     if (!isSupabaseConfigured || !supabase) {
@@ -816,12 +848,12 @@ export default function TankDetailsPage() {
     loadTankDetails(false);
   }, [tankId]);
 
-useEffect(() => {
-  setReadingsPage(1);
-  setLogsPage(1);
-  setCommandWaitSeconds(0);
-  setCommandMessage("");
-}, [tankId]);
+  useEffect(() => {
+    setReadingsPage(1);
+    setLogsPage(1);
+    setCommandWaitSeconds(0);
+    setCommandMessage("");
+  }, [tankId]);
 
   const hasActiveCommand = activeCommands.length > 0;
 
@@ -849,6 +881,14 @@ useEffect(() => {
 
     return () => clearInterval(timer);
   }, [hasActiveCommand]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
 
   const profileMap = useMemo(() => {
     const map = new Map();
@@ -916,16 +956,16 @@ useEffect(() => {
   }, [controlLogs]);
 
   const totalLogPages = Math.max(
-  1,
-  Math.ceil(sortedControlLogs.length / LOGS_PER_PAGE)
-);
+    1,
+    Math.ceil(sortedControlLogs.length / LOGS_PER_PAGE)
+  );
 
-const currentLogPage = Math.min(logsPage, totalLogPages);
+  const currentLogPage = Math.min(logsPage, totalLogPages);
 
-const paginatedControlLogs = sortedControlLogs.slice(
-  (currentLogPage - 1) * LOGS_PER_PAGE,
-  currentLogPage * LOGS_PER_PAGE
-);
+  const paginatedControlLogs = sortedControlLogs.slice(
+    (currentLogPage - 1) * LOGS_PER_PAGE,
+    currentLogPage * LOGS_PER_PAGE
+  );
 
   const sortedAlerts = useMemo(() => {
     return [...alerts].sort(
@@ -935,6 +975,38 @@ const paginatedControlLogs = sortedControlLogs.slice(
 
   const latestCommandLog = sortedControlLogs[0] || null;
   const latestAlert = sortedAlerts[0] || null;
+
+  const latestCompletedAction =
+    sortedControlLogs.find(isCompletedActionCommand) || null;
+
+  const latestCompletedActionTimeMs = getTimeMs(
+    latestCompletedAction?.executed_at ||
+      latestCompletedAction?.updated_at ||
+      latestCompletedAction?.created_at
+  );
+
+  const latestSensorReadingTimeMs = getTimeMs(latestReading?.date);
+
+  const hasNewSensorReadingAfterAction =
+    latestCompletedActionTimeMs > 0 &&
+    latestSensorReadingTimeMs > latestCompletedActionTimeMs;
+
+  const actionWaitRemainingMs =
+    latestCompletedActionTimeMs > 0
+      ? Math.max(0, latestCompletedActionTimeMs + ACTION_WAIT_MS - nowMs)
+      : 0;
+
+  const shouldWaitForSensorRefresh =
+    latestCompletedActionTimeMs > 0 &&
+    !hasNewSensorReadingAfterAction &&
+    actionWaitRemainingMs > 0;
+
+  const actionWaitText = formatCountdown(actionWaitRemainingMs);
+
+  const latestCompletedActionLabel = getCommandLabel(
+    latestCompletedAction?.command_type || latestCompletedAction?.action
+  );
+
   const tankStatus = latestReading ? latestReading.status : "normal";
   const actuatorState = getActuatorConnectionState(actuatorDevice);
   const ActuatorIcon = actuatorState.icon;
@@ -1085,6 +1157,17 @@ const paginatedControlLogs = sortedControlLogs.slice(
     if (hasActiveCommand && commandType !== "STOP_ALL") {
       setCommandMessage(
         "There is already a pending/running actuator command. Wait for it to finish or reset it if it is stuck."
+      );
+      return;
+    }
+
+    if (
+      commandType !== "STOP_ALL" &&
+      isActionCommand(commandType) &&
+      shouldWaitForSensorRefresh
+    ) {
+      setCommandMessage(
+        `Please wait ${actionWaitText} before sending another command, or wait until a new sensor reading is synced after the last ${latestCompletedActionLabel}.`
       );
       return;
     }
@@ -1482,6 +1565,26 @@ const paginatedControlLogs = sortedControlLogs.slice(
             </div>
           )}
 
+          {shouldWaitForSensorRefresh && !hasActiveCommand && (
+            <div className="command-status-card sensor-wait">
+              <div>
+                <strong>Waiting for updated sensor reading</strong>
+                <p>
+                  Last action: {latestCompletedActionLabel}. Wait {actionWaitText}{" "}
+                  more or wait for a new sensor reading before sending another
+                  Feed, Drain, or Refill command.
+                </p>
+                <small>
+                  Latest sensor sync: {formatReadingTime(latestReading?.date)}
+                </small>
+              </div>
+
+              <button type="button" onClick={() => loadTankDetails(true)}>
+                Refresh
+              </button>
+            </div>
+          )}
+
           {isStuckLong && (
             <div className="command-status-card waiting">
               <div>
@@ -1553,7 +1656,8 @@ const paginatedControlLogs = sortedControlLogs.slice(
               disabled={
                 isSendingCommand ||
                 !actuatorDevice?.device_uid ||
-                hasActiveCommand
+                hasActiveCommand ||
+                shouldWaitForSensorRefresh
               }
               onClick={() => sendDeviceCommand("FEED_ONCE", 500)}
             >
@@ -1571,7 +1675,8 @@ const paginatedControlLogs = sortedControlLogs.slice(
               disabled={
                 isSendingCommand ||
                 !actuatorDevice?.device_uid ||
-                hasActiveCommand
+                hasActiveCommand ||
+                shouldWaitForSensorRefresh
               }
               onClick={() => sendDeviceCommand("REFILL_FOR", getCommandDurationMs())}
             >
@@ -1585,7 +1690,8 @@ const paginatedControlLogs = sortedControlLogs.slice(
               disabled={
                 isSendingCommand ||
                 !actuatorDevice?.device_uid ||
-                hasActiveCommand
+                hasActiveCommand ||
+                shouldWaitForSensorRefresh
               }
               onClick={() => sendDeviceCommand("DRAIN_FOR", getCommandDurationMs())}
             >
@@ -1733,7 +1839,7 @@ const paginatedControlLogs = sortedControlLogs.slice(
                 {ammoniaReadings.slice(0, 8).map((item, index) => (
                   <div
                     className="modern-tank-detail-list-row"
-                    key={item?.id || `log-${currentLogPage}-${index}`}
+                    key={item?.id || index}
                   >
                     <div>
                       <strong>
@@ -1835,7 +1941,7 @@ const paginatedControlLogs = sortedControlLogs.slice(
               text="Feeder, pump, and other control actions will appear here."
             />
           ) : (
-                        <>
+            <>
               <div className="modern-tank-detail-list">
                 {paginatedControlLogs.map((item, index) => {
                   const status = getValue(
