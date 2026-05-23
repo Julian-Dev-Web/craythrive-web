@@ -2534,3 +2534,17 @@
     background-position: -220% 0;
   }
 }
+.command-status-card.sensor-wait {
+  border-color: rgba(251, 191, 36, 0.42);
+  background:
+    linear-gradient(90deg, rgba(251, 191, 36, 0.08), rgba(0, 217, 199, 0.05)),
+    var(--ct-surface-soft);
+}
+
+.command-status-card.sensor-wait small {
+  display: block;
+  margin-top: 6px;
+  color: var(--ct-soft-muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+}

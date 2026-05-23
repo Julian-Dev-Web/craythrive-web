@@ -39,6 +39,11 @@ const READINGS_PER_PAGE = 5;
 const LOGS_PER_PAGE = 5;
 const ACTION_WAIT_MS = 5 * 60 * 1000;
 const ACTION_COMMAND_TYPES = ["FEED_ONCE", "DRAIN_FOR", "REFILL_FOR"];
+const PUMP_COMMAND_TYPES = ["DRAIN_FOR", "REFILL_FOR"];
+const WATER_STABLE_REQUIRED_COUNT = 3;
+const WATER_STABLE_MAX_SPREAD_CM = 0.7;
+const SENSOR_FRESHNESS_MS = 5 * 60 * 1000;
+const PUMP_SETTLE_MS = 90 * 1000;
 
 function clean(value) {
   return String(value || "").trim();
@@ -341,6 +346,188 @@ function isCompletedActionCommand(command) {
     command?.command_status || command?.status || command?.result || "";
 
   return isActionCommand(commandType) && lower(commandStatus) === "done";
+}
+
+function isPumpCommand(commandOrType) {
+  const commandType =
+    typeof commandOrType === "string"
+      ? commandOrType
+      : commandOrType?.command_type || commandOrType?.action || "";
+
+  return PUMP_COMMAND_TYPES.includes(commandType);
+}
+
+function isCompletedPumpCommand(command) {
+  const commandStatus =
+    command?.command_status || command?.status || command?.result || "";
+
+  return isPumpCommand(command) && lower(commandStatus) === "done";
+}
+
+function parseNumberFromText(value) {
+  const match = String(value || "").match(/-?\d+(?:\.\d+)?/);
+  if (!match) return null;
+
+  const number = Number(match[0]);
+  return Number.isFinite(number) ? number : null;
+}
+
+function getWaterCmFromReading(item) {
+  const raw =
+    item?.normalized?.waterDepth ??
+    item?.normalized?.waterDistance ??
+    item?.normalized?.waterLevel ??
+    item?.normalized?.waterValue ??
+    item?.reading?.water_depth_cm ??
+    item?.reading?.water_distance_cm ??
+    item?.reading?.water_level ??
+    item?.reading?.water_depth ??
+    item?.reading?.distance_cm ??
+    item?.reading?.water_cm ??
+    parseNumberFromText(item?.normalized?.waterLabel);
+
+  const number = Number(raw);
+
+  if (!Number.isFinite(number)) return null;
+  if (number <= 0) return null;
+
+  return number;
+}
+
+function isBadWaterStatus(status) {
+  const value = String(status || "")
+    .trim()
+    .toUpperCase()
+    .replaceAll(" ", "_")
+    .replaceAll("-", "_");
+
+  return (
+    value.includes("NO_READING") ||
+    value.includes("NO_DATA") ||
+    value.includes("INVALID") ||
+    value.includes("ERROR")
+  );
+}
+
+function formatWaitSeconds(ms) {
+  return `${Math.max(0, Math.ceil(ms / 1000))}s`;
+}
+
+function getWaterStabilityState(enrichedReadings, latestPumpAction, nowMs) {
+  const latestReading = enrichedReadings[0] || null;
+  const latestReadingMs = getTimeMs(latestReading?.date);
+
+  if (!latestReading) {
+    return {
+      canPump: false,
+      level: "warning",
+      title: "No sensor data",
+      message:
+        "Drain/refill is blocked until a fresh water reading is available.",
+    };
+  }
+
+  if (!latestReadingMs || nowMs - latestReadingMs > SENSOR_FRESHNESS_MS) {
+    return {
+      canPump: false,
+      level: "warning",
+      title: "Sensor data is stale",
+      message:
+        "Drain/refill is blocked because the latest sensor reading is older than 5 minutes.",
+    };
+  }
+
+  const latestWaterStatus =
+    latestReading?.normalized?.waterStatus ||
+    latestReading?.reading?.water_status ||
+    "";
+
+  if (isBadWaterStatus(latestWaterStatus)) {
+    return {
+      canPump: false,
+      level: "warning",
+      title: "Water sensor is not ready",
+      message:
+        "Drain/refill is blocked because the latest water reading is NO_READING or invalid.",
+    };
+  }
+
+  const latestPumpTimeMs = getTimeMs(
+    latestPumpAction?.executed_at ||
+      latestPumpAction?.updated_at ||
+      latestPumpAction?.created_at
+  );
+
+  if (latestPumpTimeMs > 0) {
+    const settleRemainingMs = Math.max(
+      0,
+      latestPumpTimeMs + PUMP_SETTLE_MS - nowMs
+    );
+
+    if (settleRemainingMs > 0) {
+      return {
+        canPump: false,
+        level: "warning",
+        title: "Water is settling",
+        message: `Wait ${formatWaitSeconds(
+          settleRemainingMs
+        )} more before another drain/refill. This prevents hose vibration or water movement from causing wrong readings.`,
+      };
+    }
+
+    if (latestReadingMs <= latestPumpTimeMs) {
+      return {
+        canPump: false,
+        level: "warning",
+        title: "Waiting for new sensor reading",
+        message:
+          "Drain/refill is blocked until a new sensor reading is synced after the last pump action.",
+      };
+    }
+  }
+
+  const validWaterValues = enrichedReadings
+    .map((item) => {
+      const waterStatus =
+        item?.normalized?.waterStatus || item?.reading?.water_status || "";
+
+      if (isBadWaterStatus(waterStatus)) return null;
+
+      return getWaterCmFromReading(item);
+    })
+    .filter((value) => value !== null)
+    .slice(0, WATER_STABLE_REQUIRED_COUNT);
+
+  if (validWaterValues.length < WATER_STABLE_REQUIRED_COUNT) {
+    return {
+      canPump: false,
+      level: "warning",
+      title: "Waiting for stable water readings",
+      message: `Need ${WATER_STABLE_REQUIRED_COUNT} valid water readings before allowing drain/refill.`,
+    };
+  }
+
+  const minValue = Math.min(...validWaterValues);
+  const maxValue = Math.max(...validWaterValues);
+  const spread = maxValue - minValue;
+
+  if (spread > WATER_STABLE_MAX_SPREAD_CM) {
+    return {
+      canPump: false,
+      level: "warning",
+      title: "Water reading is unstable",
+      message: `Latest water readings differ by ${spread.toFixed(
+        2
+      )} cm. Wait until the sensor stabilizes before using drain/refill.`,
+    };
+  }
+
+  return {
+    canPump: true,
+    level: "normal",
+    title: "Water reading stable",
+    message: `Latest ${validWaterValues.length} water readings are stable.`,
+  };
 }
 
 function getSimpleAlertTitle(item) {
@@ -975,6 +1162,13 @@ export default function TankDetailsPage() {
 
   const latestCommandLog = sortedControlLogs[0] || null;
   const latestAlert = sortedAlerts[0] || null;
+  const latestPumpAction = sortedControlLogs.find(isCompletedPumpCommand) || null;
+  const waterSafetyState = getWaterStabilityState(
+    enrichedReadings,
+    latestPumpAction,
+    nowMs
+  );
+  const shouldBlockPumpCommands = !waterSafetyState.canPump;
 
   const latestCompletedAction =
     sortedControlLogs.find(isCompletedActionCommand) || null;
@@ -1158,6 +1352,11 @@ export default function TankDetailsPage() {
       setCommandMessage(
         "There is already a pending/running actuator command. Wait for it to finish or reset it if it is stuck."
       );
+      return;
+    }
+
+    if (isPumpCommand(commandType) && shouldBlockPumpCommands) {
+      setCommandMessage(waterSafetyState.message);
       return;
     }
 
@@ -1585,6 +1784,24 @@ export default function TankDetailsPage() {
             </div>
           )}
 
+          {shouldBlockPumpCommands &&
+            !hasActiveCommand &&
+            !shouldWaitForSensorRefresh && (
+              <div className="command-status-card sensor-wait">
+                <div>
+                  <strong>{waterSafetyState.title}</strong>
+                  <p>{waterSafetyState.message}</p>
+                  <small>
+                    Latest sensor sync: {formatReadingTime(latestReading?.date)}
+                  </small>
+                </div>
+
+                <button type="button" onClick={() => loadTankDetails(true)}>
+                  Refresh
+                </button>
+              </div>
+            )}
+
           {isStuckLong && (
             <div className="command-status-card waiting">
               <div>
@@ -1676,7 +1893,8 @@ export default function TankDetailsPage() {
                 isSendingCommand ||
                 !actuatorDevice?.device_uid ||
                 hasActiveCommand ||
-                shouldWaitForSensorRefresh
+                shouldWaitForSensorRefresh ||
+                shouldBlockPumpCommands
               }
               onClick={() => sendDeviceCommand("REFILL_FOR", getCommandDurationMs())}
             >
@@ -1691,7 +1909,8 @@ export default function TankDetailsPage() {
                 isSendingCommand ||
                 !actuatorDevice?.device_uid ||
                 hasActiveCommand ||
-                shouldWaitForSensorRefresh
+                shouldWaitForSensorRefresh ||
+                shouldBlockPumpCommands
               }
               onClick={() => sendDeviceCommand("DRAIN_FOR", getCommandDurationMs())}
             >
