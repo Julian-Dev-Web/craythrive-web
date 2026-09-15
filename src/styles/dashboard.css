@@ -434,9 +434,16 @@
   padding: 0 18px;
   color: #04191d;
   border-radius: 999px;
-  background: #00d9c7;
+  background: linear-gradient(135deg, #5fc7b4 0%, #00d9c7 55%, #049487 100%);
+  box-shadow: 0 14px 32px rgba(0, 217, 199, 0.22);
   cursor: pointer;
   font-weight: 950;
+  transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.24s ease;
+}
+
+.dashboard-primary-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 44px rgba(0, 217, 199, 0.32);
 }
 
 .dashboard-hero-actions span,
@@ -1442,6 +1449,7 @@ html[data-theme="dark"] .modern-sidebar-profile {
   border-bottom: 1px solid var(--ct-border);
   background: rgba(255, 255, 255, 0.66);
   backdrop-filter: blur(24px);
+  font-family: "Poppins", Inter, ui-sans-serif, system-ui, sans-serif;
 }
 
 html[data-theme="dark"] .modern-admin-topbar {
@@ -1568,6 +1576,14 @@ html[data-theme="dark"] .modern-admin-topbar {
   padding: 26px;
 }
 
+/* All page headings across the dashboard (Overview, Tanks, Reports, etc.)
+   pick up Poppins automatically — one rule instead of editing every page. */
+.modern-admin-content h1,
+.modern-admin-content h2,
+.modern-admin-content h3 {
+  font-family: "Poppins", Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
 
 /* PHASE 2 MODERN DASHBOARD OVERVIEW */
 
@@ -1586,6 +1602,14 @@ html[data-theme="dark"] .modern-admin-topbar {
     var(--ct-surface);
   box-shadow: var(--ct-shadow-soft);
   backdrop-filter: blur(18px);
+  transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.24s ease, box-shadow 0.26s ease;
+}
+
+.modern-overview-stat:hover,
+.modern-overview-panel:hover {
+  transform: translateY(-4px);
+  border-color: var(--ct-border-strong);
+  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.12);
 }
 
 .modern-overview-hero {
@@ -1638,11 +1662,13 @@ html[data-theme="dark"] .modern-admin-topbar {
   border-radius: 16px;
   background: var(--ct-surface-strong);
   font-weight: 950;
+  transition: border-color 0.22s ease, background 0.22s ease, transform 0.22s ease;
 }
 
 .modern-secondary-link:hover {
   border-color: var(--ct-border-strong);
   background: var(--ct-surface-soft);
+  transform: translateY(-2px);
 }
 
 .modern-overview-health {
@@ -1715,9 +1741,10 @@ html[data-theme="dark"] .modern-admin-topbar {
 .modern-overview-stat strong {
   display: block;
   color: var(--ct-text);
+  font-family: "Poppins", Inter, ui-sans-serif, system-ui, sans-serif;
   font-size: 2rem;
   line-height: 1;
-  letter-spacing: -0.06em;
+  letter-spacing: -0.03em;
 }
 
 .modern-overview-stat p {
