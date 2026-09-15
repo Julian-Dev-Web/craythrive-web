@@ -100,7 +100,7 @@ export default function AdminLogin() {
             </p>
 
             <h1>
-              Welcome back
+              Welcome 
               <br />
               to <span>CrayThrive.</span>
             </h1>

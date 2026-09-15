@@ -989,10 +989,15 @@
   background:
     radial-gradient(
       circle at 100% 0%,
-      rgba(0, 217, 199, 0.07),
-      transparent 18rem
+      rgba(0, 217, 199, 0.16),
+      transparent 22rem
     ),
-    #f8fbfb;
+    radial-gradient(
+      circle at 0% 100%,
+      rgba(58, 232, 255, 0.08),
+      transparent 20rem
+    ),
+    #eaf7f6;
 }
 
 .admin-auth-form-wrap {
@@ -1060,6 +1065,18 @@
   font-size: 0.8rem;
   font-weight: 700;
   line-height: 1.45;
+}
+
+.admin-auth-alert.warning {
+  color: #8a6a05;
+  border-color: rgba(255, 190, 30, 0.28);
+  background: rgba(255, 190, 30, 0.12);
+}
+
+.admin-auth-alert.success {
+  color: #067a5c;
+  border-color: rgba(0, 184, 148, 0.24);
+  background: rgba(0, 184, 148, 0.1);
 }
 
 .admin-auth-alert svg {
@@ -1172,9 +1189,9 @@
 .admin-auth-field input:-webkit-autofill:focus {
   -webkit-text-fill-color: #071c26;
   -webkit-box-shadow:
-    0 0 0 1000px #f8fbfb inset;
+    0 0 0 1000px #eaf7f6 inset;
   box-shadow:
-    0 0 0 1000px #f8fbfb inset;
+    0 0 0 1000px #eaf7f6 inset;
 
   transition: background-color 9999s ease-in-out 0s;
 }
@@ -1443,6 +1460,136 @@
 
   font-size: 0.66rem;
   line-height: 1.5;
+}
+
+/* =========================================================
+   RESET PASSWORD — strength meter + match note (light form panel)
+   ========================================================= */
+
+.admin-reset-form-wrap {
+  width: min(430px, 100%);
+}
+
+.admin-rule-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: -8px;
+}
+
+.admin-rule-meter-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.admin-rule-meter-top > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.admin-rule-meter-top span {
+  color: #6b7c83;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.admin-rule-meter-top strong {
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.admin-rule-meter-top b {
+  color: #078e83;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.admin-rule-line-area {
+  position: relative;
+  height: 5px;
+}
+
+.admin-rule-base-line {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: #e3ecec;
+}
+
+.admin-rule-fill-line {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #00d9c7, #08aa9b);
+  transition: width 0.24s ease;
+}
+
+.admin-rule-steps {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+
+.admin-rule-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  text-align: center;
+}
+
+.admin-rule-circle {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1.5px solid #d7e2e2;
+  color: transparent;
+  background: #ffffff;
+  transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.admin-rule-step.is-passed .admin-rule-circle {
+  border-color: #00d9c7;
+  background: #00d9c7;
+  color: #04191d;
+}
+
+.admin-rule-step small {
+  color: #8a9b9f;
+  font-size: 0.63rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.admin-rule-step.is-passed small {
+  color: #078e83;
+}
+
+.admin-password-match {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 13px;
+  border-radius: 12px;
+  color: #b23a52;
+  border: 1px solid rgba(205, 58, 87, 0.18);
+  background: rgba(255, 79, 112, 0.06);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.admin-password-match svg {
+  flex: 0 0 auto;
+}
+
+.admin-password-match.matched {
+  color: #067a5c;
+  border-color: rgba(0, 184, 148, 0.24);
+  background: rgba(0, 184, 148, 0.08);
 }
 
 /* =========================================================

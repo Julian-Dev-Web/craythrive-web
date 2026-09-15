@@ -7,10 +7,9 @@ import {
   CheckCircle2,
   Eye,
   EyeOff,
-  KeyRound,
   Loader2,
-  LockKeyhole,
   Save,
+  ShieldCheck,
   XCircle,
 } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "../../lib/supabase";
@@ -163,186 +162,189 @@ export default function ResetPassword() {
   };
 
   return (
-    <main className="login-polished-page reset-password-page">
-      <div className="login-polished-bg" />
-      <div className="login-polished-orb login-polished-orb-one" />
-      <div className="login-polished-orb login-polished-orb-two" />
+    <main className="admin-auth-page">
+      <div className="admin-auth-bg-grid" />
+      <div className="admin-auth-glow admin-auth-glow-one" />
+      <div className="admin-auth-glow admin-auth-glow-two" />
 
-      <section className="login-polished-left">
-        <Link to="/login" className="login-back-link">
-          <ArrowLeft size={18} />
-          Back to Login
-        </Link>
+      <Link to="/login" className="admin-auth-back">
+        <ArrowLeft size={17} />
+        <span>Back to Login</span>
+      </Link>
 
-        <div className="login-brand-hero">
-          <h1>Create New Password</h1>
-          <p>
-            Set a stronger password for your CrayThrive account. Complete all
-            password requirements before updating.
-          </p>
+      <section className="admin-auth-card">
+        <div className="admin-auth-showcase">
+          <div className="admin-showcase-pattern">
+            <span className="pattern-ring pattern-ring-1" />
+            <span className="pattern-ring pattern-ring-2" />
+            <span className="pattern-ring pattern-ring-3" />
+            <span className="pattern-ring pattern-ring-4" />
+          </div>
+
+          <div className="admin-showcase-content">
+            <p className="admin-showcase-kicker">ACCOUNT RECOVERY</p>
+
+            <h1>Create new password</h1>
+
+            <p className="admin-showcase-description">
+              Set a stronger password for your CrayThrive account. Complete
+              all password requirements before updating.
+            </p>
+          </div>
+
+          <div className="admin-showcase-footer">
+            <span>© 2026 CrayThrive</span>
+
+            <div className="admin-showcase-status">
+              <span />
+              System ready
+            </div>
+          </div>
         </div>
 
-        <p className="login-copyright">
-          © 2026 CrayThrive. All rights reserved.
-        </p>
-      </section>
-
-      <section className="login-polished-right">
-        <form
-          className="login-polished-card reset-password-card"
-          onSubmit={handleUpdatePassword}
-        >
-          <div className="login-form-header">
-            <span className="login-form-icon">
-              <KeyRound size={24} />
-            </span>
-
-            <div>
-              <h2>New Password</h2>
+        <div className="admin-auth-form-panel">
+          <div className="admin-auth-form-wrap admin-reset-form-wrap">
+            <div className="admin-form-heading">
+              <span className="admin-form-eyebrow">NEW PASSWORD</span>
+              <h2>Set new password</h2>
               <p>Follow the password validation steps below.</p>
             </div>
-          </div>
 
-          {isCheckingSession && (
-            <div className="form-alert warning">
-              <Loader2 className="spin-icon" size={18} />
-              <span>Checking password recovery session...</span>
-            </div>
-          )}
+            {isCheckingSession && (
+              <div className="admin-auth-alert warning">
+                <Loader2 className="admin-auth-spin" size={18} />
+                <span>Checking password recovery session...</span>
+              </div>
+            )}
 
-          {!isCheckingSession && !canReset && (
-            <div className="form-alert danger">
-              <AlertTriangle size={18} />
-              <span>
-                Reset session not found. Please open the latest password reset
-                link from your email again.
-              </span>
-            </div>
-          )}
+            {!isCheckingSession && !canReset && (
+              <div className="admin-auth-alert danger">
+                <AlertTriangle size={18} />
+                <span>
+                  Reset session not found. Please open the latest password
+                  reset link from your email again.
+                </span>
+              </div>
+            )}
 
-          {errorMessage && (
-            <div className="form-alert danger">
-              <AlertTriangle size={18} />
-              <span>{errorMessage}</span>
-            </div>
-          )}
+            {errorMessage && (
+              <div className="admin-auth-alert danger">
+                <AlertTriangle size={18} />
+                <span>{errorMessage}</span>
+              </div>
+            )}
 
-          {successMessage && (
-            <div className="form-alert success">
-              <CheckCircle2 size={18} />
-              <span>{successMessage}</span>
-            </div>
-          )}
+            {successMessage && (
+              <div className="admin-auth-alert success">
+                <CheckCircle2 size={18} />
+                <span>{successMessage}</span>
+              </div>
+            )}
 
-          <label className="input-group">
-            <span>New Password</span>
+            <form className="admin-auth-form" onSubmit={handleUpdatePassword}>
+              <label className="admin-auth-field">
+                <span>New password</span>
 
-            <div className="input-shell">
-              <LockKeyhole size={19} />
+                <div className="admin-password-field">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Enter new password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    autoComplete="new-password"
+                  />
 
-              <input
-                type={showPassword ? "text" : "password"}
-                placeholder="Enter new password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                autoComplete="new-password"
-              />
+                  <button
+                    type="button"
+                    className="admin-password-toggle"
+                    onClick={() => setShowPassword((current) => !current)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </label>
+
+              <div className="admin-rule-meter">
+                <div className="admin-rule-meter-top">
+                  <div>
+                    <span>Password strength</span>
+                    <strong style={{ color: strength.color }}>{strength.label}</strong>
+                  </div>
+
+                  <b>{passedCount}/5</b>
+                </div>
+
+                <div className="admin-rule-line-area">
+                  <div className="admin-rule-base-line" />
+                  <div
+                    className="admin-rule-fill-line"
+                    style={{ width: `${(passedCount / passwordRules.length) * 100}%` }}
+                  />
+                </div>
+
+                <div className="admin-rule-steps">
+                  {passwordRules.map((rule) => {
+                    const passed = checks[rule.key];
+
+                    return (
+                      <div className={`admin-rule-step ${passed ? "is-passed" : ""}`} key={rule.key}>
+                        <span className="admin-rule-circle">
+                          {passed ? <Check size={12} /> : null}
+                        </span>
+                        <small>{rule.label}</small>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <label className="admin-auth-field">
+                <span>Confirm password</span>
+
+                <div className="admin-password-field">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Confirm new password"
+                    value={confirmPassword}
+                    onChange={(event) => setConfirmPassword(event.target.value)}
+                    autoComplete="new-password"
+                  />
+                </div>
+              </label>
+
+              {confirmPassword.length > 0 && (
+                <div className={`admin-password-match ${passwordsMatch ? "matched" : ""}`}>
+                  {passwordsMatch ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+                  <span>{passwordsMatch ? "Passwords match" : "Passwords do not match"}</span>
+                </div>
+              )}
 
               <button
-                type="button"
-                className="password-toggle"
-                onClick={() => setShowPassword((current) => !current)}
-                aria-label={showPassword ? "Hide password" : "Show password"}
+                type="submit"
+                className="admin-auth-submit"
+                disabled={isSubmitting || isCheckingSession || !canReset}
               >
-                {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+                {isSubmitting ? (
+                  <>
+                    <span>Updating password...</span>
+                    <Loader2 className="admin-auth-spin" size={18} />
+                  </>
+                ) : (
+                  <>
+                    <span>Update password</span>
+                    <Save size={18} />
+                  </>
+                )}
               </button>
-            </div>
-          </label>
+            </form>
 
-          <div className="reset-rule-meter">
-            <div className="reset-rule-meter-top">
-              <div>
-                <span>Password Strength</span>
-                <strong style={{ color: strength.color }}>
-                  {strength.label}
-                </strong>
-              </div>
-
-              <b>{passedCount}/5</b>
-            </div>
-
-            <div className="reset-rule-line-area">
-              <div className="reset-rule-base-line" />
-              <div
-                className="reset-rule-fill-line"
-                style={{
-                  width: `${(passedCount / passwordRules.length) * 81}%`,
-                }}
-              />
-
-              <div className="reset-rule-steps">
-                {passwordRules.map((rule, index) => {
-                  const passed = checks[rule.key];
-
-                  return (
-                    <div
-                      className={`reset-rule-step ${passed ? "is-passed" : ""}`}
-                      key={rule.key}
-                    >
-                      <span className="reset-rule-circle">
-                        {passed ? <Check size={14} /> : index + 1}
-                      </span>
-
-                      <small>{rule.label}</small>
-                    </div>
-                  );
-                })}
-              </div>
+            <div className="admin-auth-security-note">
+              <ShieldCheck size={16} />
+              <p>Your session is verified through the Supabase password recovery link.</p>
             </div>
           </div>
-
-          <label className="input-group">
-            <span>Confirm Password</span>
-
-            <div className="input-shell">
-              <LockKeyhole size={19} />
-
-              <input
-                type={showPassword ? "text" : "password"}
-                placeholder="Confirm new password"
-                value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
-                autoComplete="new-password"
-              />
-            </div>
-          </label>
-
-          {confirmPassword.length > 0 && (
-            <div className={`password-match-note ${passwordsMatch ? "matched" : ""}`}>
-              {passwordsMatch ? <CheckCircle2 size={17} /> : <XCircle size={17} />}
-              <span>
-                {passwordsMatch ? "Passwords match" : "Passwords do not match"}
-              </span>
-            </div>
-          )}
-
-          <button
-            className="login-submit"
-            disabled={isSubmitting || isCheckingSession || !canReset}
-          >
-            {isSubmitting ? (
-              <>
-                Updating password...
-                <Loader2 className="spin-icon" size={18} />
-              </>
-            ) : (
-              <>
-                Update Password
-                <Save size={18} />
-              </>
-            )}
-          </button>
-        </form>
+        </div>
       </section>
     </main>
   );

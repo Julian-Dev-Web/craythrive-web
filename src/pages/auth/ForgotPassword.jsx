@@ -5,10 +5,11 @@ import {
   ArrowLeft,
   CheckCircle2,
   Loader2,
-  Mail,
   Send,
+  ShieldCheck,
 } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "../../lib/supabase";
+import { checkRegisteredProfileByEmail } from "../../services/authService";
 
 const DEFAULT_LIVE_SITE_URL = "https://www.craythrive.site";
 
@@ -17,23 +18,6 @@ function getSiteUrl() {
   const siteUrl = envSiteUrl || DEFAULT_LIVE_SITE_URL;
 
   return siteUrl.replace(/\/$/, "");
-}
-
-async function checkRegisteredProfile(email) {
-  const cleanEmail = email.trim().toLowerCase();
-
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id,email")
-    .ilike("email", cleanEmail)
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error("Could not verify this email. Please try again.");
-  }
-
-  return Boolean(data);
 }
 
 export default function ForgotPassword() {
@@ -66,7 +50,7 @@ export default function ForgotPassword() {
     try {
       setIsSubmitting(true);
 
-      const isRegistered = await checkRegisteredProfile(cleanEmail);
+      const isRegistered = await checkRegisteredProfileByEmail(cleanEmail);
 
       if (!isRegistered) {
         setErrorMessage(
@@ -94,99 +78,113 @@ export default function ForgotPassword() {
   };
 
   return (
-    <main className="login-polished-page">
-      <div className="login-polished-bg" />
-      <div className="login-polished-orb login-polished-orb-one" />
-      <div className="login-polished-orb login-polished-orb-two" />
+    <main className="admin-auth-page">
+      <div className="admin-auth-bg-grid" />
+      <div className="admin-auth-glow admin-auth-glow-one" />
+      <div className="admin-auth-glow admin-auth-glow-two" />
 
-      <section className="login-polished-left">
-        <Link to="/login" className="login-back-link">
-          <ArrowLeft size={18} />
-          Back to Login
-        </Link>
+      <Link to="/login" className="admin-auth-back">
+        <ArrowLeft size={17} />
+        <span>Back to Login</span>
+      </Link>
 
-        <div className="login-brand-hero">
-          <h1>Forgot Password?</h1>
-          <p>
-            Enter your registered CrayThrive account email. We will only send a
-            reset link if the email exists in your CrayThrive profile.
-          </p>
-        </div>
-
-        <p className="login-copyright">
-          © 2026 CrayThrive. All rights reserved.
-        </p>
-      </section>
-
-      <section className="login-polished-right">
-        <form className="login-polished-card" onSubmit={handleResetRequest}>
-          <div className="login-form-header">
-            <span className="login-form-icon">
-              <Mail size={24} />
-            </span>
-
-            <div>
-              <h2>Reset Password</h2>
-              <p>Use your registered email address.</p>
-            </div>
+      <section className="admin-auth-card">
+        <div className="admin-auth-showcase">
+          <div className="admin-showcase-pattern">
+            <span className="pattern-ring pattern-ring-1" />
+            <span className="pattern-ring pattern-ring-2" />
+            <span className="pattern-ring pattern-ring-3" />
+            <span className="pattern-ring pattern-ring-4" />
           </div>
 
-          {!isSupabaseConfigured && (
-            <div className="form-alert warning">
-              <AlertTriangle size={18} />
-              <span>Supabase env is missing or invalid.</span>
+          <div className="admin-showcase-content">
+            <p className="admin-showcase-kicker">ACCOUNT RECOVERY</p>
+
+            <h1>Forgot your password?</h1>
+
+            <p className="admin-showcase-description">
+              Enter your registered CrayThrive account email. We will only send
+              a reset link if the email exists in your CrayThrive profile.
+            </p>
+          </div>
+
+          <div className="admin-showcase-footer">
+            <span>© 2026 CrayThrive</span>
+
+            <div className="admin-showcase-status">
+              <span />
+              System ready
             </div>
-          )}
+          </div>
+        </div>
 
-          {errorMessage && (
-            <div className="form-alert danger">
-              <AlertTriangle size={18} />
-              <span>{errorMessage}</span>
+        <div className="admin-auth-form-panel">
+          <div className="admin-auth-form-wrap">
+            <div className="admin-form-heading">
+              <span className="admin-form-eyebrow">PASSWORD RESET</span>
+              <h2>Reset password</h2>
+              <p>Use your registered email address to receive a reset link.</p>
             </div>
-          )}
 
-          {successMessage && (
-            <div className="form-alert success">
-              <CheckCircle2 size={18} />
-              <span>{successMessage}</span>
-            </div>
-          )}
-
-          <label className="input-group">
-            <span>Email Address</span>
-
-            <div className="input-shell">
-              <Mail size={19} />
-              <input
-                type="email"
-                placeholder="name@example.com"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                autoComplete="email"
-              />
-            </div>
-          </label>
-
-          <button className="login-submit" disabled={isSubmitting}>
-            {isSubmitting ? (
-              <>
-                Checking email...
-                <Loader2 className="spin-icon" size={18} />
-              </>
-            ) : (
-              <>
-                Send Reset Link
-                <Send size={18} />
-              </>
+            {!isSupabaseConfigured && (
+              <div className="admin-auth-alert warning">
+                <AlertTriangle size={18} />
+                <span>Supabase env is missing or invalid.</span>
+              </div>
             )}
-          </button>
 
-          <p className="login-note">
-            Reset links will open on{" "}
-            <strong>craythrive.site/reset-password</strong>. Check spam if the
-            email does not appear in your inbox.
-          </p>
-        </form>
+            {errorMessage && (
+              <div className="admin-auth-alert danger">
+                <AlertTriangle size={18} />
+                <span>{errorMessage}</span>
+              </div>
+            )}
+
+            {successMessage && (
+              <div className="admin-auth-alert success">
+                <CheckCircle2 size={18} />
+                <span>{successMessage}</span>
+              </div>
+            )}
+
+            <form className="admin-auth-form" onSubmit={handleResetRequest}>
+              <label className="admin-auth-field">
+                <span>Email address</span>
+
+                <input
+                  type="email"
+                  placeholder="name@example.com"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  autoComplete="email"
+                  disabled={isSubmitting}
+                />
+              </label>
+
+              <button type="submit" className="admin-auth-submit" disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <span>Checking email...</span>
+                    <Loader2 className="admin-auth-spin" size={18} />
+                  </>
+                ) : (
+                  <>
+                    <span>Send reset link</span>
+                    <Send size={18} />
+                  </>
+                )}
+              </button>
+            </form>
+
+            <div className="admin-auth-security-note">
+              <ShieldCheck size={16} />
+              <p>
+                Reset links open on <strong>craythrive.site/reset-password</strong>.
+                Check spam if the email does not appear in your inbox.
+              </p>
+            </div>
+          </div>
+        </div>
       </section>
     </main>
   );
