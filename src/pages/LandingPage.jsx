@@ -11,12 +11,13 @@ import {
   FlaskConical,
   LineChart,
   LockKeyhole,
+  Mail,
   MonitorCog,
+  Phone,
   ShoppingBag,
   Smartphone,
 } from "lucide-react";
 import { APP_INFO } from "../constants/theme";
-import ContactKeys from "../components/ContactKeys";
 
 const APK_DOWNLOAD_URL = "/downloads/craythrive.apk";
 
@@ -416,16 +417,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section id="contact" className="contact-app-section">
-        <h2>Get in touch</h2>
-        <p>
-          Questions about your tanks, the app, or setting up your own CrayThrive
-          system? Reach us through either channel below.
-        </p>
-
-        <ContactKeys />
-      </section>
-
       <footer className="app-footer">
         <div className="footer-brand-app">
           <span className="footer-logo-wrap">
@@ -443,7 +434,28 @@ export default function LandingPage() {
           </div>
         </div>
 
-        <p>© 2026 CrayThrive. All rights reserved.</p>
+        <div className="footer-right-group">
+          <div className="footer-contact-icons">
+            <a
+              href="mailto:Craythrivesupport@gmail.com" // <-- replace with real email
+              className="footer-icon-link"
+              aria-label="Email CrayThrive"
+              title="Email"
+            >
+              <Mail size={18} />
+            </a>
+            <a
+              href="tel:+639358196510" // <-- replace with real phone number
+              className="footer-icon-link"
+              aria-label="Call CrayThrive"
+              title="Call"
+            >
+              <Phone size={18} />
+            </a>
+          </div>
+
+          <p>© 2026 CrayThrive. All rights reserved.</p>
+        </div>
       </footer>
     </main>
   );
