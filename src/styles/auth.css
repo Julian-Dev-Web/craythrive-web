@@ -121,64 +121,128 @@
   font-size: 0.88rem;
 }
 
-.login-highlights {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 28px;
+/* Minimal sign-in card (AdminLogin only) — underline inputs, no icon
+   badges, no boxed input shells. ForgotPassword/ResetPassword keep the
+   original .login-polished-card / .input-shell treatment untouched. */
+
+.login-simple-card {
+  width: min(400px, 100%);
+  display: grid;
+  gap: 20px;
+  padding: 8px 4px;
 }
 
-.login-highlight {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 10px 16px;
-  border: 1px solid rgba(0, 217, 199, 0.18);
-  border-radius: 999px;
-  background: rgba(0, 20, 29, 0.32);
-  backdrop-filter: blur(14px);
-  color: #eefcff;
+.login-simple-brand {
+  color: rgba(164, 189, 198, 0.85);
   font-size: 0.86rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.login-simple-header h2 {
+  margin: 0 0 6px;
+  color: white;
+  font-size: 1.9rem;
+  letter-spacing: -0.03em;
+}
+
+.login-simple-header p {
+  margin: 0;
+  color: rgba(164, 189, 198, 0.85);
+  font-size: 0.9rem;
+}
+
+.login-simple-header p a {
+  color: #46f2df;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.input-simple-group {
+  display: grid;
+  gap: 8px;
+}
+
+.input-simple-group > span {
+  color: #eefcff;
+  font-size: 0.84rem;
   font-weight: 700;
 }
 
-.login-highlight svg {
-  color: #46f2df;
+.input-simple-group input {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 2px;
+  border: 0;
+  border-bottom: 1px solid rgba(0, 217, 199, 0.24);
+  outline: 0;
+  color: white;
+  background: transparent;
+  font: inherit;
+  font-size: 1rem;
+  transition: border-color 0.2s ease;
 }
 
-.auth-divider {
+.input-simple-group input:hover {
+  border-bottom-color: rgba(0, 217, 199, 0.4);
+}
+
+.input-simple-group input:focus {
+  border-bottom-color: #00d9c7;
+}
+
+.input-simple-group input::placeholder {
+  color: rgba(164, 189, 198, 0.55);
+}
+
+.input-simple-group input:-webkit-autofill,
+.input-simple-group input:-webkit-autofill:hover,
+.input-simple-group input:-webkit-autofill:focus {
+  -webkit-text-fill-color: white;
+  -webkit-box-shadow: 0 0 0 1000px rgba(6, 26, 32, 0.98) inset;
+  box-shadow: 0 0 0 1000px rgba(6, 26, 32, 0.98) inset;
+  transition: background-color 9999s ease-in-out 0s;
+}
+
+.input-simple-shell {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin: 2px 0 4px;
-  color: rgba(164, 189, 198, 0.65);
-  font-size: 0.76rem;
-  font-weight: 800;
-  letter-spacing: 0.03em;
 }
 
-.auth-divider::before,
-.auth-divider::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: rgba(0, 217, 199, 0.16);
+.input-simple-shell input {
+  padding-right: 34px;
 }
 
-.login-signup-note {
-  margin: 0;
+.input-simple-shell .password-toggle {
+  position: absolute;
+  right: 0;
+  width: 30px;
+  height: 30px;
+}
+
+.login-simple-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
   text-align: center;
-  color: rgba(164, 189, 198, 0.85);
-  font-size: 0.86rem;
 }
 
-.login-signup-note a {
+.login-simple-footer span {
+  color: rgba(164, 189, 198, 0.68);
+  font-size: 0.8rem;
+}
+
+.login-simple-footer a {
   color: #46f2df;
-  font-weight: 800;
+  font-size: 0.86rem;
+  font-weight: 700;
   text-decoration: none;
 }
 
-.login-signup-note a:hover {
+.login-simple-footer a:hover {
   text-decoration: underline;
 }
 

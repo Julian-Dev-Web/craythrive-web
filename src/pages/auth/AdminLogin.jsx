@@ -1,29 +1,11 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import {
-  Activity,
-  AlertTriangle,
-  ArrowLeft,
-  ArrowRight,
-  BarChart3,
-  Bell,
-  Eye,
-  EyeOff,
-  LockKeyhole,
-  LogIn,
-  Mail,
-} from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, Eye, EyeOff, LogIn } from "lucide-react";
 import { APP_INFO } from "../../constants/theme";
 import { isSupabaseConfigured } from "../../lib/supabase";
 import { signInWithDashboardAccess } from "../../services/authService";
 
 const APK_DOWNLOAD_URL = "/downloads/craythrive.apk";
-
-const loginHighlights = [
-  { icon: Activity, label: "Tank Monitoring" },
-  { icon: Bell, label: "Smart Alerts" },
-  { icon: BarChart3, label: "Reports" },
-];
 
 export default function AdminLogin() {
   const navigate = useNavigate();
@@ -84,45 +66,35 @@ export default function AdminLogin() {
         </Link>
 
         <div className="login-brand-hero">
-               <div
-                className="admin-login-logo-shell"
-                role="img"
-                aria-label={`${APP_INFO.name} logo`}
-                style={{
-                    backgroundImage: `url(${APP_INFO.logoPath})`,
-                }}
-                />
+          <div
+            className="admin-login-logo-shell"
+            role="img"
+            aria-label={`${APP_INFO.name} logo`}
+            style={{
+              backgroundImage: `url(${APP_INFO.logoPath})`,
+            }}
+          />
 
           <h1>CrayThrive Login</h1>
           <p>Sign in using your registered CrayThrive account.</p>
-
-          <div className="login-highlights">
-            {loginHighlights.map((item) => {
-              const Icon = item.icon;
-              return (
-                <div className="login-highlight" key={item.label}>
-                  <Icon size={18} />
-                  <span>{item.label}</span>
-                </div>
-              );
-            })}
-          </div>
         </div>
 
         <p className="login-copyright">© 2026 CrayThrive. All rights reserved.</p>
       </section>
 
       <section className="login-polished-right">
-        <form className="login-polished-card" onSubmit={handleLogin}>
-          <div className="login-form-header">
-            <span className="login-form-icon">
-              <LockKeyhole size={24} />
-            </span>
+        <form className="login-simple-card" onSubmit={handleLogin}>
+          <span className="login-simple-brand">{APP_INFO.name}</span>
 
-            <div>
-              <h2>Sign In</h2>
-              <p>Use your CrayThrive account to continue.</p>
-            </div>
+          <div className="login-simple-header">
+            <h2>Sign In</h2>
+            <p>
+              Need an account?{" "}
+              <a href={APK_DOWNLOAD_URL} download>
+                Download the mobile app
+              </a>{" "}
+              — it's free.
+            </p>
           </div>
 
           {errorMessage && (
@@ -132,30 +104,20 @@ export default function AdminLogin() {
             </div>
           )}
 
-          <div className="auth-divider">
-            <span>Secure Sign In</span>
-          </div>
-
-          <label className="input-group">
+          <label className="input-simple-group">
             <span>Email Address</span>
-
-            <div className="input-shell">
-              <Mail size={19} />
-              <input
-                type="email"
-                placeholder="name@example.com"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                autoComplete="email"
-              />
-            </div>
+            <input
+              type="email"
+              placeholder="name@example.com"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              autoComplete="email"
+            />
           </label>
 
-          <label className="input-group">
+          <label className="input-simple-group">
             <span>Password</span>
-
-            <div className="input-shell">
-              <LockKeyhole size={19} />
+            <div className="input-simple-shell">
               <input
                 type={showPassword ? "text" : "password"}
                 placeholder="Enter your password"
@@ -170,14 +132,10 @@ export default function AdminLogin() {
                 onClick={() => setShowPassword((current) => !current)}
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
-                {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
           </label>
-
-          <div className="auth-helper-row">
-            <Link to="/forgot-password">Forgot password?</Link>
-          </div>
 
           <button className="login-submit" disabled={isSigningIn}>
             {isSigningIn ? (
@@ -193,17 +151,10 @@ export default function AdminLogin() {
             )}
           </button>
 
-          <p className="login-note">
-            Account access is verified using your Supabase profile role.
-          </p>
-
-          <p className="login-signup-note">
-            New to CrayThrive?{" "}
-            <a href={APK_DOWNLOAD_URL} download>
-              Download the mobile app
-            </a>{" "}
-            to create an account.
-          </p>
+          <div className="login-simple-footer">
+            <span>Account access is verified using your Supabase profile role.</span>
+            <Link to="/forgot-password">Forgot password?</Link>
+          </div>
         </form>
       </section>
     </main>
