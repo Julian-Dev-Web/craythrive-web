@@ -202,6 +202,16 @@ function getValue(
   return fallback;
 }
 
+function safeFilePart(value) {
+  return (
+    clean(value)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") ||
+    "tank"
+  );
+}
+
 /* =========================================================
    SENSOR STATUS
 ========================================================= */
@@ -493,7 +503,7 @@ function getMarketTitle(
 }
 
 /* =========================================================
-   FRIENDLY TANK NAME
+   TANK HELPERS
 ========================================================= */
 
 function getTankKeys(tank) {
@@ -522,6 +532,34 @@ function getRecordTankKeys(record) {
   ]
     .filter(Boolean)
     .map(String);
+}
+
+function getTankName(
+  tank,
+  index = 0
+) {
+  return (
+    tank?.name ||
+    tank?.tank_name ||
+    tank?.title ||
+    tank?.label ||
+    tank?.display_name ||
+    `Tank ${index + 1}`
+  );
+}
+
+function getTankOptionId(
+  tank,
+  index = 0
+) {
+  return String(
+    tank?.id ||
+      tank?.tank_id ||
+      tank?.uuid ||
+      tank?.device_uid ||
+      tank?.iot_device_id ||
+      `tank-${index}`
+  );
 }
 
 function getTankDisplayName(
@@ -562,12 +600,63 @@ function getTankDisplayName(
     return `Tank ${index + 1}`;
   }
 
+  return getTankName(
+    matchedTank,
+    index
+  );
+}
+
+function recordMatchesTank(
+  record,
+  tank
+) {
+  if (
+    !record ||
+    !tank
+  ) {
+    return false;
+  }
+
+  const recordKeys =
+    getRecordTankKeys(
+      record
+    );
+
+  const tankKeys =
+    getTankKeys(
+      tank
+    );
+
+  const idMatches =
+    recordKeys.some(
+      (key) =>
+        tankKeys.includes(
+          key
+        )
+    );
+
+  if (idMatches) {
+    return true;
+  }
+
+  const recordName =
+    lower(
+      record?.tank_name ||
+        record?.tank_label ||
+        record?.tank_display_name
+    );
+
+  const tankName =
+    lower(
+      getTankName(
+        tank
+      )
+    );
+
   return (
-    matchedTank?.name ||
-    matchedTank?.tank_name ||
-    matchedTank?.title ||
-    matchedTank?.label ||
-    `Tank ${index + 1}`
+    Boolean(recordName) &&
+    Boolean(tankName) &&
+    recordName === tankName
   );
 }
 
@@ -876,7 +965,7 @@ async function fetchRowsByScope(
 }
 
 /* =========================================================
-   SMALL COMPONENTS
+   COMPONENTS
 ========================================================= */
 
 function SummaryCard({
@@ -1010,7 +1099,12 @@ export default function ReportsPage() {
   const [
     exportScope,
     setExportScope,
-  ] = useState("both");
+  ] = useState("tanks");
+
+  const [
+    selectedTankId,
+    setSelectedTankId,
+  ] = useState("all");
 
   const [
     datasets,
@@ -1141,54 +1235,198 @@ export default function ReportsPage() {
   }, []);
 
   /* =======================================================
+     TANK OPTIONS
+  ======================================================= */
+
+  const tankOptions =
+    useMemo(() => {
+      return datasets.tanks
+        .map(
+          (
+            tank,
+            index
+          ) => ({
+            id:
+              getTankOptionId(
+                tank,
+                index
+              ),
+
+            name:
+              getTankName(
+                tank,
+                index
+              ),
+
+            tank,
+          })
+        )
+        .sort((a, b) =>
+          a.name.localeCompare(
+            b.name
+          )
+        );
+    }, [datasets.tanks]);
+
+  const selectedTankOption =
+    useMemo(() => {
+      if (
+        selectedTankId ===
+        "all"
+      ) {
+        return null;
+      }
+
+      return (
+        tankOptions.find(
+          (option) =>
+            option.id ===
+            selectedTankId
+        ) || null
+      );
+    }, [
+      tankOptions,
+      selectedTankId,
+    ]);
+
+  const selectedTank =
+    selectedTankOption?.tank ||
+    null;
+
+  const selectedTankName =
+    selectedTankId === "all"
+      ? "All Tanks"
+      : selectedTankOption?.name ||
+        "Selected Tank";
+
+  useEffect(() => {
+    if (
+      selectedTankId !==
+        "all" &&
+      !tankOptions.some(
+        (option) =>
+          option.id ===
+          selectedTankId
+      )
+    ) {
+      setSelectedTankId(
+        "all"
+      );
+    }
+  }, [
+    tankOptions,
+    selectedTankId,
+  ]);
+
+  /* =======================================================
      READINGS
   ======================================================= */
 
   const enrichedReadings =
     useMemo(() => {
-      return datasets.readings.map(
-        (
-          reading,
-          index
-        ) => {
-          const normalized =
-            normalizeSensorReading(
-              reading
-            );
-
-          const status =
-            getOverallReadingStatus(
-              normalized
-            );
-
-          const name =
-            getTankDisplayName(
-              reading,
-              datasets.tanks,
-              index
-            );
-
-          return {
+      return datasets.readings
+        .map(
+          (
             reading,
-            normalized,
-            status,
-            name,
+            index
+          ) => {
+            const normalized =
+              normalizeSensorReading(
+                reading
+              );
 
-            date:
-              normalized.createdAt ||
-              reading?.timestamp ||
-              reading?.date ||
-              reading?.updated_at,
-          };
-        }
-      );
+            const status =
+              getOverallReadingStatus(
+                normalized
+              );
+
+            const name =
+              getTankDisplayName(
+                reading,
+                datasets.tanks,
+                index
+              );
+
+            return {
+              reading,
+              normalized,
+              status,
+              name,
+
+              date:
+                normalized.createdAt ||
+                reading?.timestamp ||
+                reading?.date ||
+                reading?.updated_at,
+            };
+          }
+        )
+        .sort(
+          (a, b) =>
+            new Date(
+              b.date || 0
+            ) -
+            new Date(
+              a.date || 0
+            )
+        );
     }, [
       datasets.readings,
       datasets.tanks,
     ]);
 
+  /* =======================================================
+     SELECTED TANK DATA
+  ======================================================= */
+
+  const tankReadings =
+    useMemo(() => {
+      if (
+        selectedTankId ===
+        "all" ||
+        !selectedTank
+      ) {
+        return enrichedReadings;
+      }
+
+      return enrichedReadings.filter(
+        (item) =>
+          recordMatchesTank(
+            item.reading,
+            selectedTank
+          )
+      );
+    }, [
+      enrichedReadings,
+      selectedTankId,
+      selectedTank,
+    ]);
+
+  const tankAlerts =
+    useMemo(() => {
+      if (
+        selectedTankId ===
+        "all" ||
+        !selectedTank
+      ) {
+        return datasets.alerts;
+      }
+
+      return datasets.alerts.filter(
+        (alert) =>
+          recordMatchesTank(
+            alert,
+            selectedTank
+          )
+      );
+    }, [
+      datasets.alerts,
+      selectedTankId,
+      selectedTank,
+    ]);
+
   const latestReading =
-    enrichedReadings[0] ||
+    tankReadings[0] ||
     null;
 
   /* =======================================================
@@ -1198,28 +1436,28 @@ export default function ReportsPage() {
   const tankAnalytics =
     useMemo(() => {
       const normal =
-        enrichedReadings.filter(
+        tankReadings.filter(
           (item) =>
             item.status ===
             "normal"
         ).length;
 
       const warning =
-        enrichedReadings.filter(
+        tankReadings.filter(
           (item) =>
             item.status ===
             "warning"
         ).length;
 
       const critical =
-        enrichedReadings.filter(
+        tankReadings.filter(
           (item) =>
             item.status ===
             "critical"
         ).length;
 
       const phWarning =
-        enrichedReadings.filter(
+        tankReadings.filter(
           (item) =>
             [
               "warning",
@@ -1233,7 +1471,7 @@ export default function ReportsPage() {
         ).length;
 
       const waterClarityWarning =
-        enrichedReadings.filter(
+        tankReadings.filter(
           (item) =>
             [
               "warning",
@@ -1247,7 +1485,7 @@ export default function ReportsPage() {
         ).length;
 
       const alertCritical =
-        datasets.alerts.filter(
+        tankAlerts.filter(
           (alert) =>
             getAlertSeverity(
               alert
@@ -1256,13 +1494,19 @@ export default function ReportsPage() {
 
       return {
         totalTanks:
-          datasets.tanks.length,
+          selectedTankId ===
+          "all"
+            ? datasets.tanks
+                .length
+            : selectedTank
+              ? 1
+              : 0,
 
         totalReadings:
-          enrichedReadings.length,
+          tankReadings.length,
 
         totalAlerts:
-          datasets.alerts.length,
+          tankAlerts.length,
 
         normal,
 
@@ -1278,13 +1522,13 @@ export default function ReportsPage() {
 
         avgTemp:
           averageFromNormalized(
-            enrichedReadings,
+            tankReadings,
             "temperatureValue"
           ),
 
         avgWaterLevel:
           averageFromNormalized(
-            enrichedReadings,
+            tankReadings,
             "waterValue"
           ),
 
@@ -1314,8 +1558,10 @@ export default function ReportsPage() {
       };
     }, [
       datasets.tanks,
-      datasets.alerts,
-      enrichedReadings,
+      selectedTankId,
+      selectedTank,
+      tankReadings,
+      tankAlerts,
       latestReading,
     ]);
 
@@ -1558,7 +1804,7 @@ export default function ReportsPage() {
   const recentTankRecords =
     useMemo(() => {
       const alerts =
-        datasets.alerts.map(
+        tankAlerts.map(
           (
             alert,
             index
@@ -1594,7 +1840,7 @@ export default function ReportsPage() {
         );
 
       const readings =
-        enrichedReadings.map(
+        tankReadings.map(
           (item) => ({
             type:
               "Water Reading",
@@ -1636,9 +1882,9 @@ export default function ReportsPage() {
         )
         .slice(0, 6);
     }, [
-      datasets.alerts,
+      tankAlerts,
+      tankReadings,
       datasets.tanks,
-      enrichedReadings,
     ]);
 
   /* =======================================================
@@ -1695,7 +1941,7 @@ export default function ReportsPage() {
   const tankExportRows =
     useMemo(() => {
       const readingRows =
-        enrichedReadings.map(
+        tankReadings.map(
           (
             item,
             index
@@ -1752,7 +1998,7 @@ export default function ReportsPage() {
         );
 
       const alertRows =
-        datasets.alerts.map(
+        tankAlerts.map(
           (
             alert,
             index
@@ -1810,8 +2056,8 @@ export default function ReportsPage() {
         ...alertRows,
       ];
     }, [
-      enrichedReadings,
-      datasets.alerts,
+      tankReadings,
+      tankAlerts,
       datasets.tanks,
     ]);
 
@@ -1940,22 +2186,32 @@ export default function ReportsPage() {
      EXPORT SECTIONS
   ======================================================= */
 
+  function getTankReportSection() {
+    return {
+      title:
+        selectedTankId ===
+        "all"
+          ? "Tank Reports"
+          : `${selectedTankName} — Tank Report`,
+
+      description:
+        selectedTankId ===
+        "all"
+          ? "Water readings, water conditions, and alert history for all tanks."
+          : `Water readings, water conditions, and alert history for ${selectedTankName}.`,
+
+      rows:
+        tankExportRows,
+    };
+  }
+
   function getSelectedReportSections() {
     if (
       exportScope ===
       "tanks"
     ) {
       return [
-        {
-          title:
-            "Tank Reports",
-
-          description:
-            "Tank water readings, water conditions, and alert history.",
-
-          rows:
-            tankExportRows,
-        },
+        getTankReportSection(),
       ];
     }
 
@@ -1978,16 +2234,7 @@ export default function ReportsPage() {
     }
 
     return [
-      {
-        title:
-          "Tank Reports",
-
-        description:
-          "Tank water readings, water conditions, and alert history.",
-
-        rows:
-          tankExportRows,
-      },
+      getTankReportSection(),
 
       {
         title:
@@ -2019,14 +2266,29 @@ export default function ReportsPage() {
           )
       );
 
-    const filename =
+    let filename;
+
+    if (
       exportScope ===
       "tanks"
-        ? "craythrive-tank-reports.csv"
-        : exportScope ===
-            "market"
-          ? "craythrive-marketplace-reports.csv"
-          : "craythrive-combined-reports.csv";
+    ) {
+      filename =
+        selectedTankId ===
+        "all"
+          ? "craythrive-all-tanks-report.csv"
+          : `craythrive-${safeFilePart(
+              selectedTankName
+            )}-report.csv`;
+    } else if (
+      exportScope ===
+      "market"
+    ) {
+      filename =
+        "craythrive-marketplace-reports.csv";
+    } else {
+      filename =
+        "craythrive-combined-reports.csv";
+    }
 
     downloadCsv(
       filename,
@@ -2038,19 +2300,51 @@ export default function ReportsPage() {
     const sections =
       getSelectedReportSections();
 
+    let title =
+      "CrayThrive Reports";
+
+    let subtitle =
+      "Tank and Marketplace Reports";
+
+    if (
+      exportScope ===
+      "tanks"
+    ) {
+      title =
+        "CrayThrive Tank Report";
+
+      subtitle =
+        selectedTankId ===
+        "all"
+          ? "All Tanks"
+          : selectedTankName;
+    }
+
+    if (
+      exportScope ===
+      "market"
+    ) {
+      title =
+        "CrayThrive Marketplace Report";
+
+      subtitle =
+        "Marketplace Report";
+    }
+
+    if (
+      exportScope ===
+      "both"
+    ) {
+      subtitle =
+        selectedTankId ===
+        "all"
+          ? "All Tanks and Marketplace"
+          : `${selectedTankName} and Marketplace`;
+    }
+
     printReport({
-      title:
-        "CrayThrive Reports",
-
-      subtitle:
-        exportScope ===
-        "tanks"
-          ? "Tank Reports"
-          : exportScope ===
-              "market"
-            ? "Marketplace Reports"
-            : "Tank and Marketplace Reports",
-
+      title,
+      subtitle,
       sections,
     });
   }
@@ -2146,7 +2440,10 @@ export default function ReportsPage() {
           <strong>
             {activeReport ===
             "tanks"
-              ? "Tank"
+              ? selectedTankId ===
+                "all"
+                ? "All Tanks"
+                : selectedTankName
               : "Market"}
           </strong>
 
@@ -2170,11 +2467,15 @@ export default function ReportsPage() {
               ? "is-active"
               : ""
           }
-          onClick={() =>
+          onClick={() => {
             setActiveReport(
               "tanks"
-            )
-          }
+            );
+
+            setExportScope(
+              "tanks"
+            );
+          }}
         >
           <Droplets
             size={18}
@@ -2191,11 +2492,15 @@ export default function ReportsPage() {
               ? "is-active"
               : ""
           }
-          onClick={() =>
+          onClick={() => {
             setActiveReport(
               "market"
-            )
-          }
+            );
+
+            setExportScope(
+              "market"
+            );
+          }}
         >
           <ShoppingBag
             size={18}
@@ -2206,10 +2511,55 @@ export default function ReportsPage() {
       </section>
 
       {/* ===============================================
-          EXPORT BAR
+          EXPORT / TANK SELECTOR
       ================================================ */}
 
       <section className="cray-report-exportbar">
+
+        {activeReport ===
+          "tanks" && (
+          <label
+            title="Choose which tank to include in the report"
+          >
+            <Droplets
+              size={18}
+            />
+
+            <select
+              value={
+                selectedTankId
+              }
+              onChange={(
+                event
+              ) =>
+                setSelectedTankId(
+                  event.target.value
+                )
+              }
+            >
+              <option value="all">
+                All Tanks
+              </option>
+
+              {tankOptions.map(
+                (option) => (
+                  <option
+                    key={
+                      option.id
+                    }
+                    value={
+                      option.id
+                    }
+                  >
+                    {
+                      option.name
+                    }
+                  </option>
+                )
+              )}
+            </select>
+          </label>
+        )}
 
         <label>
           <FileText
@@ -2277,17 +2627,77 @@ export default function ReportsPage() {
       "tanks" ? (
         <>
 
+          {/* SELECTED TANK LABEL */}
+
+          <section className="cray-report-panel">
+
+            <div className="cray-report-panel-heading">
+
+              <div>
+                <p className="dashboard-eyebrow">
+                  Report For
+                </p>
+
+                <h3>
+                  {
+                    selectedTankName
+                  }
+                </h3>
+              </div>
+
+              <Droplets
+                size={22}
+              />
+            </div>
+
+            <div className="cray-report-row">
+              <div>
+                <strong>
+                  {selectedTankId ===
+                  "all"
+                    ? "Combined tank report"
+                    : "Specific tank report"}
+                </strong>
+
+                <span>
+                  {selectedTankId ===
+                  "all"
+                    ? "The information below includes all registered tanks."
+                    : `Only readings and alerts linked to ${selectedTankName} are included below and in exports.`}
+                </span>
+              </div>
+
+              <b className="cray-report-chip normal">
+                {tankAnalytics.totalReadings}{" "}
+                readings
+              </b>
+            </div>
+          </section>
+
           {/* SUMMARY */}
 
           <section className="cray-report-summary-grid">
 
             <SummaryCard
               icon={Droplets}
-              label="Tanks"
-              value={
-                tankAnalytics.totalTanks
+              label={
+                selectedTankId ===
+                "all"
+                  ? "Tanks"
+                  : "Selected Tank"
               }
-              helper="Registered tanks"
+              value={
+                selectedTankId ===
+                "all"
+                  ? tankAnalytics.totalTanks
+                  : "1"
+              }
+              helper={
+                selectedTankId ===
+                "all"
+                  ? "Registered tanks"
+                  : selectedTankName
+              }
             />
 
             <SummaryCard
@@ -2348,7 +2758,10 @@ export default function ReportsPage() {
                   </p>
 
                   <h3>
-                    General water condition
+                    {selectedTankId ===
+                    "all"
+                      ? "General water condition"
+                      : `${selectedTankName} water condition`}
                   </h3>
                 </div>
 
@@ -2439,7 +2852,7 @@ export default function ReportsPage() {
               </div>
             </article>
 
-            {/* ISSUE GRAPH */}
+            {/* CONDITION GRAPH */}
 
             <article className="cray-report-panel">
 
@@ -2486,7 +2899,7 @@ export default function ReportsPage() {
               </div>
             </article>
 
-            {/* CONDITION SHARE */}
+            {/* READING HEALTH */}
 
             <article className="cray-report-panel cray-report-wide">
 
@@ -2556,7 +2969,10 @@ export default function ReportsPage() {
                   </p>
 
                   <h3>
-                    Latest tank records
+                    {selectedTankId ===
+                    "all"
+                      ? "Latest tank records"
+                      : `${selectedTankName} records`}
                   </h3>
                 </div>
 
@@ -2580,9 +2996,9 @@ export default function ReportsPage() {
                     </strong>
 
                     <span>
-                      Water readings and
-                      alerts will appear
-                      here once available.
+                      No readings or alerts
+                      were found for this
+                      tank selection.
                     </span>
                   </div>
                 ) : (
@@ -2647,14 +3063,10 @@ export default function ReportsPage() {
           </section>
         </>
       ) : (
-
-        /* =============================================
-            MARKETPLACE REPORT
-        ============================================== */
-
         <>
-
-          {/* SUMMARY */}
+          {/* =============================================
+              MARKETPLACE SUMMARY
+          ============================================== */}
 
           <section className="cray-report-summary-grid">
 
@@ -2706,8 +3118,6 @@ export default function ReportsPage() {
 
           <section className="cray-report-grid">
 
-            {/* SALES */}
-
             <article className="cray-report-panel">
 
               <div className="cray-report-panel-heading">
@@ -2747,8 +3157,6 @@ export default function ReportsPage() {
                 </p>
               </div>
             </article>
-
-            {/* MARKET GRAPH */}
 
             <article className="cray-report-panel">
 
@@ -2794,8 +3202,6 @@ export default function ReportsPage() {
                 )}
               </div>
             </article>
-
-            {/* ORDER SHARE */}
 
             <article className="cray-report-panel cray-report-wide">
 
@@ -2852,8 +3258,6 @@ export default function ReportsPage() {
                 />
               </div>
             </article>
-
-            {/* RECENT MARKET RECORDS */}
 
             <article className="cray-report-panel cray-report-wide">
 
