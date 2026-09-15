@@ -69,7 +69,7 @@ const userFilterColumns = [
 ];
 
 /* =========================================================
-   HELPERS
+   GENERAL HELPERS
 ========================================================= */
 
 function clean(value) {
@@ -141,7 +141,38 @@ function normalizeStatusText(value) {
 }
 
 /* =========================================================
-   READING STATUS
+   USER-FRIENDLY TANK NAME
+========================================================= */
+
+function getTankDisplayName(tankId, tanks = []) {
+  if (!tankId) {
+    return "My Tank";
+  }
+
+  const matchedTank = tanks.find((tank) => {
+    const candidateIds = [
+      tank?.id,
+      tank?.tank_id,
+      tank?.uuid,
+    ]
+      .filter(Boolean)
+      .map(String);
+
+    return candidateIds.includes(String(tankId));
+  });
+
+  return (
+    matchedTank?.tank_name ||
+    matchedTank?.name ||
+    matchedTank?.title ||
+    matchedTank?.tank_label ||
+    matchedTank?.display_name ||
+    "My Tank"
+  );
+}
+
+/* =========================================================
+   SENSOR STATUS
 ========================================================= */
 
 function getStatusSeverity(statuses) {
@@ -329,7 +360,7 @@ function getOrderTitle(order, index) {
     order?.listing_title ||
     order?.item_name ||
     order?.title ||
-    `Order ${index + 1}`
+    `Reservation ${index + 1}`
   );
 }
 
@@ -395,7 +426,6 @@ async function fetchUserRows(
 ) {
   for (const tableName of tableNames) {
     const mergedRows = [];
-
     let successful = false;
 
     for (const column of userFilterColumns) {
@@ -413,9 +443,7 @@ async function fetchUserRows(
         Array.isArray(ordered.data)
       ) {
         successful = true;
-
         mergedRows.push(...ordered.data);
-
         continue;
       }
 
@@ -430,7 +458,6 @@ async function fetchUserRows(
         Array.isArray(plain.data)
       ) {
         successful = true;
-
         mergedRows.push(...plain.data);
       }
     }
@@ -472,7 +499,7 @@ function averageFromReadings(
 }
 
 /* =========================================================
-   SMALL COMPONENTS
+   SMALL COMPONENT
 ========================================================= */
 
 function MiniBar({
@@ -490,7 +517,6 @@ function MiniBar({
     <div className={`modern-mini-bar ${tone}`}>
       <div>
         <span>{label}</span>
-
         <strong>{formatNumber(value)}</strong>
       </div>
 
@@ -625,14 +651,20 @@ export default function DashboardOverview() {
         const status =
           getOverallReadingStatus(normalized);
 
+        /*
+         * IMPORTANT:
+         * Use readable tank name instead of UUID.
+         */
         const tankName =
           reading?.tank_name ||
           reading?.tank_label ||
-          reading?.name ||
-          reading?.tank_id ||
-          reading?.iot_device_id ||
-          normalized.deviceUid ||
-          `Reading ${index + 1}`;
+          reading?.tank_display_name ||
+          getTankDisplayName(
+            reading?.tank_id ||
+              reading?.tank_uuid,
+            datasets.tanks
+          ) ||
+          `Tank ${index + 1}`;
 
         const date =
           normalized.createdAt ||
@@ -649,7 +681,10 @@ export default function DashboardOverview() {
         };
       }
     );
-  }, [datasets.readings]);
+  }, [
+    datasets.readings,
+    datasets.tanks,
+  ]);
 
   const latestReading =
     enrichedReadings[0] || null;
@@ -946,7 +981,9 @@ export default function DashboardOverview() {
           size={34}
         />
 
-        <h3>Loading your dashboard...</h3>
+        <h3>
+          Loading your dashboard...
+        </h3>
 
         <p>
           Getting the latest information
@@ -1058,7 +1095,7 @@ export default function DashboardOverview() {
       </section>
 
       {/* ===============================================
-          AT A GLANCE
+          QUICK SUMMARY
       ================================================ */}
 
       <section className="farmer-section">
@@ -1190,9 +1227,7 @@ export default function DashboardOverview() {
 
       <section className="farmer-main-grid">
 
-        {/* =============================================
-            WATER STATUS
-        ============================================== */}
+        {/* WATER STATUS */}
 
         <article className="farmer-card farmer-water-card">
 
@@ -1246,9 +1281,8 @@ export default function DashboardOverview() {
 
               <div className="farmer-water-grid">
 
-                {/* TEMPERATURE */}
-
                 <div className="farmer-water-item">
+
                   <span className="farmer-water-icon">
                     <Thermometer
                       size={21}
@@ -1278,9 +1312,8 @@ export default function DashboardOverview() {
                   </div>
                 </div>
 
-                {/* PH */}
-
                 <div className="farmer-water-item">
+
                   <span className="farmer-water-icon">
                     <Droplets
                       size={21}
@@ -1306,9 +1339,8 @@ export default function DashboardOverview() {
                   </div>
                 </div>
 
-                {/* TURBIDITY */}
-
                 <div className="farmer-water-item">
+
                   <span className="farmer-water-icon">
                     <Waves
                       size={21}
@@ -1334,9 +1366,8 @@ export default function DashboardOverview() {
                   </div>
                 </div>
 
-                {/* WATER */}
-
                 <div className="farmer-water-item">
+
                   <span className="farmer-water-icon">
                     <Database
                       size={21}
@@ -1385,9 +1416,7 @@ export default function DashboardOverview() {
           )}
         </article>
 
-        {/* =============================================
-            NEEDS ATTENTION
-        ============================================== */}
+        {/* NEEDS ATTENTION */}
 
         <article className="farmer-card">
 
@@ -1450,9 +1479,7 @@ export default function DashboardOverview() {
 
                       <div>
                         <strong>
-                          {
-                            item.tankName
-                          }
+                          {item.tankName}
                         </strong>
 
                         <span>
@@ -1582,14 +1609,12 @@ export default function DashboardOverview() {
       </section>
 
       {/* ===============================================
-          HIDDEN / OPTIONAL DETAILS
+          OPTIONAL DETAILS
       ================================================ */}
 
       <section className="farmer-more-section">
 
-        {/* =============================================
-            SENSOR DETAILS
-        ============================================== */}
+        {/* WATER INFORMATION */}
 
         <details className="farmer-details">
 
@@ -1687,9 +1712,7 @@ export default function DashboardOverview() {
           </div>
         </details>
 
-        {/* =============================================
-            MARKETPLACE DETAILS
-        ============================================== */}
+        {/* MARKETPLACE */}
 
         <details className="farmer-details">
 
@@ -1783,9 +1806,7 @@ export default function DashboardOverview() {
           </div>
         </details>
 
-        {/* =============================================
-            SYSTEM HISTORY
-        ============================================== */}
+        {/* HISTORY */}
 
         <details className="farmer-details">
 
