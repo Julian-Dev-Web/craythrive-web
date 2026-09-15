@@ -8,7 +8,7 @@ import { APP_INFO } from "../constants/theme";
  * This is a pure, behavior-preserving extraction — the JSX, class names, and
  * props map exactly to what AdminLayout used to render inline. AdminLayout
  * keeps owning the actual state (collapsed/mobile-open/profile/sign-out);
- * this component just renders it. No visual or functional change.
+ * this component just renders it.
  */
 export default function Sidebar({
   navItems,
@@ -69,18 +69,20 @@ export default function Sidebar({
         })}
       </nav>
 
-      <div className="modern-sidebar-profile">
-        {avatarUrl && (
-          <div className="modern-profile-avatar">
-            <img src={avatarUrl} alt={displayName} />
-          </div>
-        )}
+      {!isCollapsed && (
+        <div className="modern-sidebar-profile">
+          {avatarUrl && (
+            <div className="modern-profile-avatar">
+              <img src={avatarUrl} alt={displayName} />
+            </div>
+          )}
 
-        <div className="modern-profile-text">
-          <strong>{displayName}</strong>
-          <span>Admin</span>
+          <div className="modern-profile-text">
+            <strong>{displayName}</strong>
+            <span>Admin</span>
+          </div>
         </div>
-      </div>
+      )}
 
       <button
         type="button"
