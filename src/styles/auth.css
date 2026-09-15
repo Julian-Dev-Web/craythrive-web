@@ -121,6 +121,67 @@
   font-size: 0.88rem;
 }
 
+.login-highlights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.login-highlight {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 16px;
+  border: 1px solid rgba(0, 217, 199, 0.18);
+  border-radius: 999px;
+  background: rgba(0, 20, 29, 0.32);
+  backdrop-filter: blur(14px);
+  color: #eefcff;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.login-highlight svg {
+  color: #46f2df;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 2px 0 4px;
+  color: rgba(164, 189, 198, 0.65);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(0, 217, 199, 0.16);
+}
+
+.login-signup-note {
+  margin: 0;
+  text-align: center;
+  color: rgba(164, 189, 198, 0.85);
+  font-size: 0.86rem;
+}
+
+.login-signup-note a {
+  color: #46f2df;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.login-signup-note a:hover {
+  text-decoration: underline;
+}
+
 .login-polished-card {
   width: min(460px, 100%);
   display: grid;

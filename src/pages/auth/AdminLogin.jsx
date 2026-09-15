@@ -1,9 +1,12 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
+  Activity,
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  BarChart3,
+  Bell,
   Eye,
   EyeOff,
   LockKeyhole,
@@ -11,35 +14,16 @@ import {
   Mail,
 } from "lucide-react";
 import { APP_INFO } from "../../constants/theme";
-import { isSupabaseConfigured, supabase } from "../../lib/supabase";
+import { isSupabaseConfigured } from "../../lib/supabase";
+import { signInWithDashboardAccess } from "../../services/authService";
 
-async function getProfileByUser(user) {
-  if (!user) return null;
+const APK_DOWNLOAD_URL = "/downloads/craythrive.apk";
 
-  const byId = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (!byId.error && byId.data) {
-    return byId.data;
-  }
-
-  if (user.email) {
-    const byEmail = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("email", user.email)
-      .maybeSingle();
-
-    if (!byEmail.error && byEmail.data) {
-      return byEmail.data;
-    }
-  }
-
-  return null;
-}
+const loginHighlights = [
+  { icon: Activity, label: "Tank Monitoring" },
+  { icon: Bell, label: "Smart Alerts" },
+  { icon: BarChart3, label: "Reports" },
+];
 
 export default function AdminLogin() {
   const navigate = useNavigate();
@@ -54,7 +38,7 @@ export default function AdminLogin() {
     event.preventDefault();
     setErrorMessage("");
 
-    if (!isSupabaseConfigured || !supabase) {
+    if (!isSupabaseConfigured) {
       setErrorMessage("Supabase is not configured yet. Please check your .env file.");
       return;
     }
@@ -67,28 +51,15 @@ export default function AdminLogin() {
     try {
       setIsSigningIn(true);
 
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
+      const { profile, error } = await signInWithDashboardAccess(email, password);
 
       if (error) {
-        throw new Error(error.message);
-      }
-
-      const profile = await getProfileByUser(data.user);
-
-      if (!profile) {
-        await supabase.auth.signOut();
-        setErrorMessage("Profile not found. Please check your CrayThrive account.");
+        setErrorMessage(error);
         return;
       }
 
-      const role = String(profile.role || "").toLowerCase();
-
-      if (role !== "user") {
-        await supabase.auth.signOut();
-        setErrorMessage("Access denied. This account does not have dashboard access.");
+      if (!profile) {
+        setErrorMessage("Could not sign in. Please try again.");
         return;
       }
 
@@ -124,6 +95,18 @@ export default function AdminLogin() {
 
           <h1>CrayThrive Login</h1>
           <p>Sign in using your registered CrayThrive account.</p>
+
+          <div className="login-highlights">
+            {loginHighlights.map((item) => {
+              const Icon = item.icon;
+              return (
+                <div className="login-highlight" key={item.label}>
+                  <Icon size={18} />
+                  <span>{item.label}</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         <p className="login-copyright">© 2026 CrayThrive. All rights reserved.</p>
@@ -148,6 +131,10 @@ export default function AdminLogin() {
               <span>{errorMessage}</span>
             </div>
           )}
+
+          <div className="auth-divider">
+            <span>Secure Sign In</span>
+          </div>
 
           <label className="input-group">
             <span>Email Address</span>
@@ -208,6 +195,14 @@ export default function AdminLogin() {
 
           <p className="login-note">
             Account access is verified using your Supabase profile role.
+          </p>
+
+          <p className="login-signup-note">
+            New to CrayThrive?{" "}
+            <a href={APK_DOWNLOAD_URL} download>
+              Download the mobile app
+            </a>{" "}
+            to create an account.
           </p>
         </form>
       </section>
