@@ -321,7 +321,7 @@ export default function LandingPage() {
 
             <div className="floating-card floating-card-two">
               <BellIcon />
-              <span>Smart alerts</span>
+              <span> alerts</span>
             </div>
           </div>
         </div>
