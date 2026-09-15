@@ -23,13 +23,13 @@ const CONTACT_CHANNELS = [
     id: "email",
     label: "Email",
     icon: Mail,
-    href: "mailto:hello@craythrive.site", // <-- replace with real email
+    href: "mailto:Craythrivesupport@gmail.com", // <-- replace with real email
   },
   {
     id: "phone",
     label: "Call",
     icon: Phone,
-    href: "tel:+639000000000", // <-- replace with real phone number
+    href: "tel:+639358196510", // <-- replace with real phone number
   },
 ];
 
