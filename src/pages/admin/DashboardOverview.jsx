@@ -15,18 +15,40 @@ import {
   Thermometer,
   Waves,
 } from "lucide-react";
+
 import { isSupabaseConfigured, supabase } from "../../lib/supabase";
+
 import {
   formatReadingTime,
   normalizeSensorReading,
   toNumberOrNull,
 } from "../../utils/sensorReadingUtils";
 
+/* =========================================================
+   TABLE FALLBACKS
+========================================================= */
+
 const tableGroups = {
   tanks: ["tanks", "user_tanks", "tank_profiles"],
-  readings: ["sensor_readings", "tank_readings", "readings"],
-  alerts: ["alerts", "notifications", "tank_alerts"],
-  listings: ["marketplace_listings", "listings", "products"],
+
+  readings: [
+    "sensor_readings",
+    "tank_readings",
+    "readings",
+  ],
+
+  alerts: [
+    "alerts",
+    "notifications",
+    "tank_alerts",
+  ],
+
+  listings: [
+    "marketplace_listings",
+    "listings",
+    "products",
+  ],
+
   orders: [
     "marketplace_orders",
     "orders",
@@ -46,6 +68,10 @@ const userFilterColumns = [
   "recipient_id",
 ];
 
+/* =========================================================
+   HELPERS
+========================================================= */
+
 function clean(value) {
   return String(value || "").trim();
 }
@@ -61,7 +87,9 @@ function formatNumber(value) {
 function formatPeso(value) {
   const amount = Number(value);
 
-  if (!Number.isFinite(amount)) return "₱0";
+  if (!Number.isFinite(amount)) {
+    return "₱0";
+  }
 
   return new Intl.NumberFormat("en-PH", {
     style: "currency",
@@ -71,10 +99,15 @@ function formatPeso(value) {
 }
 
 function formatDate(value) {
-  if (!value) return "No date";
+  if (!value) {
+    return "No date";
+  }
 
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "No date";
+
+  if (Number.isNaN(date.getTime())) {
+    return "No date";
+  }
 
   return date.toLocaleString([], {
     month: "short",
@@ -84,12 +117,37 @@ function formatDate(value) {
   });
 }
 
-function normalizeStatusText(value) {
-  return lower(value).replaceAll("_", " ").replaceAll("-", " ");
+function formatShortTime(value) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
+function normalizeStatusText(value) {
+  return lower(value)
+    .replaceAll("_", " ")
+    .replaceAll("-", " ");
+}
+
+/* =========================================================
+   READING STATUS
+========================================================= */
+
 function getStatusSeverity(statuses) {
-  const joined = statuses.map(normalizeStatusText).join(" ");
+  const joined = statuses
+    .map(normalizeStatusText)
+    .join(" ");
 
   if (
     joined.includes("critical") ||
@@ -113,16 +171,6 @@ function getStatusSeverity(statuses) {
     return "warning";
   }
 
-  if (
-    joined.includes("ideal") ||
-    joined.includes("safe") ||
-    joined.includes("normal") ||
-    joined.includes("clear") ||
-    joined.includes("measured")
-  ) {
-    return "normal";
-  }
-
   return "normal";
 }
 
@@ -134,6 +182,10 @@ function getOverallReadingStatus(normalizedReading) {
     normalizedReading.waterStatus,
   ]);
 }
+
+/* =========================================================
+   ALERT HELPERS
+========================================================= */
 
 function getAlertSeverity(alert) {
   const raw = normalizeStatusText(
@@ -153,11 +205,17 @@ function getAlertSeverity(alert) {
     return "critical";
   }
 
-  if (raw.includes("warning") || raw.includes("medium")) {
+  if (
+    raw.includes("warning") ||
+    raw.includes("medium")
+  ) {
     return "warning";
   }
 
-  if (raw.includes("resolved") || raw.includes("read")) {
+  if (
+    raw.includes("resolved") ||
+    raw.includes("read")
+  ) {
     return "normal";
   }
 
@@ -166,7 +224,10 @@ function getAlertSeverity(alert) {
 
 function getAlertOpenStatus(alert) {
   const raw = normalizeStatusText(
-    alert?.status || alert?.alert_status || alert?.read_status || ""
+    alert?.status ||
+      alert?.alert_status ||
+      alert?.read_status ||
+      ""
   );
 
   if (
@@ -182,6 +243,10 @@ function getAlertOpenStatus(alert) {
   return "open";
 }
 
+/* =========================================================
+   MARKETPLACE HELPERS
+========================================================= */
+
 function getListingStatus(listing) {
   const raw = normalizeStatusText(
     listing?.status ||
@@ -196,7 +261,13 @@ function getListingStatus(listing) {
   if (raw.includes("sold")) return "sold";
   if (raw.includes("reserved")) return "reserved";
   if (raw.includes("pending")) return "pending";
-  if (raw.includes("active") || raw.includes("available")) return "active";
+
+  if (
+    raw.includes("active") ||
+    raw.includes("available")
+  ) {
+    return "active";
+  }
 
   return raw || "active";
 }
@@ -232,7 +303,13 @@ function getOrderTotal(order) {
 }
 
 function getRecordDate(row) {
-  return row?.created_at || row?.updated_at || row?.timestamp || row?.date || "";
+  return (
+    row?.created_at ||
+    row?.updated_at ||
+    row?.timestamp ||
+    row?.date ||
+    ""
+  );
 }
 
 function getListingTitle(listing, index) {
@@ -267,6 +344,10 @@ function getAlertTitle(alert, index) {
   );
 }
 
+/* =========================================================
+   DATABASE HELPERS
+========================================================= */
+
 function uniqueRows(rows) {
   const map = new Map();
 
@@ -291,6 +372,7 @@ function uniqueRows(rows) {
 
 async function getCurrentUser() {
   const { data } = await supabase.auth.getSession();
+
   const user = data?.session?.user;
 
   if (!user) {
@@ -306,9 +388,14 @@ async function getCurrentUser() {
   };
 }
 
-async function fetchUserRows(tableNames, userId, limit = 220) {
+async function fetchUserRows(
+  tableNames,
+  userId,
+  limit = 220
+) {
   for (const tableName of tableNames) {
     const mergedRows = [];
+
     let successful = false;
 
     for (const column of userFilterColumns) {
@@ -316,12 +403,19 @@ async function fetchUserRows(tableNames, userId, limit = 220) {
         .from(tableName)
         .select("*")
         .eq(column, userId)
-        .order("created_at", { ascending: false })
+        .order("created_at", {
+          ascending: false,
+        })
         .limit(limit);
 
-      if (!ordered.error && Array.isArray(ordered.data)) {
+      if (
+        !ordered.error &&
+        Array.isArray(ordered.data)
+      ) {
         successful = true;
+
         mergedRows.push(...ordered.data);
+
         continue;
       }
 
@@ -331,8 +425,12 @@ async function fetchUserRows(tableNames, userId, limit = 220) {
         .eq(column, userId)
         .limit(limit);
 
-      if (!plain.error && Array.isArray(plain.data)) {
+      if (
+        !plain.error &&
+        Array.isArray(plain.data)
+      ) {
         successful = true;
+
         mergedRows.push(...plain.data);
       }
     }
@@ -351,40 +449,48 @@ async function fetchUserRows(tableNames, userId, limit = 220) {
   };
 }
 
-function averageFromReadings(enrichedReadings, key) {
+function averageFromReadings(
+  enrichedReadings,
+  key
+) {
   const values = enrichedReadings
-    .map((item) => toNumberOrNull(item.normalized[key]))
+    .map((item) =>
+      toNumberOrNull(item.normalized[key])
+    )
     .filter((value) => value !== null);
 
-  if (!values.length) return "N/A";
+  if (!values.length) {
+    return "N/A";
+  }
 
-  const total = values.reduce((sum, value) => sum + value, 0);
+  const total = values.reduce(
+    (sum, value) => sum + value,
+    0
+  );
+
   return (total / values.length).toFixed(2);
 }
 
-function StatCard({ icon: Icon, label, value, helper, tone = "default" }) {
-  return (
-    <article className={`modern-overview-stat ${tone}`}>
-      <span className="modern-overview-stat-icon">
-        <Icon size={22} />
-      </span>
+/* =========================================================
+   SMALL COMPONENTS
+========================================================= */
 
-      <div>
-        <strong>{value}</strong>
-        <p>{label}</p>
-        <small>{helper}</small>
-      </div>
-    </article>
-  );
-}
-
-function MiniBar({ label, value, max, tone = "default" }) {
-  const width = max > 0 ? `${Math.min((value / max) * 100, 100)}%` : "0%";
+function MiniBar({
+  label,
+  value,
+  max,
+  tone = "default",
+}) {
+  const width =
+    max > 0
+      ? `${Math.min((value / max) * 100, 100)}%`
+      : "0%";
 
   return (
     <div className={`modern-mini-bar ${tone}`}>
       <div>
         <span>{label}</span>
+
         <strong>{formatNumber(value)}</strong>
       </div>
 
@@ -395,6 +501,10 @@ function MiniBar({ label, value, max, tone = "default" }) {
   );
 }
 
+/* =========================================================
+   DASHBOARD
+========================================================= */
+
 export default function DashboardOverview() {
   const [datasets, setDatasets] = useState({
     tanks: [],
@@ -404,13 +514,21 @@ export default function DashboardOverview() {
     orders: [],
   });
 
-  const [sources, setSources] = useState({});
-  const [scopeLabel, setScopeLabel] = useState("Your Dashboard");
-  const [isLoading, setIsLoading] = useState(true);
-  const [lastUpdated, setLastUpdated] = useState(null);
+  const [isLoading, setIsLoading] =
+    useState(true);
+
+  const [lastUpdated, setLastUpdated] =
+    useState(null);
+
+  /* =======================================================
+     LOAD DASHBOARD
+  ======================================================= */
 
   const loadDashboard = async () => {
-    if (!isSupabaseConfigured || !supabase) {
+    if (
+      !isSupabaseConfigured ||
+      !supabase
+    ) {
       setIsLoading(false);
       return;
     }
@@ -418,7 +536,8 @@ export default function DashboardOverview() {
     try {
       setIsLoading(true);
 
-      const currentUser = await getCurrentUser();
+      const currentUser =
+        await getCurrentUser();
 
       if (!currentUser.id) {
         setDatasets({
@@ -428,17 +547,46 @@ export default function DashboardOverview() {
           listings: [],
           orders: [],
         });
-        setScopeLabel("No session");
+
         return;
       }
 
-      // Fetch ONLY data that belongs to the logged-in user
-      const [tanks, readings, alerts, listings, orders] = await Promise.all([
-        fetchUserRows(tableGroups.tanks, currentUser.id, 300),
-        fetchUserRows(tableGroups.readings, currentUser.id, 300),
-        fetchUserRows(tableGroups.alerts, currentUser.id, 300),
-        fetchUserRows(tableGroups.listings, currentUser.id, 300),
-        fetchUserRows(tableGroups.orders, currentUser.id, 300),
+      const [
+        tanks,
+        readings,
+        alerts,
+        listings,
+        orders,
+      ] = await Promise.all([
+        fetchUserRows(
+          tableGroups.tanks,
+          currentUser.id,
+          300
+        ),
+
+        fetchUserRows(
+          tableGroups.readings,
+          currentUser.id,
+          300
+        ),
+
+        fetchUserRows(
+          tableGroups.alerts,
+          currentUser.id,
+          300
+        ),
+
+        fetchUserRows(
+          tableGroups.listings,
+          currentUser.id,
+          300
+        ),
+
+        fetchUserRows(
+          tableGroups.orders,
+          currentUser.id,
+          300
+        ),
       ]);
 
       setDatasets({
@@ -449,18 +597,12 @@ export default function DashboardOverview() {
         orders: orders.rows,
       });
 
-      setSources({
-        tanks: tanks.tableUsed,
-        readings: readings.tableUsed,
-        alerts: alerts.tableUsed,
-        listings: listings.tableUsed,
-        orders: orders.tableUsed,
-      });
-
-      setScopeLabel("Your account view");
       setLastUpdated(new Date());
     } catch (error) {
-      console.error("Dashboard loading error:", error);
+      console.error(
+        "Dashboard loading error:",
+        error
+      );
     } finally {
       setIsLoading(false);
     }
@@ -470,84 +612,151 @@ export default function DashboardOverview() {
     loadDashboard();
   }, []);
 
+  /* =======================================================
+     SENSOR READINGS
+  ======================================================= */
+
   const enrichedReadings = useMemo(() => {
-    return datasets.readings.map((reading, index) => {
-      const normalized = normalizeSensorReading(reading);
-      const status = getOverallReadingStatus(normalized);
+    return datasets.readings.map(
+      (reading, index) => {
+        const normalized =
+          normalizeSensorReading(reading);
 
-      const tankName =
-        reading?.tank_name ||
-        reading?.tank_label ||
-        reading?.name ||
-        reading?.tank_id ||
-        reading?.iot_device_id ||
-        normalized.deviceUid ||
-        `Reading ${index + 1}`;
+        const status =
+          getOverallReadingStatus(normalized);
 
-      const date =
-        normalized.createdAt ||
-        reading?.timestamp ||
-        reading?.date ||
-        reading?.updated_at;
+        const tankName =
+          reading?.tank_name ||
+          reading?.tank_label ||
+          reading?.name ||
+          reading?.tank_id ||
+          reading?.iot_device_id ||
+          normalized.deviceUid ||
+          `Reading ${index + 1}`;
 
-      return {
-        reading,
-        normalized,
-        status,
-        tankName: String(tankName),
-        date,
-      };
-    });
+        const date =
+          normalized.createdAt ||
+          reading?.timestamp ||
+          reading?.date ||
+          reading?.updated_at;
+
+        return {
+          reading,
+          normalized,
+          status,
+          tankName: String(tankName),
+          date,
+        };
+      }
+    );
   }, [datasets.readings]);
 
-  const latestReading = enrichedReadings[0] || null;
+  const latestReading =
+    enrichedReadings[0] || null;
+
+  /* =======================================================
+     STATS
+  ======================================================= */
 
   const stats = useMemo(() => {
-    const activeAlerts = datasets.alerts.filter(
-      (alert) => getAlertOpenStatus(alert) === "open"
-    ).length;
+    const activeAlerts =
+      datasets.alerts.filter(
+        (alert) =>
+          getAlertOpenStatus(alert) === "open"
+      ).length;
 
-    const criticalAlerts = datasets.alerts.filter(
-      (alert) => getAlertSeverity(alert) === "critical"
-    ).length;
+    const criticalAlerts =
+      datasets.alerts.filter(
+        (alert) =>
+          getAlertSeverity(alert) ===
+          "critical"
+      ).length;
 
-    const activeListings = datasets.listings.filter(
-      (listing) => getListingStatus(listing) === "active"
-    ).length;
+    const activeListings =
+      datasets.listings.filter(
+        (listing) =>
+          getListingStatus(listing) ===
+          "active"
+      ).length;
 
-    const pendingOrders = datasets.orders.filter(
-      (order) => getOrderStatus(order) === "pending"
-    ).length;
+    const pendingOrders =
+      datasets.orders.filter(
+        (order) =>
+          getOrderStatus(order) ===
+          "pending"
+      ).length;
 
-    const completedOrders = datasets.orders.filter((order) =>
-      ["completed", "confirmed", "paid"].includes(getOrderStatus(order))
-    );
+    const completedOrders =
+      datasets.orders.filter((order) =>
+        [
+          "completed",
+          "confirmed",
+          "paid",
+        ].includes(getOrderStatus(order))
+      );
 
-    const totalSales = completedOrders.reduce(
-      (sum, order) => sum + Number(getOrderTotal(order) || 0),
-      0
-    );
+    const totalSales =
+      completedOrders.reduce(
+        (sum, order) =>
+          sum +
+          Number(
+            getOrderTotal(order) || 0
+          ),
+        0
+      );
 
-    const sensorIssues = enrichedReadings.filter((item) =>
-      ["warning", "critical"].includes(item.status)
-    ).length;
+    const sensorIssues =
+      enrichedReadings.filter((item) =>
+        ["warning", "critical"].includes(
+          item.status
+        )
+      ).length;
 
     return {
       totalTanks: datasets.tanks.length,
+
       activeAlerts,
+
       criticalAlerts,
-      totalListings: datasets.listings.length,
+
+      totalListings:
+        datasets.listings.length,
+
       activeListings,
+
       pendingOrders,
-      totalOrders: datasets.orders.length,
-      completedOrders: completedOrders.length,
+
+      totalOrders:
+        datasets.orders.length,
+
+      completedOrders:
+        completedOrders.length,
+
       totalSales,
+
       sensorIssues,
     };
   }, [datasets, enrichedReadings]);
 
-  const avgTemp = averageFromReadings(enrichedReadings, "temperatureValue");
-  const avgWaterDepth = averageFromReadings(enrichedReadings, "waterValue");
+  /* =======================================================
+     AVERAGES
+  ======================================================= */
+
+  const avgTemp =
+    averageFromReadings(
+      enrichedReadings,
+      "temperatureValue"
+    );
+
+  const avgWaterDepth =
+    averageFromReadings(
+      enrichedReadings,
+      "waterValue"
+    );
+
+  /* =======================================================
+     ACTIVITY BARS
+  ======================================================= */
 
   const activityBars = [
     {
@@ -555,388 +764,1105 @@ export default function DashboardOverview() {
       value: stats.totalTanks,
       tone: "default",
     },
+
     {
-      label: "Sensor Issues",
+      label: "Water Issues",
       value: stats.sensorIssues,
-      tone: stats.sensorIssues > 0 ? "warning" : "success",
+      tone:
+        stats.sensorIssues > 0
+          ? "warning"
+          : "success",
     },
+
     {
       label: "Active Alerts",
       value: stats.activeAlerts,
-      tone: stats.activeAlerts > 0 ? "danger" : "success",
+      tone:
+        stats.activeAlerts > 0
+          ? "danger"
+          : "success",
     },
+
     {
       label: "Listings",
       value: stats.totalListings,
       tone: "default",
     },
+
     {
-      label: "Pending Orders",
+      label: "Reservations",
       value: stats.pendingOrders,
-      tone: stats.pendingOrders > 0 ? "warning" : "default",
+      tone:
+        stats.pendingOrders > 0
+          ? "warning"
+          : "default",
     },
   ];
 
-  const maxActivity = Math.max(1, ...activityBars.map((item) => item.value));
+  const maxActivity = Math.max(
+    1,
+    ...activityBars.map(
+      (item) => item.value
+    )
+  );
 
-  const recentSensorIssues = useMemo(() => {
-    return enrichedReadings
-      .filter((item) => ["warning", "critical"].includes(item.status))
-      .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
-      .slice(0, 5);
-  }, [enrichedReadings]);
+  /* =======================================================
+     RECENT SENSOR ISSUES
+  ======================================================= */
 
-  const recentMarketplaceActivity = useMemo(() => {
-    const listings = datasets.listings.map((listing, index) => ({
-      type: "Listing",
-      title: getListingTitle(listing, index),
-      status: getListingStatus(listing),
-      date: getRecordDate(listing),
-    }));
+  const recentSensorIssues =
+    useMemo(() => {
+      return enrichedReadings
+        .filter((item) =>
+          [
+            "warning",
+            "critical",
+          ].includes(item.status)
+        )
+        .sort(
+          (a, b) =>
+            new Date(b.date || 0) -
+            new Date(a.date || 0)
+        )
+        .slice(0, 5);
+    }, [enrichedReadings]);
 
-    const orders = datasets.orders.map((order, index) => ({
-      type: "Order",
-      title: getOrderTitle(order, index),
-      status: getOrderStatus(order),
-      date: getRecordDate(order),
-    }));
+  /* =======================================================
+     MARKETPLACE ACTIVITY
+  ======================================================= */
 
-    return [...listings, ...orders]
-      .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
-      .slice(0, 6);
-  }, [datasets.listings, datasets.orders]);
+  const recentMarketplaceActivity =
+    useMemo(() => {
+      const listings =
+        datasets.listings.map(
+          (listing, index) => ({
+            type: "Listing",
 
-  const recentSystemActivity = useMemo(() => {
-    const alerts = datasets.alerts.map((alert, index) => ({
-      type: "Alert",
-      title: getAlertTitle(alert, index),
-      status: getAlertSeverity(alert),
-      date: getRecordDate(alert),
-    }));
+            title: getListingTitle(
+              listing,
+              index
+            ),
 
-    const readings = enrichedReadings.map((item) => ({
-      type: "Reading",
-      title: item.tankName,
-      status: item.status,
-      date: item.date,
-    }));
+            status:
+              getListingStatus(listing),
 
-    return [...alerts, ...readings]
-      .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
-      .slice(0, 6);
-  }, [datasets.alerts, enrichedReadings]);
+            date:
+              getRecordDate(listing),
+          })
+        );
 
-  const healthLabel =
-    stats.criticalAlerts > 0 || recentSensorIssues.some((item) => item.status === "critical")
-      ? "Needs Review"
-      : stats.sensorIssues > 0
-        ? "Monitoring"
-        : "System Stable";
+      const orders =
+        datasets.orders.map(
+          (order, index) => ({
+            type: "Reservation",
+
+            title: getOrderTitle(
+              order,
+              index
+            ),
+
+            status:
+              getOrderStatus(order),
+
+            date:
+              getRecordDate(order),
+          })
+        );
+
+      return [
+        ...listings,
+        ...orders,
+      ]
+        .sort(
+          (a, b) =>
+            new Date(b.date || 0) -
+            new Date(a.date || 0)
+        )
+        .slice(0, 6);
+    }, [
+      datasets.listings,
+      datasets.orders,
+    ]);
+
+  /* =======================================================
+     SYSTEM HISTORY
+  ======================================================= */
+
+  const recentSystemActivity =
+    useMemo(() => {
+      const alerts =
+        datasets.alerts.map(
+          (alert, index) => ({
+            type: "Alert",
+
+            title: getAlertTitle(
+              alert,
+              index
+            ),
+
+            status:
+              getAlertSeverity(alert),
+
+            date:
+              getRecordDate(alert),
+          })
+        );
+
+      const readings =
+        enrichedReadings.map((item) => ({
+          type: "Water Reading",
+
+          title: item.tankName,
+
+          status: item.status,
+
+          date: item.date,
+        }));
+
+      return [
+        ...alerts,
+        ...readings,
+      ]
+        .sort(
+          (a, b) =>
+            new Date(b.date || 0) -
+            new Date(a.date || 0)
+        )
+        .slice(0, 6);
+    }, [
+      datasets.alerts,
+      enrichedReadings,
+    ]);
+
+  /* =======================================================
+     LOADING
+  ======================================================= */
 
   if (isLoading) {
     return (
       <section className="modern-overview-loading">
-        <Loader2 className="spin-icon" size={34} />
-        <h3>Loading dashboard...</h3>
-        <p>CrayThrive is syncing web dashboard records.</p>
+        <Loader2
+          className="spin-icon"
+          size={34}
+        />
+
+        <h3>Loading your dashboard...</h3>
+
+        <p>
+          Getting the latest information
+          from your CrayThrive system.
+        </p>
       </section>
     );
   }
 
+  /* =======================================================
+     SIMPLE HEALTH STATUS
+  ======================================================= */
+
+  const hasCriticalProblem =
+    stats.criticalAlerts > 0 ||
+    recentSensorIssues.some(
+      (item) =>
+        item.status === "critical"
+    );
+
+  const hasWarning =
+    stats.sensorIssues > 0 ||
+    stats.activeAlerts > 0;
+
+  const simpleHealthTitle =
+    hasCriticalProblem
+      ? "Action needed"
+      : hasWarning
+        ? "Needs attention"
+        : "Everything looks good";
+
+  const simpleHealthText =
+    hasCriticalProblem
+      ? "One or more tank conditions need to be checked as soon as possible."
+      : hasWarning
+        ? "Some tank conditions need your attention. CrayThrive is continuing to monitor them."
+        : "No active problems were detected in your monitored tanks.";
+
+  /* =======================================================
+     UI
+  ======================================================= */
+
   return (
-    <div className="modern-overview-page">
-      <section className="modern-overview-hero">
-        <div>
-          <p className="dashboard-eyebrow">CrayThrive Dashboard</p>
-          <h2>A smarter look at your crayfish system.</h2>
-          <p>
-            Monitor your tanks, IoT sensor statuses, alerts, marketplace
-            listings, and reservations from one clean web dashboard.
-          </p>
+    <div className="farmer-overview-page">
 
-          <div className="modern-overview-actions">
-            <button className="dashboard-primary-button" onClick={loadDashboard}>
-              <RefreshCw size={18} />
-              Refresh Data
-            </button>
+      {/* ===============================================
+          SYSTEM STATUS
+      ================================================ */}
 
-            <Link to="/admin/readings" className="modern-secondary-link">
-              View Readings
-              <ArrowRight size={18} />
-            </Link>
+      <section
+        className={`farmer-status-banner ${
+          hasCriticalProblem
+            ? "critical"
+            : hasWarning
+              ? "warning"
+              : "success"
+        }`}
+      >
+        <div className="farmer-status-content">
 
-            <span>
-              {lastUpdated
-                ? `Last updated ${lastUpdated.toLocaleTimeString()} • ${scopeLabel}`
-                : `Waiting for sync • ${scopeLabel}`}
+          <div className="farmer-status-icon">
+            {hasCriticalProblem ||
+            hasWarning ? (
+              <AlertTriangle size={27} />
+            ) : (
+              <CheckCircle2 size={27} />
+            )}
+          </div>
+
+          <div>
+            <span className="farmer-status-label">
+              Your CrayThrive System
             </span>
+
+            <h2>
+              {simpleHealthTitle}
+            </h2>
+
+            <p>
+              {simpleHealthText}
+            </p>
           </div>
         </div>
 
-        <div className="modern-overview-health">
-          <div className="modern-health-ring">
-            <Waves size={38} />
-          </div>
+        <div className="farmer-status-actions">
 
-          <strong>{healthLabel}</strong>
+          {(stats.activeAlerts > 0 ||
+            stats.sensorIssues > 0) && (
+            <Link
+              to="/admin/readings"
+              className="farmer-primary-action"
+            >
+              Check Issues
 
-          <span>
-            {stats.sensorIssues > 0 || stats.activeAlerts > 0
-              ? `${stats.sensorIssues} sensor issue(s), ${stats.activeAlerts} active alert(s)`
-              : "No active sensor issues detected"}
-          </span>
+              <ArrowRight size={17} />
+            </Link>
+          )}
+
+          <button
+            type="button"
+            className="farmer-refresh-button"
+            onClick={loadDashboard}
+          >
+            <RefreshCw size={17} />
+
+            Refresh
+          </button>
         </div>
       </section>
 
-      <section className="modern-overview-stat-grid">
-        <StatCard
-          icon={Droplets}
-          label="Total Tanks"
-          value={formatNumber(stats.totalTanks)}
-          helper={`Source: ${sources.tanks || "tanks"}`}
-        />
+      {/* ===============================================
+          AT A GLANCE
+      ================================================ */}
 
-        <StatCard
-          icon={Bell}
-          label="Active Alerts"
-          value={formatNumber(stats.activeAlerts)}
-          helper={`${stats.criticalAlerts} critical alert(s)`}
-          tone={stats.activeAlerts > 0 ? "danger" : "success"}
-        />
+      <section className="farmer-section">
 
-        <StatCard
-          icon={ShoppingBag}
-          label="Marketplace Listings"
-          value={formatNumber(stats.totalListings)}
-          helper={`${stats.activeListings} active listing(s)`}
-        />
+        <div className="farmer-section-heading">
 
-        <StatCard
-          icon={PackageCheck}
-          label="Pending Reservations"
-          value={formatNumber(stats.pendingOrders)}
-          helper={`${stats.totalOrders} total order record(s)`}
-          tone={stats.pendingOrders > 0 ? "warning" : "default"}
-        />
+          <div>
+            <span>
+              Overview
+            </span>
 
-        <StatCard
-          icon={Activity}
-          label="Sales Value"
-          value={formatPeso(stats.totalSales)}
-          helper={`${stats.completedOrders} completed/paid order(s)`}
-          tone="success"
-        />
-      </section>
+            <h3>
+              What you need to know
+            </h3>
+          </div>
 
-      <section className="modern-overview-grid">
-        <article className="modern-overview-panel">
-          <div className="modern-panel-heading">
-            <div>
-              <p className="dashboard-eyebrow">Latest Sensor Snapshot</p>
-              <h3>Newest IoT reading</h3>
+          <small>
+            {lastUpdated
+              ? `Updated ${formatShortTime(
+                  lastUpdated
+                )}`
+              : "Waiting for latest data"}
+          </small>
+        </div>
+
+        <div className="farmer-summary-grid">
+
+          <Link
+            to="/admin/tanks"
+            className="farmer-summary-card"
+          >
+            <div className="farmer-summary-icon">
+              <Droplets size={22} />
             </div>
-            <Thermometer size={22} />
+
+            <div>
+              <strong>
+                {formatNumber(
+                  stats.totalTanks
+                )}
+              </strong>
+
+              <span>
+                Tanks
+              </span>
+            </div>
+
+            <ArrowRight size={17} />
+          </Link>
+
+          <Link
+            to="/admin/alerts"
+            className={`farmer-summary-card ${
+              stats.activeAlerts > 0
+                ? "warning"
+                : ""
+            }`}
+          >
+            <div className="farmer-summary-icon">
+              <Bell size={22} />
+            </div>
+
+            <div>
+              <strong>
+                {formatNumber(
+                  stats.activeAlerts
+                )}
+              </strong>
+
+              <span>
+                Alerts
+              </span>
+            </div>
+
+            <ArrowRight size={17} />
+          </Link>
+
+          <Link
+            to="/admin/orders"
+            className="farmer-summary-card"
+          >
+            <div className="farmer-summary-icon">
+              <PackageCheck size={22} />
+            </div>
+
+            <div>
+              <strong>
+                {formatNumber(
+                  stats.pendingOrders
+                )}
+              </strong>
+
+              <span>
+                Reservations
+              </span>
+            </div>
+
+            <ArrowRight size={17} />
+          </Link>
+
+          <Link
+            to="/admin/marketplace"
+            className="farmer-summary-card"
+          >
+            <div className="farmer-summary-icon">
+              <ShoppingBag size={22} />
+            </div>
+
+            <div>
+              <strong>
+                {formatNumber(
+                  stats.activeListings
+                )}
+              </strong>
+
+              <span>
+                Active Listings
+              </span>
+            </div>
+
+            <ArrowRight size={17} />
+          </Link>
+        </div>
+      </section>
+
+      {/* ===============================================
+          MAIN INFORMATION
+      ================================================ */}
+
+      <section className="farmer-main-grid">
+
+        {/* =============================================
+            WATER STATUS
+        ============================================== */}
+
+        <article className="farmer-card farmer-water-card">
+
+          <div className="farmer-card-heading">
+
+            <div>
+              <span>
+                Latest Water Check
+              </span>
+
+              <h3>
+                Tank condition
+              </h3>
+            </div>
+
+            <Link to="/admin/readings">
+              View readings
+
+              <ArrowRight size={16} />
+            </Link>
           </div>
 
           {latestReading ? (
-            <div className="modern-metric-grid">
-              <div>
-                <Thermometer size={20} />
-                <strong>{latestReading.normalized.temperatureLabel}</strong>
-                <span>{latestReading.normalized.temperatureStatus}</span>
+            <>
+              <div className="farmer-reading-header">
+
+                <div>
+                  <strong>
+                    {latestReading.tankName}
+                  </strong>
+
+                  <span>
+                    {formatReadingTime(
+                      latestReading.date
+                    )}
+                  </span>
+                </div>
+
+                <b
+                  className={`modern-status-chip ${latestReading.status}`}
+                >
+                  {latestReading.status ===
+                  "normal"
+                    ? "Good"
+                    : latestReading.status ===
+                        "warning"
+                      ? "Check"
+                      : "Attention"}
+                </b>
               </div>
 
-              <div>
-                <Droplets size={20} />
-                <strong>{latestReading.normalized.phStatus}</strong>
-                <span>pH Status</span>
-              </div>
+              <div className="farmer-water-grid">
 
-              <div>
-                <Waves size={20} />
-                <strong>{latestReading.normalized.turbidityStatus}</strong>
-                <span>Turbidity Status</span>
-              </div>
+                {/* TEMPERATURE */}
 
-              <div>
-                <Database size={20} />
-                <strong>{latestReading.normalized.waterLabel}</strong>
-                <span>{latestReading.normalized.waterStatus}</span>
+                <div className="farmer-water-item">
+                  <span className="farmer-water-icon">
+                    <Thermometer
+                      size={21}
+                    />
+                  </span>
+
+                  <div>
+                    <small>
+                      Temperature
+                    </small>
+
+                    <strong>
+                      {
+                        latestReading
+                          .normalized
+                          .temperatureLabel
+                      }
+                    </strong>
+
+                    <span>
+                      {
+                        latestReading
+                          .normalized
+                          .temperatureStatus
+                      }
+                    </span>
+                  </div>
+                </div>
+
+                {/* PH */}
+
+                <div className="farmer-water-item">
+                  <span className="farmer-water-icon">
+                    <Droplets
+                      size={21}
+                    />
+                  </span>
+
+                  <div>
+                    <small>
+                      pH Level
+                    </small>
+
+                    <strong>
+                      {
+                        latestReading
+                          .normalized
+                          .phStatus
+                      }
+                    </strong>
+
+                    <span>
+                      Water acidity
+                    </span>
+                  </div>
+                </div>
+
+                {/* TURBIDITY */}
+
+                <div className="farmer-water-item">
+                  <span className="farmer-water-icon">
+                    <Waves
+                      size={21}
+                    />
+                  </span>
+
+                  <div>
+                    <small>
+                      Water Clarity
+                    </small>
+
+                    <strong>
+                      {
+                        latestReading
+                          .normalized
+                          .turbidityStatus
+                      }
+                    </strong>
+
+                    <span>
+                      Water cleanliness
+                    </span>
+                  </div>
+                </div>
+
+                {/* WATER */}
+
+                <div className="farmer-water-item">
+                  <span className="farmer-water-icon">
+                    <Database
+                      size={21}
+                    />
+                  </span>
+
+                  <div>
+                    <small>
+                      Water Level
+                    </small>
+
+                    <strong>
+                      {
+                        latestReading
+                          .normalized
+                          .waterLabel
+                      }
+                    </strong>
+
+                    <span>
+                      {
+                        latestReading
+                          .normalized
+                          .waterStatus
+                      }
+                    </span>
+                  </div>
+                </div>
               </div>
-            </div>
+            </>
           ) : (
-            <div className="modern-empty-state">
-              <Database size={26} />
-              <strong>No sensor reading yet</strong>
-              <span>Sensor data will appear once IoT readings are synced.</span>
+            <div className="farmer-empty-state">
+
+              <Droplets size={30} />
+
+              <strong>
+                No water reading yet
+              </strong>
+
+              <span>
+                The latest tank condition
+                will appear here after your
+                device sends sensor data.
+              </span>
             </div>
           )}
         </article>
 
-        <article className="modern-overview-panel">
-          <div className="modern-panel-heading">
+        {/* =============================================
+            NEEDS ATTENTION
+        ============================================== */}
+
+        <article className="farmer-card">
+
+          <div className="farmer-card-heading">
+
             <div>
-              <p className="dashboard-eyebrow">Activity Distribution</p>
-              <h3>Record overview</h3>
+              <span>
+                Needs Attention
+              </span>
+
+              <h3>
+                Things to check
+              </h3>
             </div>
-            <Activity size={22} />
+
+            <AlertTriangle
+              size={21}
+            />
           </div>
 
-          <div className="modern-mini-bars">
-            {activityBars.map((item) => (
-              <MiniBar
-                key={item.label}
-                label={item.label}
-                value={item.value}
-                max={maxActivity}
-                tone={item.tone}
+          {recentSensorIssues.length ===
+            0 &&
+          stats.activeAlerts === 0 ? (
+            <div className="farmer-good-state">
+
+              <CheckCircle2
+                size={31}
               />
-            ))}
-          </div>
-        </article>
 
-        <article className="modern-overview-panel">
-          <div className="modern-panel-heading">
-            <div>
-              <p className="dashboard-eyebrow">Averages</p>
-              <h3>Tank reading summary</h3>
-            </div>
-            <Database size={22} />
-          </div>
-
-          <div className="modern-metric-grid">
-            <div>
-              <Thermometer size={20} />
-              <strong>{avgTemp === "N/A" ? "N/A" : `${avgTemp}°C`}</strong>
-              <span>Avg Temperature</span>
-            </div>
-
-            <div>
-              <Droplets size={20} />
-              <strong>{latestReading?.normalized?.phStatus || "No Reading"}</strong>
-              <span>Latest pH Status</span>
-            </div>
-
-            <div>
-              <Waves size={20} />
               <strong>
-                {latestReading?.normalized?.turbidityStatus || "No Reading"}
+                Nothing needs attention
               </strong>
-              <span>Latest Turbidity Status</span>
+
+              <span>
+                Your latest monitored water
+                conditions are currently
+                stable.
+              </span>
             </div>
+          ) : (
+            <div className="farmer-issue-list">
+
+              {recentSensorIssues
+                .slice(0, 4)
+                .map(
+                  (
+                    item,
+                    index
+                  ) => (
+                    <div
+                      className="farmer-issue-row"
+                      key={
+                        item.reading?.id ||
+                        index
+                      }
+                    >
+                      <span
+                        className={`farmer-issue-dot ${item.status}`}
+                      />
+
+                      <div>
+                        <strong>
+                          {
+                            item.tankName
+                          }
+                        </strong>
+
+                        <span>
+                          {item.status ===
+                          "critical"
+                            ? "This tank needs immediate checking."
+                            : "A water condition should be reviewed."}
+                        </span>
+                      </div>
+
+                      <b
+                        className={`modern-status-chip ${item.status}`}
+                      >
+                        {item.status ===
+                        "critical"
+                          ? "Urgent"
+                          : "Check"}
+                      </b>
+                    </div>
+                  )
+                )}
+
+              <Link
+                to="/admin/readings"
+                className="farmer-view-all"
+              >
+                View all readings
+
+                <ArrowRight
+                  size={16}
+                />
+              </Link>
+            </div>
+          )}
+        </article>
+      </section>
+
+      {/* ===============================================
+          QUICK ACCESS
+      ================================================ */}
+
+      <section className="farmer-section">
+
+        <div className="farmer-section-heading">
+
+          <div>
+            <span>
+              Quick Access
+            </span>
+
+            <h3>
+              Where do you want to go?
+            </h3>
+          </div>
+        </div>
+
+        <div className="farmer-quick-grid">
+
+          <Link to="/admin/tanks">
+
+            <Droplets size={21} />
 
             <div>
-              <Database size={20} />
               <strong>
-                {avgWaterDepth === "N/A" ? "N/A" : `${avgWaterDepth} cm`}
+                My Tanks
               </strong>
-              <span>Avg Water Depth</span>
-            </div>
-          </div>
-        </article>
 
-        <article className="modern-overview-panel">
-          <div className="modern-panel-heading">
+              <span>
+                Check your registered tanks
+              </span>
+            </div>
+
+            <ArrowRight size={17} />
+          </Link>
+
+          <Link to="/admin/readings">
+
+            <Activity size={21} />
+
             <div>
-              <p className="dashboard-eyebrow">Recent Sensor Issues</p>
-              <h3>Warnings and critical readings</h3>
-            </div>
-            <AlertTriangle size={22} />
-          </div>
+              <strong>
+                Water Readings
+              </strong>
 
-          <div className="modern-record-list">
-            {recentSensorIssues.length === 0 ? (
-              <div className="modern-empty-state">
-                <CheckCircle2 size={26} />
-                <strong>No recent sensor issues</strong>
-                <span>Temperature, pH, turbidity, and water status look stable.</span>
+              <span>
+                See detailed water results
+              </span>
+            </div>
+
+            <ArrowRight size={17} />
+          </Link>
+
+          <Link to="/admin/marketplace">
+
+            <ShoppingBag size={21} />
+
+            <div>
+              <strong>
+                Marketplace
+              </strong>
+
+              <span>
+                Manage crayfish listings
+              </span>
+            </div>
+
+            <ArrowRight size={17} />
+          </Link>
+
+          <Link to="/admin/orders">
+
+            <PackageCheck size={21} />
+
+            <div>
+              <strong>
+                Reservations
+              </strong>
+
+              <span>
+                Check customer requests
+              </span>
+            </div>
+
+            <ArrowRight size={17} />
+          </Link>
+        </div>
+      </section>
+
+      {/* ===============================================
+          HIDDEN / OPTIONAL DETAILS
+      ================================================ */}
+
+      <section className="farmer-more-section">
+
+        {/* =============================================
+            SENSOR DETAILS
+        ============================================== */}
+
+        <details className="farmer-details">
+
+          <summary>
+
+            <div>
+              <Database size={19} />
+
+              <span>
+                <strong>
+                  More water information
+                </strong>
+
+                <small>
+                  Averages and activity totals
+                </small>
+              </span>
+            </div>
+
+            <span className="farmer-details-arrow">
+              <ArrowRight
+                size={18}
+              />
+            </span>
+          </summary>
+
+          <div className="farmer-details-content">
+
+            <div className="farmer-detail-metrics">
+
+              <div>
+                <span>
+                  Average Temperature
+                </span>
+
+                <strong>
+                  {avgTemp === "N/A"
+                    ? "No data"
+                    : `${avgTemp}°C`}
+                </strong>
+              </div>
+
+              <div>
+                <span>
+                  Average Water Level
+                </span>
+
+                <strong>
+                  {avgWaterDepth ===
+                  "N/A"
+                    ? "No data"
+                    : `${avgWaterDepth} cm`}
+                </strong>
+              </div>
+
+              <div>
+                <span>
+                  Water Issues
+                </span>
+
+                <strong>
+                  {formatNumber(
+                    stats.sensorIssues
+                  )}
+                </strong>
+              </div>
+
+              <div>
+                <span>
+                  Critical Alerts
+                </span>
+
+                <strong>
+                  {formatNumber(
+                    stats.criticalAlerts
+                  )}
+                </strong>
+              </div>
+            </div>
+
+            <div className="modern-mini-bars">
+
+              {activityBars.map(
+                (item) => (
+                  <MiniBar
+                    key={item.label}
+                    label={item.label}
+                    value={item.value}
+                    max={maxActivity}
+                    tone={item.tone}
+                  />
+                )
+              )}
+            </div>
+          </div>
+        </details>
+
+        {/* =============================================
+            MARKETPLACE DETAILS
+        ============================================== */}
+
+        <details className="farmer-details">
+
+          <summary>
+
+            <div>
+              <ShoppingBag
+                size={19}
+              />
+
+              <span>
+                <strong>
+                  Marketplace activity
+                </strong>
+
+                <small>
+                  Recent listings and reservations
+                </small>
+              </span>
+            </div>
+
+            <span className="farmer-details-arrow">
+              <ArrowRight
+                size={18}
+              />
+            </span>
+          </summary>
+
+          <div className="farmer-details-content">
+
+            {recentMarketplaceActivity.length ===
+            0 ? (
+              <div className="farmer-empty-state compact">
+
+                <ShoppingBag
+                  size={25}
+                />
+
+                <strong>
+                  No marketplace activity yet
+                </strong>
               </div>
             ) : (
-              recentSensorIssues.map((item, index) => (
-                <div className="modern-record-row" key={item.reading?.id || index}>
-                  <div>
-                    <strong>{item.tankName}</strong>
-                    <span>{formatReadingTime(item.date)}</span>
-                  </div>
+              <div className="modern-record-list">
 
-                  <b className={`modern-status-chip ${item.status}`}>
-                    {item.status}
-                  </b>
-                </div>
-              ))
+                {recentMarketplaceActivity.map(
+                  (
+                    item,
+                    index
+                  ) => (
+                    <div
+                      className="modern-record-row"
+                      key={`${item.type}-${index}`}
+                    >
+                      <div>
+                        <strong>
+                          {item.title}
+                        </strong>
+
+                        <span>
+                          {item.type} •{" "}
+                          {formatDate(
+                            item.date
+                          )}
+                        </span>
+                      </div>
+
+                      <b
+                        className={`modern-status-chip ${item.status}`}
+                      >
+                        {item.status}
+                      </b>
+                    </div>
+                  )
+                )}
+              </div>
             )}
-          </div>
-        </article>
 
-        <article className="modern-overview-panel modern-wide-panel">
-          <div className="modern-panel-heading">
-            <div>
-              <p className="dashboard-eyebrow">Recent Marketplace Activity</p>
-              <h3>Listings and reservations</h3>
+            <div className="farmer-sales-summary">
+
+              <span>
+                Completed sales
+              </span>
+
+              <strong>
+                {formatPeso(
+                  stats.totalSales
+                )}
+              </strong>
             </div>
-            <ShoppingBag size={22} />
           </div>
+        </details>
 
-          <div className="modern-record-list">
-            {recentMarketplaceActivity.length === 0 ? (
-              <div className="modern-empty-state">
-                <ShoppingBag size={26} />
-                <strong>No marketplace activity yet</strong>
-                <span>Crayfish listings and reservations will appear here.</span>
+        {/* =============================================
+            SYSTEM HISTORY
+        ============================================== */}
+
+        <details className="farmer-details">
+
+          <summary>
+
+            <div>
+              <Activity size={19} />
+
+              <span>
+                <strong>
+                  Recent history
+                </strong>
+
+                <small>
+                  Latest water readings and alerts
+                </small>
+              </span>
+            </div>
+
+            <span className="farmer-details-arrow">
+              <ArrowRight
+                size={18}
+              />
+            </span>
+          </summary>
+
+          <div className="farmer-details-content">
+
+            {recentSystemActivity.length ===
+            0 ? (
+              <div className="farmer-empty-state compact">
+
+                <Database
+                  size={25}
+                />
+
+                <strong>
+                  No recent activity
+                </strong>
               </div>
             ) : (
-              recentMarketplaceActivity.map((item, index) => (
-                <div className="modern-record-row" key={`${item.type}-${index}`}>
-                  <div>
-                    <strong>
-                      {item.type}: {item.title}
-                    </strong>
-                    <span>{formatDate(item.date)}</span>
-                  </div>
+              <div className="modern-record-list">
 
-                  <b className={`modern-status-chip ${item.status}`}>
-                    {item.status}
-                  </b>
-                </div>
-              ))
-            )}
-          </div>
-        </article>
+                {recentSystemActivity.map(
+                  (
+                    item,
+                    index
+                  ) => (
+                    <div
+                      className="modern-record-row"
+                      key={`${item.type}-${index}`}
+                    >
+                      <div>
+                        <strong>
+                          {item.title}
+                        </strong>
 
-        <article className="modern-overview-panel modern-wide-panel">
-          <div className="modern-panel-heading">
-            <div>
-              <p className="dashboard-eyebrow">Recent System Activity</p>
-              <h3>Alerts and readings timeline</h3>
-            </div>
-            <Database size={22} />
-          </div>
+                        <span>
+                          {item.type} •{" "}
+                          {formatDate(
+                            item.date
+                          )}
+                        </span>
+                      </div>
 
-          <div className="modern-record-list">
-            {recentSystemActivity.length === 0 ? (
-              <div className="modern-empty-state">
-                <Database size={26} />
-                <strong>No recent activity</strong>
-                <span>System readings and alerts will appear here once synced.</span>
+                      <b
+                        className={`modern-status-chip ${item.status}`}
+                      >
+                        {item.status}
+                      </b>
+                    </div>
+                  )
+                )}
               </div>
-            ) : (
-              recentSystemActivity.map((item, index) => (
-                <div className="modern-record-row" key={`${item.type}-${index}`}>
-                  <div>
-                    <strong>
-                      {item.type}: {item.title}
-                    </strong>
-                    <span>{formatDate(item.date)}</span>
-                  </div>
-
-                  <b className={`modern-status-chip ${item.status}`}>
-                    {item.status}
-                  </b>
-                </div>
-              ))
             )}
           </div>
-        </article>
+        </details>
       </section>
     </div>
   );
