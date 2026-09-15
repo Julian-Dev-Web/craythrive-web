@@ -1314,6 +1314,7 @@ html[data-theme="dark"] .modern-admin-sidebar {
 }
 
 .modern-nav-link {
+  position: relative;
   min-height: 50px;
   display: flex;
   align-items: center;
@@ -1337,11 +1338,42 @@ html[data-theme="dark"] .modern-admin-sidebar {
   transform: translateX(2px);
 }
 
+/* "Curved outside" active tab — the highlighted pill bleeds all the way to
+   the sidebar's edge, and two quarter-circle cutouts (using the classic
+   border-radius + oversized box-shadow trick) carve a smooth S-curve into
+   the sidebar background above and below it, colored to match the page
+   background (--ct-bg) so it looks like the tab flows out of the sidebar. */
 .modern-nav-link.is-active {
   color: #04191d;
+  margin-right: -18px;
+  padding-right: 32px;
   border-color: rgba(0, 217, 199, 0.32);
+  border-radius: 17px 0 0 17px;
   background: linear-gradient(135deg, var(--ct-brand), var(--ct-brand-strong));
-  box-shadow: 0 16px 36px rgba(0, 217, 199, 0.18);
+  box-shadow: -4px 0 24px rgba(0, 217, 199, 0.22);
+}
+
+.modern-nav-link.is-active::before,
+.modern-nav-link.is-active::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  width: 18px;
+  height: 18px;
+  background: transparent;
+  pointer-events: none;
+}
+
+.modern-nav-link.is-active::before {
+  top: -18px;
+  border-radius: 0 0 18px 0;
+  box-shadow: 9px 9px 0 9px var(--ct-bg);
+}
+
+.modern-nav-link.is-active::after {
+  bottom: -18px;
+  border-radius: 0 18px 0 0;
+  box-shadow: 9px -9px 0 9px var(--ct-bg);
 }
 
 .modern-sidebar-profile {
@@ -1418,6 +1450,14 @@ html[data-theme="dark"] .modern-sidebar-profile {
 .modern-admin-sidebar.is-collapsed .modern-profile-text,
 .modern-admin-sidebar.is-collapsed .modern-signout-button span {
   display: none;
+}
+
+.modern-admin-sidebar.is-collapsed .modern-nav-link.is-active {
+  padding-right: 14px;
+}
+
+.modern-admin-sidebar.is-collapsed .modern-nav-link.is-active svg {
+  transform: translateX(-9px);
 }
 
 .modern-admin-main {
