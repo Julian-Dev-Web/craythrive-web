@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { ChevronLeft, ChevronRight, LogOut, Waves, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, LogOut, X } from "lucide-react";
 import { APP_INFO } from "../constants/theme";
 
 /**
@@ -57,7 +57,9 @@ export default function Sidebar({
               key={item.path}
               to={item.path}
               end={item.end}
-              className={({ isActive }) => `modern-nav-link ${isActive ? "is-active" : ""}`}
+              className={({ isActive }) =>
+                `modern-nav-link ${isActive ? "is-active" : ""}`
+              }
               title={item.label}
             >
               <Icon size={20} />
@@ -68,9 +70,11 @@ export default function Sidebar({
       </nav>
 
       <div className="modern-sidebar-profile">
-        <div className="modern-profile-avatar">
-          {avatarUrl ? <img src={avatarUrl} alt={displayName} /> : <Waves size={21} />}
-        </div>
+        {avatarUrl && (
+          <div className="modern-profile-avatar">
+            <img src={avatarUrl} alt={displayName} />
+          </div>
+        )}
 
         <div className="modern-profile-text">
           <strong>{displayName}</strong>
@@ -78,7 +82,12 @@ export default function Sidebar({
         </div>
       </div>
 
-      <button type="button" className="modern-signout-button" onClick={onSignOut} title="Sign out">
+      <button
+        type="button"
+        className="modern-signout-button"
+        onClick={onSignOut}
+        title="Sign out"
+      >
         <LogOut size={19} />
         <span>Sign Out</span>
       </button>
@@ -89,7 +98,11 @@ export default function Sidebar({
         onClick={onToggleCollapse}
         aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
       >
-        {isCollapsed ? <ChevronRight size={22} /> : <ChevronLeft size={22} />}
+        {isCollapsed ? (
+          <ChevronRight size={22} />
+        ) : (
+          <ChevronLeft size={22} />
+        )}
       </button>
     </aside>
   );
