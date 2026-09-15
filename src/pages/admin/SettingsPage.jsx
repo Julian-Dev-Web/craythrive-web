@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+
 import {
   AlertTriangle,
   Bell,
@@ -15,170 +16,436 @@ import {
   UserRound,
   Waves,
 } from "lucide-react";
-import { isSupabaseConfigured, supabase } from "../../lib/supabase";
 
-const STORAGE_KEY = "craythrive_threshold_settings";
-const THRESHOLD_TABLE = "threshold_settings";
+import {
+  isSupabaseConfigured,
+  supabase,
+} from "../../lib/supabase";
+
+/* =========================================================
+   STORAGE / DATABASE
+========================================================= */
+
+const STORAGE_KEY =
+  "craythrive_threshold_settings";
+
+const THRESHOLD_TABLE =
+  "threshold_settings";
+
+/* =========================================================
+   DEFAULT VALUES
+========================================================= */
 
 const DEFAULT_THRESHOLDS = {
   temperatureMin: 20,
   temperatureMax: 30,
+
   phMin: 6.5,
   phMax: 8.5,
 
-  // Your turbidity sensor uses voltage.
-  // Higher voltage = clearer water.
-  // 2.5V and above = CLEAR based on your UNO logic.
+  /*
+   * Keep the existing database key for compatibility.
+   * User-facing wording is "Water Clarity Minimum".
+   *
+   * Higher turbidity sensor voltage = clearer water.
+   */
   turbidityMax: 2.5,
 
-  // Your ESP32 uploads water_depth_cm / water_level in cm.
-  // 4.5cm is the safe minimum based on your current ESP32 logic.
+  /*
+   * Minimum acceptable water level/depth
+   * currently used by the system.
+   */
   waterLevelMin: 4.5,
 
   ammoniaMax: 0.25,
 };
 
-const thresholdRows = [
+/* =========================================================
+   THRESHOLD CONFIG
+========================================================= */
+
+const thresholdSections = [
   {
-    key: "temperatureMin",
-    label: "Temperature Minimum",
-    helper: "Lowest safe water temperature.",
-    unit: "°C",
+    id: "temperature",
+    title: "Temperature",
+    description:
+      "Set the safe water temperature range for your crayfish tank.",
     icon: Thermometer,
-    min: 10,
-    max: 40,
-    step: 0.1,
+
+    items: [
+      {
+        key: "temperatureMin",
+        label: "Minimum Temperature",
+        helper:
+          "Readings below this value may need checking.",
+        unit: "°C",
+        icon: Thermometer,
+        min: 10,
+        max: 40,
+        step: 0.1,
+      },
+
+      {
+        key: "temperatureMax",
+        label: "Maximum Temperature",
+        helper:
+          "Readings above this value may need checking.",
+        unit: "°C",
+        icon: Thermometer,
+        min: 10,
+        max: 40,
+        step: 0.1,
+      },
+    ],
   },
+
   {
-    key: "temperatureMax",
-    label: "Temperature Maximum",
-    helper: "Highest safe water temperature.",
-    unit: "°C",
-    icon: Thermometer,
-    min: 10,
-    max: 40,
-    step: 0.1,
-  },
-  {
-    key: "phMin",
-    label: "pH Minimum",
-    helper: "Lowest safe pH level.",
-    unit: "pH",
+    id: "ph",
+    title: "pH Level",
+    description:
+      "Set the acceptable pH range used when checking water condition.",
     icon: Droplets,
-    min: 0,
-    max: 14,
-    step: 0.1,
+
+    items: [
+      {
+        key: "phMin",
+        label: "Minimum pH",
+        helper:
+          "The lowest pH value considered acceptable.",
+        unit: "pH",
+        icon: Droplets,
+        min: 0,
+        max: 14,
+        step: 0.1,
+      },
+
+      {
+        key: "phMax",
+        label: "Maximum pH",
+        helper:
+          "The highest pH value considered acceptable.",
+        unit: "pH",
+        icon: Droplets,
+        min: 0,
+        max: 14,
+        step: 0.1,
+      },
+    ],
   },
+
   {
-    key: "phMax",
-    label: "pH Maximum",
-    helper: "Highest safe pH level.",
-    unit: "pH",
-    icon: Droplets,
-    min: 0,
-    max: 14,
-    step: 0.1,
-  },
-  {
-    key: "turbidityMax",
-    label: "Turbidity Clear Minimum",
-    helper: "Minimum voltage considered clear/safe.",
-    unit: "V",
+    id: "water",
+    title: "Water Condition",
+    description:
+      "Set the minimum water clarity and water level used by CrayThrive.",
     icon: Waves,
-    min: 0,
-    max: 5,
-    step: 0.01,
+
+    items: [
+      {
+        key: "turbidityMax",
+        label: "Water Clarity Minimum",
+        helper:
+          "Minimum sensor voltage considered clear. Higher voltage means clearer water.",
+        unit: "V",
+        icon: Waves,
+        min: 0,
+        max: 5,
+        step: 0.01,
+      },
+
+      {
+        key: "waterLevelMin",
+        label: "Minimum Water Level",
+        helper:
+          "The lowest acceptable water level before the tank may need refilling.",
+        unit: "cm",
+        icon: Gauge,
+        min: 0,
+        max: 20,
+        step: 0.1,
+      },
+    ],
   },
+
   {
-    key: "waterLevelMin",
-    label: "Water Depth Minimum",
-    helper: "Minimum safe tank water depth.",
-    unit: "cm",
-    icon: Gauge,
-    min: 0,
-    max: 20,
-    step: 0.1,
-  },
-  {
-    key: "ammoniaMax",
-    label: "Ammonia Maximum",
-    helper: "Maximum safe ammonia reading.",
-    unit: "ppm",
+    id: "ammonia",
+    title: "Ammonia",
+    description:
+      "Set the highest ammonia reading that should still be considered acceptable.",
     icon: AlertTriangle,
-    min: 0,
-    max: 5,
-    step: 0.01,
+
+    items: [
+      {
+        key: "ammoniaMax",
+        label: "Maximum Ammonia",
+        helper:
+          "Readings above this value may require attention.",
+        unit: "ppm",
+        icon: AlertTriangle,
+        min: 0,
+        max: 5,
+        step: 0.01,
+      },
+    ],
   },
 ];
 
-function getLocalThresholds() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
+/* =========================================================
+   HELPERS
+========================================================= */
 
-    if (!saved) return DEFAULT_THRESHOLDS;
+function clean(value) {
+  return String(value || "").trim();
+}
 
-    return normalizeThresholds(JSON.parse(saved));
-  } catch {
-    return DEFAULT_THRESHOLDS;
+function formatFriendlyText(value) {
+  const text = clean(value);
+
+  if (!text) {
+    return "User";
   }
+
+  return text
+    .replaceAll("_", " ")
+    .replaceAll("-", " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (character) =>
+      character.toUpperCase()
+    );
 }
 
-function toNumber(value, fallback) {
-  const numberValue = Number(value);
-  return Number.isFinite(numberValue) ? numberValue : fallback;
+function toNumber(
+  value,
+  fallback
+) {
+  const numberValue =
+    Number(value);
+
+  return Number.isFinite(
+    numberValue
+  )
+    ? numberValue
+    : fallback;
 }
+
+/* =========================================================
+   NORMALIZE VALUES
+========================================================= */
 
 function normalizeThresholds(data) {
-  if (!data) return DEFAULT_THRESHOLDS;
+  if (!data) {
+    return {
+      ...DEFAULT_THRESHOLDS,
+    };
+  }
 
-  const source = data.thresholds || data.safe_thresholds || data;
+  const source =
+    data.thresholds ||
+    data.safe_thresholds ||
+    data;
 
   return {
-    temperatureMin: toNumber(
-      source.temperatureMin ?? source.temperature_min,
-      DEFAULT_THRESHOLDS.temperatureMin
-    ),
-    temperatureMax: toNumber(
-      source.temperatureMax ?? source.temperature_max,
-      DEFAULT_THRESHOLDS.temperatureMax
-    ),
-    phMin: toNumber(source.phMin ?? source.ph_min, DEFAULT_THRESHOLDS.phMin),
-    phMax: toNumber(source.phMax ?? source.ph_max, DEFAULT_THRESHOLDS.phMax),
-    turbidityMax: toNumber(
-      source.turbidityMax ?? source.turbidity_max,
-      DEFAULT_THRESHOLDS.turbidityMax
-    ),
-    waterLevelMin: toNumber(
-      source.waterLevelMin ?? source.water_level_min,
-      DEFAULT_THRESHOLDS.waterLevelMin
-    ),
-    ammoniaMax: toNumber(
-      source.ammoniaMax ?? source.ammonia_max,
-      DEFAULT_THRESHOLDS.ammoniaMax
-    ),
+    temperatureMin:
+      toNumber(
+        source.temperatureMin ??
+          source.temperature_min,
+
+        DEFAULT_THRESHOLDS.temperatureMin
+      ),
+
+    temperatureMax:
+      toNumber(
+        source.temperatureMax ??
+          source.temperature_max,
+
+        DEFAULT_THRESHOLDS.temperatureMax
+      ),
+
+    phMin:
+      toNumber(
+        source.phMin ??
+          source.ph_min,
+
+        DEFAULT_THRESHOLDS.phMin
+      ),
+
+    phMax:
+      toNumber(
+        source.phMax ??
+          source.ph_max,
+
+        DEFAULT_THRESHOLDS.phMax
+      ),
+
+    turbidityMax:
+      toNumber(
+        source.turbidityMax ??
+          source.turbidity_max,
+
+        DEFAULT_THRESHOLDS.turbidityMax
+      ),
+
+    waterLevelMin:
+      toNumber(
+        source.waterLevelMin ??
+          source.water_level_min,
+
+        DEFAULT_THRESHOLDS.waterLevelMin
+      ),
+
+    ammoniaMax:
+      toNumber(
+        source.ammoniaMax ??
+          source.ammonia_max,
+
+        DEFAULT_THRESHOLDS.ammoniaMax
+      ),
   };
 }
 
-function getProfileName(profile, user) {
+/* =========================================================
+   LOCAL STORAGE
+========================================================= */
+
+function getLocalThresholds() {
+  try {
+    const saved =
+      localStorage.getItem(
+        STORAGE_KEY
+      );
+
+    if (!saved) {
+      return {
+        ...DEFAULT_THRESHOLDS,
+      };
+    }
+
+    return normalizeThresholds(
+      JSON.parse(saved)
+    );
+  } catch {
+    return {
+      ...DEFAULT_THRESHOLDS,
+    };
+  }
+}
+
+/* =========================================================
+   PROFILE
+========================================================= */
+
+function getProfileName(
+  profile,
+  user
+) {
   return (
     profile?.username ||
     profile?.full_name ||
-    profile?.first_name ||
+    [
+      profile?.first_name,
+      profile?.last_name,
+    ]
+      .filter(Boolean)
+      .join(" ") ||
     user?.email?.split("@")?.[0] ||
     "CrayThrive User"
   );
 }
 
-function isRangeValid(thresholds) {
-  return (
-    Number(thresholds.temperatureMin) < Number(thresholds.temperatureMax) &&
-    Number(thresholds.phMin) < Number(thresholds.phMax)
+function getProfileRole(profile) {
+  return formatFriendlyText(
+    profile?.role ||
+      "user"
   );
 }
 
+/* =========================================================
+   VALIDATION
+========================================================= */
+
+function validateThresholds(
+  thresholds
+) {
+  if (
+    Number(
+      thresholds.temperatureMin
+    ) >=
+    Number(
+      thresholds.temperatureMax
+    )
+  ) {
+    return {
+      valid: false,
+      message:
+        "Minimum temperature must be lower than maximum temperature.",
+    };
+  }
+
+  if (
+    Number(
+      thresholds.phMin
+    ) >=
+    Number(
+      thresholds.phMax
+    )
+  ) {
+    return {
+      valid: false,
+      message:
+        "Minimum pH must be lower than maximum pH.",
+    };
+  }
+
+  for (
+    const section
+    of thresholdSections
+  ) {
+    for (
+      const item
+      of section.items
+    ) {
+      const value =
+        Number(
+          thresholds[item.key]
+        );
+
+      if (
+        !Number.isFinite(value)
+      ) {
+        return {
+          valid: false,
+          message: `${item.label} must contain a valid number.`,
+        };
+      }
+
+      if (
+        value < item.min ||
+        value > item.max
+      ) {
+        return {
+          valid: false,
+          message: `${item.label} must be between ${item.min} and ${item.max} ${item.unit}.`,
+        };
+      }
+    }
+  }
+
+  return {
+    valid: true,
+    message: "",
+  };
+}
+
+/* =========================================================
+   AUTH / PROFILE
+========================================================= */
+
 async function getCurrentUserAndProfile() {
-  const { data } = await supabase.auth.getSession();
-  const user = data?.session?.user;
+  const { data } =
+    await supabase.auth.getSession();
+
+  const user =
+    data?.session?.user;
 
   if (!user) {
     return {
@@ -187,87 +454,192 @@ async function getCurrentUserAndProfile() {
     };
   }
 
-  const byId = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .maybeSingle();
+  const byId =
+    await supabase
+      .from("profiles")
+      .select("*")
+      .eq(
+        "id",
+        user.id
+      )
+      .maybeSingle();
 
-  if (!byId.error && byId.data) {
+  if (
+    !byId.error &&
+    byId.data
+  ) {
     return {
       user,
-      profile: byId.data,
+      profile:
+        byId.data,
     };
   }
 
-  const byEmail = await supabase
-    .from("profiles")
-    .select("*")
-    .ilike("email", user.email)
-    .maybeSingle();
+  if (!user.email) {
+    return {
+      user,
+      profile: null,
+    };
+  }
+
+  const byEmail =
+    await supabase
+      .from("profiles")
+      .select("*")
+      .ilike(
+        "email",
+        user.email
+      )
+      .maybeSingle();
 
   return {
     user,
-    profile: byEmail.error ? null : byEmail.data,
+
+    profile:
+      byEmail.error
+        ? null
+        : byEmail.data,
   };
 }
 
-async function loadThresholdsFromSupabase(userId) {
-  const { data, error } = await supabase
-    .from(THRESHOLD_TABLE)
-    .select("*")
-    .eq("user_id", userId)
-    .maybeSingle();
+/* =========================================================
+   LOAD THRESHOLDS
+========================================================= */
+
+async function loadThresholdsFromSupabase(
+  userId
+) {
+  const {
+    data,
+    error,
+  } =
+    await supabase
+      .from(
+        THRESHOLD_TABLE
+      )
+      .select("*")
+      .eq(
+        "user_id",
+        userId
+      )
+      .maybeSingle();
 
   if (error) {
-    console.log("LOAD THRESHOLDS ERROR:", error);
+    console.log(
+      "LOAD THRESHOLDS ERROR:",
+      error
+    );
+
     return {
-      thresholds: getLocalThresholds(),
-      tableUsed: "localStorage",
+      thresholds:
+        getLocalThresholds(),
+
+      syncMode:
+        "local",
     };
   }
 
   if (!data) {
     return {
-      thresholds: getLocalThresholds(),
-      tableUsed: "localStorage",
+      thresholds:
+        getLocalThresholds(),
+
+      syncMode:
+        "local",
     };
   }
 
   return {
-    thresholds: normalizeThresholds(data),
-    tableUsed: THRESHOLD_TABLE,
+    thresholds:
+      normalizeThresholds(
+        data
+      ),
+
+    syncMode:
+      "online",
   };
 }
 
-async function saveThresholdsToSupabase(userId, thresholds) {
-  const cleanThresholds = normalizeThresholds(thresholds);
+/* =========================================================
+   SAVE THRESHOLDS
+========================================================= */
+
+async function saveThresholdsToSupabase(
+  userId,
+  thresholds
+) {
+  const cleanThresholds =
+    normalizeThresholds(
+      thresholds
+    );
 
   const payload = {
-    user_id: userId,
+    user_id:
+      userId,
 
-    thresholds: cleanThresholds,
+    thresholds:
+      cleanThresholds,
 
-    temperature_min: Number(cleanThresholds.temperatureMin),
-    temperature_max: Number(cleanThresholds.temperatureMax),
+    temperature_min:
+      Number(
+        cleanThresholds.temperatureMin
+      ),
 
-    ph_min: Number(cleanThresholds.phMin),
-    ph_max: Number(cleanThresholds.phMax),
+    temperature_max:
+      Number(
+        cleanThresholds.temperatureMax
+      ),
 
-    turbidity_max: Number(cleanThresholds.turbidityMax),
-    water_level_min: Number(cleanThresholds.waterLevelMin),
-    ammonia_max: Number(cleanThresholds.ammoniaMax),
+    ph_min:
+      Number(
+        cleanThresholds.phMin
+      ),
 
-    updated_at: new Date().toISOString(),
+    ph_max:
+      Number(
+        cleanThresholds.phMax
+      ),
+
+    /*
+     * Existing column kept for database
+     * compatibility.
+     */
+    turbidity_max:
+      Number(
+        cleanThresholds.turbidityMax
+      ),
+
+    water_level_min:
+      Number(
+        cleanThresholds.waterLevelMin
+      ),
+
+    ammonia_max:
+      Number(
+        cleanThresholds.ammoniaMax
+      ),
+
+    updated_at:
+      new Date().toISOString(),
   };
 
-  const { data, error } = await supabase
-    .from(THRESHOLD_TABLE)
-    .upsert(payload, {
-      onConflict: "user_id",
-    })
-    .select("*")
-    .maybeSingle();
+  const {
+    data,
+    error,
+  } =
+    await supabase
+      .from(
+        THRESHOLD_TABLE
+      )
+      .upsert(
+        payload,
+        {
+          onConflict:
+            "user_id",
+        }
+      )
+      .select("*")
+      .maybeSingle();
 
   if (error) {
     throw error;
@@ -276,304 +648,1001 @@ async function saveThresholdsToSupabase(userId, thresholds) {
   return data;
 }
 
-function ThresholdControl({ item, value, onChange }) {
-  const Icon = item.icon;
+/* =========================================================
+   THRESHOLD CONTROL
+========================================================= */
+
+function ThresholdControl({
+  item,
+  value,
+  onChange,
+}) {
+  const Icon =
+    item.icon;
 
   return (
-    <article className="modern-setting-threshold-card">
-      <div className="modern-setting-threshold-top">
+    <article className="cray-settings-threshold-card">
+
+      <div className="cray-settings-threshold-top">
+
         <span>
-          <Icon size={20} />
+          <Icon
+            size={19}
+          />
         </span>
 
         <div>
-          <strong>{item.label}</strong>
-          <small>{item.helper}</small>
+          <strong>
+            {item.label}
+          </strong>
+
+          <small>
+            {item.helper}
+          </small>
         </div>
       </div>
 
-      <div className="modern-setting-threshold-control">
+      <div className="cray-settings-threshold-control">
+
         <input
           type="range"
           min={item.min}
           max={item.max}
           step={item.step}
           value={value}
-          onChange={(event) => onChange(item.key, event.target.value)}
+          onChange={(
+            event
+          ) =>
+            onChange(
+              item.key,
+              event.target.value
+            )
+          }
+          aria-label={
+            item.label
+          }
         />
 
         <label>
+
           <input
             type="number"
             min={item.min}
             max={item.max}
             step={item.step}
             value={value}
-            onChange={(event) => onChange(item.key, event.target.value)}
+            onChange={(
+              event
+            ) =>
+              onChange(
+                item.key,
+                event.target.value
+              )
+            }
+            aria-label={`${item.label} value`}
           />
-          <span>{item.unit}</span>
+
+          <span>
+            {item.unit}
+          </span>
         </label>
       </div>
     </article>
   );
 }
 
+/* =========================================================
+   PAGE
+========================================================= */
+
 export default function SettingsPage() {
-  const [thresholds, setThresholds] = useState(getLocalThresholds);
-  const [profile, setProfile] = useState(null);
-  const [user, setUser] = useState(null);
-  const [dataSource, setDataSource] = useState("localStorage");
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [message, setMessage] = useState("");
+  const [
+    thresholds,
+    setThresholds,
+  ] = useState(
+    getLocalThresholds
+  );
 
-  const displayName = getProfileName(profile, user);
-  const email = profile?.email || user?.email || "No email";
-  const validThresholds = useMemo(() => isRangeValid(thresholds), [thresholds]);
+  const [
+    profile,
+    setProfile,
+  ] = useState(null);
 
-  const loadSettings = async () => {
-    setMessage("");
+  const [
+    user,
+    setUser,
+  ] = useState(null);
 
-    if (!isSupabaseConfigured || !supabase) {
-      setDataSource("localStorage");
-      setThresholds(getLocalThresholds());
-      setIsLoading(false);
-      return;
-    }
+  const [
+    syncMode,
+    setSyncMode,
+  ] = useState("local");
 
-    try {
-      setIsLoading(true);
+  const [
+    isLoading,
+    setIsLoading,
+  ] = useState(true);
 
-      const result = await getCurrentUserAndProfile();
+  const [
+    isSaving,
+    setIsSaving,
+  ] = useState(false);
 
-      setUser(result.user);
-      setProfile(result.profile);
+  const [
+    isDirty,
+    setIsDirty,
+  ] = useState(false);
 
-      if (!result.user?.id) {
-        setDataSource("localStorage");
-        setThresholds(getLocalThresholds());
+  const [
+    message,
+    setMessage,
+  ] = useState(null);
+
+  /* =======================================================
+     DERIVED DATA
+  ======================================================= */
+
+  const displayName =
+    getProfileName(
+      profile,
+      user
+    );
+
+  const email =
+    profile?.email ||
+    user?.email ||
+    "No email available";
+
+  const role =
+    getProfileRole(
+      profile
+    );
+
+  const validation =
+    useMemo(
+      () =>
+        validateThresholds(
+          thresholds
+        ),
+      [thresholds]
+    );
+
+  /* =======================================================
+     LOAD
+  ======================================================= */
+
+  const loadSettings =
+    async () => {
+      setMessage(null);
+
+      if (
+        !isSupabaseConfigured ||
+        !supabase
+      ) {
+        const local =
+          getLocalThresholds();
+
+        setThresholds(
+          local
+        );
+
+        setSyncMode(
+          "local"
+        );
+
+        setIsDirty(
+          false
+        );
+
+        setIsLoading(
+          false
+        );
+
         return;
       }
 
-      const loaded = await loadThresholdsFromSupabase(result.user.id);
+      try {
+        setIsLoading(
+          true
+        );
 
-      setThresholds(loaded.thresholds);
-      setDataSource(loaded.tableUsed);
+        const result =
+          await getCurrentUserAndProfile();
 
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(loaded.thresholds));
-    } catch (error) {
-      console.error("Settings loading error:", error);
+        setUser(
+          result.user
+        );
 
-      setDataSource("localStorage");
-      setThresholds(getLocalThresholds());
-      setMessage("Loaded local settings because Supabase threshold table is not available.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+        setProfile(
+          result.profile
+        );
+
+        if (
+          !result.user?.id
+        ) {
+          const local =
+            getLocalThresholds();
+
+          setThresholds(
+            local
+          );
+
+          setSyncMode(
+            "local"
+          );
+
+          setIsDirty(
+            false
+          );
+
+          return;
+        }
+
+        const loaded =
+          await loadThresholdsFromSupabase(
+            result.user.id
+          );
+
+        setThresholds(
+          loaded.thresholds
+        );
+
+        setSyncMode(
+          loaded.syncMode
+        );
+
+        setIsDirty(
+          false
+        );
+
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify(
+            loaded.thresholds
+          )
+        );
+      } catch (error) {
+        console.error(
+          "Settings loading error:",
+          error
+        );
+
+        const local =
+          getLocalThresholds();
+
+        setThresholds(
+          local
+        );
+
+        setSyncMode(
+          "local"
+        );
+
+        setIsDirty(
+          false
+        );
+
+        setMessage({
+          tone:
+            "warning",
+
+          text:
+            "Online settings could not be loaded. Your saved settings on this device are being used instead.",
+        });
+      } finally {
+        setIsLoading(
+          false
+        );
+      }
+    };
 
   useEffect(() => {
     loadSettings();
   }, []);
 
-  const handleThresholdChange = (key, value) => {
-    setMessage("");
+  /* =======================================================
+     CHANGE
+  ======================================================= */
 
-    setThresholds((current) => ({
-      ...current,
-      [key]: Number(value),
-    }));
-  };
+  const handleThresholdChange =
+    (
+      key,
+      value
+    ) => {
+      setMessage(null);
 
-  const handleResetDefaults = () => {
-    setThresholds(DEFAULT_THRESHOLDS);
-    setMessage("Default CrayThrive safe thresholds restored. Save changes to apply.");
-  };
+      setThresholds(
+        (current) => ({
+          ...current,
 
-  const handleSave = async () => {
-    setMessage("");
+          [key]:
+            Number(value),
+        })
+      );
 
-    if (!validThresholds) {
-      setMessage("Temperature and pH minimum values must be lower than maximum values.");
-      return;
-    }
+      setIsDirty(true);
+    };
 
-    try {
-      setIsSaving(true);
+  /* =======================================================
+     RESET
+  ======================================================= */
 
-      const cleanThresholds = normalizeThresholds(thresholds);
+  const handleResetDefaults =
+    () => {
+      setThresholds({
+        ...DEFAULT_THRESHOLDS,
+      });
 
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(cleanThresholds));
+      setIsDirty(true);
 
-      if (!isSupabaseConfigured || !supabase || !user?.id) {
-        setDataSource("localStorage");
-        setMessage("Saved locally only. Login and connect Supabase to sync with mobile.");
+      setMessage({
+        tone:
+          "info",
+
+        text:
+          "Default values restored. Press Save Changes to apply them.",
+      });
+    };
+
+  /* =======================================================
+     SAVE
+  ======================================================= */
+
+  const handleSave =
+    async () => {
+      setMessage(null);
+
+      if (
+        !validation.valid
+      ) {
+        setMessage({
+          tone:
+            "warning",
+
+          text:
+            validation.message,
+        });
+
         return;
       }
 
-      await saveThresholdsToSupabase(user.id, cleanThresholds);
+      try {
+        setIsSaving(
+          true
+        );
 
-      setThresholds(cleanThresholds);
-      setDataSource(THRESHOLD_TABLE);
-      setMessage("Threshold settings saved to Supabase. Mobile can now fetch these values.");
-    } catch (error) {
-      console.error("Settings saving error:", error);
+        const cleanThresholds =
+          normalizeThresholds(
+            thresholds
+          );
 
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(thresholds));
-      setDataSource("localStorage");
-      setMessage("Saved locally because Supabase threshold_settings table is not ready.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
+        /*
+         * Always save a local copy
+         * as fallback.
+         */
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify(
+            cleanThresholds
+          )
+        );
+
+        if (
+          !isSupabaseConfigured ||
+          !supabase ||
+          !user?.id
+        ) {
+          setThresholds(
+            cleanThresholds
+          );
+
+          setSyncMode(
+            "local"
+          );
+
+          setIsDirty(
+            false
+          );
+
+          setMessage({
+            tone:
+              "info",
+
+            text:
+              "Changes were saved on this device. Sign in with an online connection to sync them with your account.",
+          });
+
+          return;
+        }
+
+        await saveThresholdsToSupabase(
+          user.id,
+          cleanThresholds
+        );
+
+        setThresholds(
+          cleanThresholds
+        );
+
+        setSyncMode(
+          "online"
+        );
+
+        setIsDirty(
+          false
+        );
+
+        setMessage({
+          tone:
+            "success",
+
+          text:
+            "Water safety settings were saved successfully.",
+        });
+      } catch (error) {
+        console.error(
+          "Settings saving error:",
+          error
+        );
+
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify(
+            thresholds
+          )
+        );
+
+        setSyncMode(
+          "local"
+        );
+
+        setIsDirty(
+          false
+        );
+
+        setMessage({
+          tone:
+            "warning",
+
+          text:
+            "Online sync was unavailable, so your changes were saved on this device instead.",
+        });
+      } finally {
+        setIsSaving(
+          false
+        );
+      }
+    };
+
+  /* =======================================================
+     LOADING
+  ======================================================= */
 
   if (isLoading) {
     return (
-      <section className="modern-settings-loading">
-        <Loader2 className="spin-icon" size={34} />
-        <h3>Loading settings...</h3>
-        <p>CrayThrive is preparing your profile and threshold settings.</p>
+      <section className="cray-settings-loading">
+
+        <Loader2
+          className="spin-icon"
+          size={34}
+        />
+
+        <h3>
+          Loading settings...
+        </h3>
+
+        <p>
+          Getting your account and
+          water safety settings.
+        </p>
       </section>
     );
   }
 
+  /* =======================================================
+     UI
+  ======================================================= */
+
   return (
-    <div className="modern-settings-page">
-      <section className="modern-settings-hero">
+    <div className="cray-settings-page">
+
+      {/* ===============================================
+          HERO
+      ================================================ */}
+
+      <section className="cray-settings-hero">
+
         <div>
-          <p className="dashboard-eyebrow">Settings</p>
-          <h2>Control your safe water thresholds.</h2>
-          <p>
-            Adjust the values used to classify tank readings as safe, warning,
-            or critical. These settings are saved to Supabase and can be reused
-            by the mobile app and alert logic.
+
+          <p className="dashboard-eyebrow">
+            Settings
           </p>
 
-          <div className="modern-settings-actions">
+          <h2>
+            Set the safe conditions
+            for your tanks.
+          </h2>
+
+          <p>
+            Adjust the limits CrayThrive
+            uses when checking temperature,
+            pH, water clarity, water level,
+            and ammonia.
+          </p>
+
+          <div className="cray-settings-actions">
+
             <button
               type="button"
               className="dashboard-primary-button"
-              onClick={handleSave}
-              disabled={isSaving}
+              onClick={
+                handleSave
+              }
+              disabled={
+                isSaving ||
+                !validation.valid
+              }
             >
               {isSaving ? (
                 <>
+                  <Loader2
+                    className="spin-icon"
+                    size={18}
+                  />
+
                   Saving...
-                  <Loader2 className="spin-icon" size={18} />
                 </>
               ) : (
                 <>
-                  Save Settings
-                  <Save size={18} />
+                  <Save
+                    size={18}
+                  />
+
+                  Save Changes
                 </>
               )}
             </button>
 
             <button
               type="button"
-              className="modern-secondary-link"
-              onClick={handleResetDefaults}
+              className="cray-settings-secondary-button"
+              onClick={
+                handleResetDefaults
+              }
+              disabled={
+                isSaving
+              }
             >
-              <RefreshCw size={18} />
+              <RefreshCw
+                size={18}
+              />
+
               Restore Defaults
             </button>
 
-            <span>Source: {dataSource}</span>
+            {isDirty && (
+              <span className="cray-settings-unsaved">
+                Unsaved changes
+              </span>
+            )}
           </div>
         </div>
 
-        <div className="modern-settings-hero-card">
-          <Settings size={38} />
-          <strong>{validThresholds ? "Ready" : "Check"}</strong>
+        <div
+          className={`cray-settings-hero-card ${
+            validation.valid
+              ? "ready"
+              : "warning"
+          }`}
+        >
+          {validation.valid ? (
+            <ShieldCheck
+              size={36}
+            />
+          ) : (
+            <AlertTriangle
+              size={36}
+            />
+          )}
+
+          <strong>
+            {validation.valid
+              ? "Ready"
+              : "Check Values"}
+          </strong>
+
           <span>
-            {validThresholds
-              ? "Threshold values are valid"
-              : "Some ranges need review"}
+            {validation.valid
+              ? "Safety ranges are valid"
+              : "Some values need review"}
           </span>
         </div>
       </section>
 
+      {/* ===============================================
+          MESSAGE
+      ================================================ */}
+
       {message && (
         <section
-          className={`modern-settings-message ${
-            validThresholds ? "success" : "warning"
-          }`}
+          className={`cray-settings-message ${message.tone}`}
         >
-          {validThresholds ? <CheckCircle2 size={20} /> : <AlertTriangle size={20} />}
-          <span>{message}</span>
+          {message.tone ===
+          "success" ? (
+            <CheckCircle2
+              size={19}
+            />
+          ) : message.tone ===
+            "warning" ? (
+            <AlertTriangle
+              size={19}
+            />
+          ) : (
+            <Bell
+              size={19}
+            />
+          )}
+
+          <span>
+            {message.text}
+          </span>
         </section>
       )}
 
-      <section className="modern-settings-grid">
-        <article className="modern-settings-panel">
-          <div className="modern-panel-heading">
+      {/* ===============================================
+          INVALID RANGE
+      ================================================ */}
+
+      {!validation.valid &&
+        !message && (
+          <section className="cray-settings-message warning">
+
+            <AlertTriangle
+              size={19}
+            />
+
+            <span>
+              {
+                validation.message
+              }
+            </span>
+          </section>
+        )}
+
+      {/* ===============================================
+          ACCOUNT + SYNC
+      ================================================ */}
+
+      <section className="cray-settings-overview-grid">
+
+        {/* ACCOUNT */}
+
+        <article className="cray-settings-panel">
+
+          <div className="cray-settings-panel-heading">
+
             <div>
-              <p className="dashboard-eyebrow">Account</p>
-              <h3>Web dashboard profile</h3>
+              <p className="dashboard-eyebrow">
+                Account
+              </p>
+
+              <h3>
+                Your profile
+              </h3>
             </div>
-            <UserRound size={22} />
+
+            <UserRound
+              size={22}
+            />
           </div>
 
-          <div className="modern-settings-profile-card">
-            <div className="modern-settings-avatar">
-              <UserRound size={28} />
+          <div className="cray-settings-profile">
+
+            <div className="cray-settings-avatar">
+              <UserRound
+                size={27}
+              />
             </div>
 
             <div>
-              <strong>{displayName}</strong>
-              <span>{email}</span>
-              <small>Role: Admin dashboard access</small>
+              <strong>
+                {displayName}
+              </strong>
+
+              <span>
+                {email}
+              </span>
+
+              <small>
+                {role}
+              </small>
             </div>
           </div>
         </article>
 
-        <article className="modern-settings-panel">
-          <div className="modern-panel-heading">
+        {/* SAVING / SYNC */}
+
+        <article className="cray-settings-panel">
+
+          <div className="cray-settings-panel-heading">
+
             <div>
-              <p className="dashboard-eyebrow">Notifications</p>
-              <h3>Alert behavior</h3>
+              <p className="dashboard-eyebrow">
+                Saving
+              </p>
+
+              <h3>
+                Settings status
+              </h3>
             </div>
-            <Bell size={22} />
+
+            <Database
+              size={22}
+            />
           </div>
 
-          <div className="modern-settings-info-list">
-            <div>
-              <ShieldCheck size={19} />
-              <span>Critical alerts stay visible until the latest safe reading resolves them.</span>
-            </div>
+          <div className="cray-settings-sync-card">
+
+            <span
+              className={`cray-settings-sync-icon ${syncMode}`}
+            >
+              {syncMode ===
+              "online" ? (
+                <ShieldCheck
+                  size={21}
+                />
+              ) : (
+                <Database
+                  size={21}
+                />
+              )}
+            </span>
 
             <div>
-              <Database size={19} />
-              <span>Threshold values are saved in Supabase for mobile sync.</span>
-            </div>
+              <strong>
+                {syncMode ===
+                "online"
+                  ? "Synced with your account"
+                  : "Saved on this device"}
+              </strong>
 
-            <div>
-              <AlertTriangle size={19} />
-              <span>Unsafe values classify readings into warning or critical.</span>
+              <p>
+                {syncMode ===
+                "online"
+                  ? "Your saved water safety settings can be reused by connected CrayThrive features."
+                  : "These values are available on this device while online sync is unavailable."}
+              </p>
             </div>
           </div>
         </article>
       </section>
 
-      <section className="modern-settings-panel modern-settings-wide">
-        <div className="modern-panel-heading">
+      {/* ===============================================
+          HOW SETTINGS WORK
+      ================================================ */}
+
+      <section className="cray-settings-panel">
+
+        <div className="cray-settings-panel-heading">
+
           <div>
-            <p className="dashboard-eyebrow">Safe Thresholds</p>
-            <h3>Water condition rules</h3>
+            <p className="dashboard-eyebrow">
+              How It Works
+            </p>
+
+            <h3>
+              What these settings affect
+            </h3>
           </div>
-          <Gauge size={22} />
+
+          <Bell
+            size={22}
+          />
         </div>
 
-        <div className="modern-setting-threshold-grid">
-          {thresholdRows.map((item) => (
-            <ThresholdControl
-              key={item.key}
-              item={item}
-              value={thresholds[item.key]}
-              onChange={handleThresholdChange}
+        <div className="cray-settings-info-grid">
+
+          <div>
+            <ShieldCheck
+              size={19}
             />
-          ))}
+
+            <span>
+              <strong>
+                Water checks
+              </strong>
+
+              <small>
+                Readings are compared with
+                your saved safety limits.
+              </small>
+            </span>
+          </div>
+
+          <div>
+            <AlertTriangle
+              size={19}
+            />
+
+            <span>
+              <strong>
+                Alerts
+              </strong>
+
+              <small>
+                Values outside your safe
+                range may be marked for
+                checking or urgent attention.
+              </small>
+            </span>
+          </div>
+
+          <div>
+            <Database
+              size={19}
+            />
+
+            <span>
+              <strong>
+                Shared settings
+              </strong>
+
+              <small>
+                Online settings can be reused
+                by connected mobile and
+                monitoring features.
+              </small>
+            </span>
+          </div>
         </div>
+      </section>
+
+      {/* ===============================================
+          THRESHOLDS
+      ================================================ */}
+
+      <section className="cray-settings-threshold-area">
+
+        <div className="cray-settings-threshold-heading">
+
+          <div>
+            <p className="dashboard-eyebrow">
+              Tank Safety Rules
+            </p>
+
+            <h3>
+              Water condition limits
+            </h3>
+
+            <span>
+              Adjust only the values you need,
+              then press Save Changes.
+            </span>
+          </div>
+
+          <Settings
+            size={23}
+          />
+        </div>
+
+        <div className="cray-settings-threshold-sections">
+
+          {thresholdSections.map(
+            (section) => {
+              const SectionIcon =
+                section.icon;
+
+              return (
+                <article
+                  className="cray-settings-threshold-section"
+                  key={
+                    section.id
+                  }
+                >
+
+                  <div className="cray-settings-threshold-section-heading">
+
+                    <span>
+                      <SectionIcon
+                        size={21}
+                      />
+                    </span>
+
+                    <div>
+                      <strong>
+                        {
+                          section.title
+                        }
+                      </strong>
+
+                      <small>
+                        {
+                          section.description
+                        }
+                      </small>
+                    </div>
+                  </div>
+
+                  <div className="cray-settings-threshold-grid">
+
+                    {section.items.map(
+                      (item) => (
+                        <ThresholdControl
+                          key={
+                            item.key
+                          }
+                          item={
+                            item
+                          }
+                          value={
+                            thresholds[
+                              item.key
+                            ]
+                          }
+                          onChange={
+                            handleThresholdChange
+                          }
+                        />
+                      )
+                    )}
+                  </div>
+                </article>
+              );
+            }
+          )}
+        </div>
+      </section>
+
+      {/* ===============================================
+          BOTTOM SAVE
+      ================================================ */}
+
+      <section className="cray-settings-save-footer">
+
+        <div>
+          <strong>
+            {isDirty
+              ? "You have changes that are not saved yet."
+              : "Your current values are saved."}
+          </strong>
+
+          <span>
+            Check the values above before
+            applying them to your system.
+          </span>
+        </div>
+
+        <button
+          type="button"
+          className="dashboard-primary-button"
+          onClick={
+            handleSave
+          }
+          disabled={
+            isSaving ||
+            !validation.valid ||
+            !isDirty
+          }
+        >
+          {isSaving ? (
+            <>
+              <Loader2
+                className="spin-icon"
+                size={18}
+              />
+
+              Saving...
+            </>
+          ) : (
+            <>
+              <Save
+                size={18}
+              />
+
+              Save Changes
+            </>
+          )}
+        </button>
       </section>
     </div>
   );
