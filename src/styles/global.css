@@ -907,6 +907,7 @@ a {
 }
 
 .footer-icon-link {
+  position: relative;
   display: grid;
   place-items: center;
   width: 38px;
@@ -915,6 +916,8 @@ a {
   background: var(--panel-soft);
   border: 1px solid var(--line);
   color: var(--teal-soft);
+  cursor: pointer;
+  font: inherit;
   transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
 }
 
@@ -922,6 +925,29 @@ a {
   background: rgba(0, 217, 199, 0.14);
   border-color: var(--line-strong);
   transform: translateY(-2px);
+}
+
+.footer-icon-tip {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+  font-size: 0.76rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 999px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.footer-icon-tip.is-visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 @media (max-width: 640px) {

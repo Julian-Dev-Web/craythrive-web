@@ -21,6 +21,10 @@ import { APP_INFO } from "../constants/theme";
 
 const APK_DOWNLOAD_URL = "/downloads/craythrive.apk";
 
+// >>> EDIT THESE TWO VALUES WITH YOUR REAL CONTACT INFO <<<
+const CONTACT_EMAIL = "Craythrivesupport@gmail.com";
+const CONTACT_PHONE = "+63 9358196510";
+
 const previewStats = [
   {
     icon: Droplets,
@@ -110,6 +114,40 @@ function BellIcon() {
         strokeLinecap="round"
       />
     </svg>
+  );
+}
+
+function FooterContactIcon({ icon: Icon, label, value }) {
+  const [isHovering, setIsHovering] = useState(false);
+  const [justCopied, setJustCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setJustCopied(true);
+      window.setTimeout(() => setJustCopied(false), 1600);
+    } catch {
+      // Clipboard API unavailable (very old browser or non-HTTPS) — the
+      // tooltip already shows the value on hover, so it's still visible.
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      className="footer-icon-link"
+      aria-label={`Copy ${label.toLowerCase()}: ${value}`}
+      onMouseEnter={() => setIsHovering(true)}
+      onMouseLeave={() => setIsHovering(false)}
+      onFocus={() => setIsHovering(true)}
+      onBlur={() => setIsHovering(false)}
+      onClick={handleCopy}
+    >
+      <Icon size={18} />
+      <span className={`footer-icon-tip ${isHovering ? "is-visible" : ""}`}>
+        {justCopied ? "Copied!" : value}
+      </span>
+    </button>
   );
 }
 
@@ -436,22 +474,8 @@ export default function LandingPage() {
 
         <div className="footer-right-group">
           <div className="footer-contact-icons">
-            <a
-              href="mailto:Craythrivesupport@gmail.com" // <-- replace with real email
-              className="footer-icon-link"
-              aria-label="Email CrayThrive"
-              title="Email"
-            >
-              <Mail size={18} />
-            </a>
-            <a
-              href="tel:+639358196510" // <-- replace with real phone number
-              className="footer-icon-link"
-              aria-label="Call CrayThrive"
-              title="Call"
-            >
-              <Phone size={18} />
-            </a>
+            <FooterContactIcon icon={Mail} label="Email" value={CONTACT_EMAIL} />
+            <FooterContactIcon icon={Phone} label="Phone" value={CONTACT_PHONE} />
           </div>
 
           <p>© 2026 CrayThrive. All rights reserved.</p>
