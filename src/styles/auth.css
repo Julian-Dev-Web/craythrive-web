@@ -757,8 +757,8 @@
   background:
     linear-gradient(
       90deg,
-      transparent 82%,
-      rgba(201, 232, 227, 0.4) 100%
+      transparent 93%,
+      rgba(247, 251, 250, 0.28) 100%
     ),
     radial-gradient(
       circle at 16% 8%,
@@ -994,20 +994,15 @@
   background:
     linear-gradient(
       90deg,
-      rgba(6, 30, 42, 0.32) 0%,
-      transparent 18%
+      rgba(6, 30, 42, 0.1) 0%,
+      transparent 7%
     ),
     radial-gradient(
       circle at 100% 0%,
-      rgba(0, 217, 199, 0.2),
-      transparent 22rem
-    ),
-    radial-gradient(
-      circle at 0% 100%,
-      rgba(58, 232, 255, 0.12),
+      rgba(0, 217, 199, 0.1),
       transparent 20rem
     ),
-    #c9e8e3;
+    #f7fbfa;
 }
 
 .admin-auth-form-wrap {
@@ -1199,9 +1194,9 @@
 .admin-auth-field input:-webkit-autofill:focus {
   -webkit-text-fill-color: #071c26;
   -webkit-box-shadow:
-    0 0 0 1000px #c9e8e3 inset;
+    0 0 0 1000px #f7fbfa inset;
   box-shadow:
-    0 0 0 1000px #c9e8e3 inset;
+    0 0 0 1000px #f7fbfa inset;
 
   transition: background-color 9999s ease-in-out 0s;
 }
