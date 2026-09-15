@@ -904,7 +904,7 @@
 
   margin: 25px 0 0;
 
-  color: rgba(207, 231, 237, 0.72);
+  color: #ffffff;
 
   font-size: 1rem;
   line-height: 1.75;
@@ -1044,7 +1044,7 @@
 .admin-form-heading p {
   margin: 12px 0 0;
 
-  color: #6b7c83;
+  color: #071c26;
 
   font-size: 0.88rem;
   line-height: 1.65;
@@ -1345,9 +1345,9 @@
 .admin-auth-divider p {
   margin: 0;
 
-  color: #587277;
+  color: #071c26;
 
-  font-size: 0.71rem; 
+  font-size: 0.71rem;
   font-weight: 700;
 }
 
@@ -1409,7 +1409,7 @@
 .admin-auth-download span {
   display: block;
 
-  color: #17323a;
+  color: #071c26;
 
   font-size: 0.78rem;
   font-weight: 850;
@@ -1420,7 +1420,7 @@
 
   margin-top: 3px;
 
-  color: #587277;
+  color: #071c26;
 
   font-size: 0.67rem;
   line-height: 1.35;
@@ -1450,7 +1450,7 @@
 
   margin-top: 19px;
 
-  color: #587277;
+  color: #071c26;
 }
 
 .admin-auth-security-note svg {
