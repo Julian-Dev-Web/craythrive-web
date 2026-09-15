@@ -107,18 +107,9 @@ export default function AdminLogin() {
 
               <span>{APP_INFO.name}</span>
             </div>
-
-            <span className="admin-showcase-badge">
-              <span />
-              IoT Monitoring System
-            </span>
           </div>
 
           <div className="admin-showcase-content">
-            <div className="admin-showcase-icon">
-              <Waves size={30} />
-            </div>
-
             <p className="admin-showcase-kicker">
               SMART AQUACULTURE
             </p>
@@ -268,7 +259,7 @@ export default function AdminLogin() {
                   </>
                 ) : (
                   <>
-                    <span>Sign in to dashboard</span>
+                    <span>Login</span>
                     <ArrowRight size={18} />
                   </>
                 )}

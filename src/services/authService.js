@@ -3,13 +3,15 @@ import { supabase, isSupabaseConfigured } from "../lib/supabase";
 /*
  * Roles that are allowed to access the CrayThrive web dashboard.
  *
- * Add another role here later if needed.
+ * IMPORTANT: this was corrected to "user" — the actual CrayThrive
+ * mobile app registers accounts with profiles.role = "user" (confirmed
+ * directly against the codebase), not "admin"/"super_admin". This web
+ * dashboard is a per-user account dashboard, not a separate staff panel.
+ * If you later introduce a real staff/admin role, add it here alongside
+ * "user" rather than replacing it.
  */
 const DASHBOARD_ROLES = new Set([
-  "admin",
-  "administrator",
-  "super_admin",
-  "superadmin",
+  "user",
 ]);
 
 function normalizeRole(role) {
@@ -331,15 +333,15 @@ export async function getCurrentProfile() {
   const user = await getCurrentUser();
 
   if (!user) {
-    return null;
+    return { user: null, profile: null };
   }
 
   try {
     const { profile } = await fetchProfile(user.id);
-    return profile ?? null;
+    return { user, profile: profile ?? null };
   } catch (error) {
     console.error("Could not get current profile:", error);
-    return null;
+    return { user, profile: null };
   }
 }
 
@@ -347,25 +349,44 @@ export async function getCurrentProfile() {
  * Used by protected dashboard routes.
  */
 export async function checkDashboardAccess() {
+  if (!isSupabaseConfigured || !supabase) {
+    return "not-configured";
+  }
+
   const user = await getCurrentUser();
 
   if (!user) {
-    return {
-      authenticated: false,
-      authorized: false,
-      user: null,
-      profile: null,
-    };
+    return "unauthenticated";
   }
 
   const { profile } = await fetchProfile(user.id);
 
-  return {
-    authenticated: true,
-    authorized: hasDashboardAccess(profile),
-    user,
-    profile: profile ?? null,
-  };
+  if (!hasDashboardAccess(profile)) {
+    await signOut();
+    return "unauthenticated";
+  }
+
+  return "authorized";
+}
+
+/* Used by ForgotPassword.jsx to confirm an email belongs to a real account. */
+export async function checkRegisteredProfileByEmail(email) {
+  if (!supabase) return false;
+
+  const cleanEmail = String(email || "").trim().toLowerCase();
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id,email")
+    .ilike("email", cleanEmail)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error("Could not verify this email. Please try again.");
+  }
+
+  return Boolean(data);
 }
 
 /*
