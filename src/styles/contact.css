@@ -1,0 +1,205 @@
+/* CONTACT KEY DOCK — "CONTACT" spelled as physical keyboard keys.
+   Colors reuse the existing --teal / --cyan / --panel theme vars from
+   global.css so this section matches the rest of the dark landing page. */
+
+.contact-app-section {
+  width: min(1180px, calc(100% - 48px));
+  margin: 0 auto 40px;
+  padding: 56px 0 40px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+  text-align: center;
+}
+
+.contact-app-section h2 {
+  font-size: clamp(1.6rem, 3vw, 2.1rem);
+  margin: 0;
+}
+
+.contact-app-section p {
+  color: var(--muted);
+  margin: 0;
+  max-width: 480px;
+}
+
+.ck-dock-wrap {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  padding: 28px 16px 36px;
+  perspective: 900px;
+}
+
+.ck-dock {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 14px 16px 20px;
+  background: linear-gradient(180deg, var(--panel) 0%, var(--bg-deep) 100%);
+  border: 1px solid var(--line-strong);
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+}
+
+.ck-key {
+  position: relative;
+  width: 46px;
+  height: 52px;
+  animation: ck-key-in 0.5s ease backwards;
+  animation-delay: calc(var(--i) * 60ms);
+}
+
+@keyframes ck-key-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ck-key__glow {
+  position: absolute;
+  inset: -6px;
+  border-radius: 14px;
+  background: radial-gradient(circle, var(--teal-soft) 0%, transparent 70%);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+
+.ck-key--action:hover .ck-key__glow,
+.ck-key--action.is-active .ck-key__glow {
+  opacity: 0.35;
+}
+
+/* --- letter keys: static keycap look, subtle press animation only --- */
+.ck-key--letter .ck-key__cap {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #0f3540 0%, #082832 100%);
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+  font-weight: 700;
+  font-size: 1.05rem;
+  box-shadow: 0 4px 0 var(--bg-deep), 0 6px 14px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.ck-key--letter:hover .ck-key__cap {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 var(--bg-deep), 0 3px 8px rgba(0, 0, 0, 0.35);
+}
+
+/* --- action keys: 3D flip cap revealing the icon face --- */
+.ck-key--action {
+  width: 52px;
+}
+
+.ck-key__hit {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.ck-key--action .ck-key__cap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transform-origin: 50% 100%;
+  transform: translate3d(0, 0, 0) rotateX(0deg);
+  transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+  border-radius: 10px;
+}
+
+.ck-key--action:hover .ck-key__cap,
+.ck-key--action.is-active .ck-key__cap {
+  transform: translate3d(0, -6px, 0) rotateX(-18deg);
+}
+
+.ck-key__face {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  backface-visibility: hidden;
+}
+
+.ck-key__face--letter {
+  background: linear-gradient(180deg, #0f3540 0%, #082832 100%);
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 4px 0 var(--bg-deep), 0 6px 14px rgba(0, 0, 0, 0.35);
+}
+
+.ck-key__face--icon {
+  background: linear-gradient(180deg, var(--teal) 0%, var(--cyan) 100%);
+  color: var(--bg-deep);
+  transform: rotateX(90deg) translateZ(26px);
+  box-shadow: 0 6px 18px rgba(0, 217, 199, 0.35);
+}
+
+.ck-key--action:hover .ck-key__face--icon,
+.ck-key--action.is-active .ck-key__face--icon {
+  transform: rotateX(0deg) translateZ(26px);
+}
+
+.ck-key__tip {
+  position: absolute;
+  top: -30px;
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+  font-size: 0.72rem;
+  padding: 4px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.ck-key--action:hover .ck-key__tip,
+.ck-key--action.is-active .ck-key__tip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+@media (max-width: 560px) {
+  .ck-dock {
+    gap: 6px;
+    padding: 12px 10px 16px;
+  }
+  .ck-key {
+    width: 36px;
+    height: 44px;
+  }
+  .ck-key--action {
+    width: 42px;
+  }
+  .ck-key--letter .ck-key__cap {
+    font-size: 0.9rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ck-key {
+    animation: none;
+  }
+  .ck-key--action .ck-key__cap {
+    transition: none;
+  }
+}

@@ -16,6 +16,7 @@ import {
   ShoppingBag,
 } from "lucide-react";
 import { APP_INFO } from "../constants/theme";
+import ContactKeys from "../components/ContactKeys";
 
 const APK_DOWNLOAD_URL = "/downloads/craythrive.apk";
 
@@ -413,6 +414,16 @@ export default function LandingPage() {
             <ArrowRight size={18} />
           </Link>
         </div>
+      </section>
+
+      <section id="contact" className="contact-app-section">
+        <h2>Get in touch</h2>
+        <p>
+          Questions about your tanks, the app, or setting up your own CrayThrive
+          system? Reach us through either channel below.
+        </p>
+
+        <ContactKeys />
       </section>
 
       <footer className="app-footer">
