@@ -13,14 +13,30 @@ import {
   Thermometer,
   Waves,
 } from "lucide-react";
+
 import { isSupabaseConfigured, supabase } from "../../lib/supabase";
+
 import {
   formatReadingTime,
   normalizeSensorReading,
   toNumberOrNull,
 } from "../../utils/sensorReadingUtils";
 
-const readingTables = ["sensor_readings", "tank_readings", "readings"];
+/* =========================================================
+   TABLES
+========================================================= */
+
+const readingTables = [
+  "sensor_readings",
+  "tank_readings",
+  "readings",
+];
+
+const tankTables = [
+  "tanks",
+  "user_tanks",
+  "tank_profiles",
+];
 
 const READINGS_PER_PAGE = 10;
 
@@ -32,14 +48,40 @@ const userFilterColumns = [
   "farmer_id",
 ];
 
+/* =========================================================
+   FILTER OPTIONS
+========================================================= */
+
 const sensorOptions = [
-  { value: "all", label: "All Sensors" },
-  { value: "temperature", label: "Temperature" },
-  { value: "ph", label: "pH Status" },
-  { value: "turbidity", label: "Turbidity Status" },
-  { value: "water_depth", label: "Water Depth" },
-  { value: "issues", label: "Issues Only" },
+  {
+    value: "all",
+    label: "All Water Data",
+  },
+  {
+    value: "temperature",
+    label: "Temperature",
+  },
+  {
+    value: "ph",
+    label: "pH Level",
+  },
+  {
+    value: "turbidity",
+    label: "Water Clarity",
+  },
+  {
+    value: "water_depth",
+    label: "Water Level",
+  },
+  {
+    value: "issues",
+    label: "Needs Attention",
+  },
 ];
+
+/* =========================================================
+   GENERAL HELPERS
+========================================================= */
 
 function clean(value) {
   return String(value || "").trim();
@@ -49,11 +91,38 @@ function lower(value) {
   return clean(value).toLowerCase();
 }
 
+function normalizeStatusText(value) {
+  return lower(value)
+    .replaceAll("_", " ")
+    .replaceAll("-", " ");
+}
+
+function formatFriendlyText(value) {
+  const text = clean(value);
+
+  if (!text) {
+    return "No Reading";
+  }
+
+  return text
+    .replaceAll("_", " ")
+    .replaceAll("-", " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (character) =>
+      character.toUpperCase()
+    );
+}
+
 function formatDate(value) {
-  if (!value) return "No date";
+  if (!value) {
+    return "No date";
+  }
 
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "No date";
+
+  if (Number.isNaN(date.getTime())) {
+    return "No date";
+  }
 
   return date.toLocaleString([], {
     month: "short",
@@ -64,12 +133,14 @@ function formatDate(value) {
   });
 }
 
-function normalizeStatusText(value) {
-  return lower(value).replaceAll("_", " ").replaceAll("-", " ");
-}
+/* =========================================================
+   STATUS
+========================================================= */
 
 function getStatusSeverity(statuses) {
-  const joined = statuses.map(normalizeStatusText).join(" ");
+  const joined = statuses
+    .map(normalizeStatusText)
+    .join(" ");
 
   if (
     joined.includes("critical") ||
@@ -93,24 +164,7 @@ function getStatusSeverity(statuses) {
     return "warning";
   }
 
-  if (
-    joined.includes("ideal") ||
-    joined.includes("safe") ||
-    joined.includes("normal") ||
-    joined.includes("clear") ||
-    joined.includes("measured")
-  ) {
-    return "normal";
-  }
-
   return "normal";
-}
-
-function getSeverityRank(severity) {
-  if (severity === "critical") return 1;
-  if (severity === "warning") return 2;
-  if (severity === "normal") return 3;
-  return 4;
 }
 
 function getOverallReadingStatus(normalizedReading) {
@@ -122,6 +176,38 @@ function getOverallReadingStatus(normalizedReading) {
   ]);
 }
 
+function getFriendlyStatus(status) {
+  if (status === "critical") {
+    return "Urgent";
+  }
+
+  if (status === "warning") {
+    return "Check";
+  }
+
+  return "Good";
+}
+
+function getSeverityRank(severity) {
+  if (severity === "critical") {
+    return 1;
+  }
+
+  if (severity === "warning") {
+    return 2;
+  }
+
+  if (severity === "normal") {
+    return 3;
+  }
+
+  return 4;
+}
+
+/* =========================================================
+   SENSOR FOCUS
+========================================================= */
+
 function getSensorFocus(item, sensorFilter) {
   const normalized = item.normalized;
 
@@ -130,7 +216,9 @@ function getSensorFocus(item, sensorFilter) {
       label: "Temperature",
       value: normalized.temperatureLabel,
       status: normalized.temperatureStatus,
-      severity: getStatusSeverity([normalized.temperatureStatus]),
+      severity: getStatusSeverity([
+        normalized.temperatureStatus,
+      ]),
       hasValue:
         normalized.temperatureValue !== null &&
         normalized.temperatureValue !== undefined &&
@@ -140,30 +228,38 @@ function getSensorFocus(item, sensorFilter) {
 
   if (sensorFilter === "ph") {
     return {
-      label: "pH Status",
+      label: "pH Level",
       value: normalized.phStatus,
       status: normalized.phStatus,
-      severity: getStatusSeverity([normalized.phStatus]),
-      hasValue: normalized.phStatus !== "No Reading",
+      severity: getStatusSeverity([
+        normalized.phStatus,
+      ]),
+      hasValue:
+        normalized.phStatus !== "No Reading",
     };
   }
 
   if (sensorFilter === "turbidity") {
     return {
-      label: "Turbidity Status",
+      label: "Water Clarity",
       value: normalized.turbidityStatus,
       status: normalized.turbidityStatus,
-      severity: getStatusSeverity([normalized.turbidityStatus]),
-      hasValue: normalized.turbidityStatus !== "No Reading",
+      severity: getStatusSeverity([
+        normalized.turbidityStatus,
+      ]),
+      hasValue:
+        normalized.turbidityStatus !== "No Reading",
     };
   }
 
   if (sensorFilter === "water_depth") {
     return {
-      label: "Water Depth",
+      label: "Water Level",
       value: normalized.waterLabel,
       status: normalized.waterStatus,
-      severity: getStatusSeverity([normalized.waterStatus]),
+      severity: getStatusSeverity([
+        normalized.waterStatus,
+      ]),
       hasValue:
         normalized.waterValue !== null &&
         normalized.waterValue !== undefined &&
@@ -172,7 +268,7 @@ function getSensorFocus(item, sensorFilter) {
   }
 
   return {
-    label: "Overall",
+    label: "Overall Status",
     value: item.status,
     status: item.status,
     severity: item.status,
@@ -180,38 +276,156 @@ function getSensorFocus(item, sensorFilter) {
   };
 }
 
+/* =========================================================
+   AVERAGES
+========================================================= */
+
 function averageFromNormalized(items, key) {
   const values = items
-    .map((item) => toNumberOrNull(item.normalized[key]))
-    .filter((value) => value !== null);
+    .map((item) =>
+      toNumberOrNull(
+        item.normalized[key]
+      )
+    )
+    .filter(
+      (value) =>
+        value !== null
+    );
 
-  if (!values.length) return "N/A";
+  if (!values.length) {
+    return "N/A";
+  }
 
-  const total = values.reduce((sum, value) => sum + value, 0);
-  return (total / values.length).toFixed(2);
+  const total = values.reduce(
+    (sum, value) =>
+      sum + value,
+    0
+  );
+
+  return (
+    total / values.length
+  ).toFixed(2);
 }
+
+/* =========================================================
+   TANK NAME RESOLUTION
+========================================================= */
+
+function getTankIdValues(tank) {
+  return [
+    tank?.id,
+    tank?.tank_id,
+    tank?.uuid,
+    tank?.device_uid,
+    tank?.iot_device_id,
+    tank?.device_id,
+  ]
+    .filter(Boolean)
+    .map(String);
+}
+
+function getReadingTankValues(reading) {
+  return [
+    reading?.tank_id,
+    reading?.tankId,
+    reading?.tank_uuid,
+    reading?.tank_profile_id,
+    reading?.device_uid,
+    reading?.iot_device_id,
+    reading?.device_id,
+  ]
+    .filter(Boolean)
+    .map(String);
+}
+
+function getTankDisplayName(
+  reading,
+  tanks,
+  index
+) {
+  const directName =
+    reading?.tank_name ||
+    reading?.tank_label ||
+    reading?.tank_display_name ||
+    reading?.name;
+
+  if (directName) {
+    return directName;
+  }
+
+  const readingKeys =
+    getReadingTankValues(
+      reading
+    );
+
+  const matchedTank =
+    tanks.find((tank) => {
+      const tankKeys =
+        getTankIdValues(
+          tank
+        );
+
+      return readingKeys.some(
+        (key) =>
+          tankKeys.includes(
+            key
+          )
+      );
+    });
+
+  if (matchedTank) {
+    return (
+      matchedTank?.name ||
+      matchedTank?.tank_name ||
+      matchedTank?.title ||
+      matchedTank?.label ||
+      `Tank ${index + 1}`
+    );
+  }
+
+  return `Tank ${index + 1}`;
+}
+
+/* =========================================================
+   UNIQUE ROWS
+========================================================= */
 
 function uniqueRows(rows) {
   const map = new Map();
 
-  rows.forEach((row, index) => {
-    const id =
-      row?.id ||
-      row?.uuid ||
-      row?.reading_id ||
-      row?.created_at ||
-      row?.device_uid ||
-      `row-${index}`;
+  rows.forEach(
+    (row, index) => {
+      const id =
+        row?.id ||
+        row?.uuid ||
+        row?.reading_id ||
+        row?.tank_id ||
+        row?.created_at ||
+        row?.device_uid ||
+        `row-${index}`;
 
-    map.set(String(id), row);
-  });
+      map.set(
+        String(id),
+        row
+      );
+    }
+  );
 
-  return Array.from(map.values());
+  return Array.from(
+    map.values()
+  );
 }
 
+/* =========================================================
+   CURRENT USER
+========================================================= */
+
 async function getCurrentUserWithRole() {
-  const { data } = await supabase.auth.getSession();
-  const user = data?.session?.user;
+  const { data } =
+    await supabase.auth.getSession();
+
+  const user =
+    data?.session?.user;
 
   if (!user) {
     return {
@@ -224,158 +438,370 @@ async function getCurrentUserWithRole() {
 
   let profile = null;
 
-  const byId = await supabase
-    .from("profiles")
-    .select("id,email,role")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (!byId.error && byId.data) {
-    profile = byId.data;
-  }
-
-  if (!profile && user.email) {
-    const byEmail = await supabase
+  const byId =
+    await supabase
       .from("profiles")
-      .select("id,email,role")
-      .ilike("email", user.email)
+      .select(
+        "id,email,role"
+      )
+      .eq(
+        "id",
+        user.id
+      )
       .maybeSingle();
 
-    if (!byEmail.error && byEmail.data) {
-      profile = byEmail.data;
+  if (
+    !byId.error &&
+    byId.data
+  ) {
+    profile =
+      byId.data;
+  }
+
+  if (
+    !profile &&
+    user.email
+  ) {
+    const byEmail =
+      await supabase
+        .from("profiles")
+        .select(
+          "id,email,role"
+        )
+        .ilike(
+          "email",
+          user.email
+        )
+        .maybeSingle();
+
+    if (
+      !byEmail.error &&
+      byEmail.data
+    ) {
+      profile =
+        byEmail.data;
     }
   }
 
-  const role = lower(profile?.role);
+  const role =
+    lower(
+      profile?.role
+    );
 
   return {
-    id: user.id || "",
-    email: user.email || "",
+    id:
+      user.id || "",
+
+    email:
+      user.email || "",
+
     role,
-    isAdmin: role === "admin",
+
+    isAdmin:
+      role === "admin",
   };
 }
 
-async function fetchAdminRows(tableNames, limit = 500) {
-  for (const tableName of tableNames) {
-    const ordered = await supabase
-      .from(tableName)
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(limit);
+/* =========================================================
+   DATABASE FETCH
+========================================================= */
 
-    if (!ordered.error && Array.isArray(ordered.data)) {
+async function fetchAdminRows(
+  tableNames,
+  limit = 500
+) {
+  for (
+    const tableName
+    of tableNames
+  ) {
+    const ordered =
+      await supabase
+        .from(tableName)
+        .select("*")
+        .order(
+          "created_at",
+          {
+            ascending: false,
+          }
+        )
+        .limit(limit);
+
+    if (
+      !ordered.error &&
+      Array.isArray(
+        ordered.data
+      )
+    ) {
       return {
-        rows: uniqueRows(ordered.data),
-        tableUsed: tableName,
+        rows:
+          uniqueRows(
+            ordered.data
+          ),
+
+        tableUsed:
+          tableName,
       };
     }
 
-    const plain = await supabase.from(tableName).select("*").limit(limit);
+    const plain =
+      await supabase
+        .from(tableName)
+        .select("*")
+        .limit(limit);
 
-    if (!plain.error && Array.isArray(plain.data)) {
+    if (
+      !plain.error &&
+      Array.isArray(
+        plain.data
+      )
+    ) {
       return {
-        rows: uniqueRows(plain.data),
-        tableUsed: tableName,
+        rows:
+          uniqueRows(
+            plain.data
+          ),
+
+        tableUsed:
+          tableName,
       };
     }
   }
 
   return {
     rows: [],
-    tableUsed: tableNames[0],
+    tableUsed:
+      tableNames[0],
   };
 }
 
-async function fetchUserRows(tableNames, userId, limit = 300) {
-  for (const tableName of tableNames) {
+async function fetchUserRows(
+  tableNames,
+  userId,
+  limit = 300
+) {
+  for (
+    const tableName
+    of tableNames
+  ) {
     const mergedRows = [];
     let successful = false;
 
-    for (const column of userFilterColumns) {
-      const ordered = await supabase
-        .from(tableName)
-        .select("*")
-        .eq(column, userId)
-        .order("created_at", { ascending: false })
-        .limit(limit);
+    for (
+      const column
+      of userFilterColumns
+    ) {
+      const ordered =
+        await supabase
+          .from(tableName)
+          .select("*")
+          .eq(
+            column,
+            userId
+          )
+          .order(
+            "created_at",
+            {
+              ascending: false,
+            }
+          )
+          .limit(limit);
 
-      if (!ordered.error && Array.isArray(ordered.data)) {
-        successful = true;
-        mergedRows.push(...ordered.data);
+      if (
+        !ordered.error &&
+        Array.isArray(
+          ordered.data
+        )
+      ) {
+        successful =
+          true;
+
+        mergedRows.push(
+          ...ordered.data
+        );
+
         continue;
       }
 
-      const plain = await supabase
-        .from(tableName)
-        .select("*")
-        .eq(column, userId)
-        .limit(limit);
+      const plain =
+        await supabase
+          .from(tableName)
+          .select("*")
+          .eq(
+            column,
+            userId
+          )
+          .limit(limit);
 
-      if (!plain.error && Array.isArray(plain.data)) {
-        successful = true;
-        mergedRows.push(...plain.data);
+      if (
+        !plain.error &&
+        Array.isArray(
+          plain.data
+        )
+      ) {
+        successful =
+          true;
+
+        mergedRows.push(
+          ...plain.data
+        );
       }
     }
 
     if (successful) {
       return {
-        rows: uniqueRows(mergedRows),
-        tableUsed: tableName,
+        rows:
+          uniqueRows(
+            mergedRows
+          ),
+
+        tableUsed:
+          tableName,
       };
     }
   }
 
   return {
     rows: [],
-    tableUsed: tableNames[0],
+    tableUsed:
+      tableNames[0],
   };
 }
 
-function SummaryCard({ icon: Icon, label, value, helper, tone = "default" }) {
+/* =========================================================
+   SMALL COMPONENTS
+========================================================= */
+
+function SummaryCard({
+  icon: Icon,
+  label,
+  value,
+  helper,
+  tone = "default",
+}) {
   return (
-    <article className={`modern-reading-summary-card ${tone}`}>
+    <article
+      className={`modern-reading-summary-card ${tone}`}
+    >
       <span>
-        <Icon size={22} />
+        <Icon size={21} />
       </span>
 
       <div>
-        <strong>{value}</strong>
-        <p>{label}</p>
-        <small>{helper}</small>
+        <strong>
+          {value}
+        </strong>
+
+        <p>
+          {label}
+        </p>
+
+        <small>
+          {helper}
+        </small>
       </div>
     </article>
   );
 }
 
-function MetricCard({ icon: Icon, label, value, status }) {
-  const severity = status ? getStatusSeverity([status]) : "normal";
+function MetricCard({
+  icon: Icon,
+  label,
+  value,
+  status,
+}) {
+  const severity =
+    status
+      ? getStatusSeverity(
+          [status]
+        )
+      : "normal";
 
   return (
     <div className="modern-reading-metric">
-      <Icon size={20} />
-      <strong>{value}</strong>
-      <span>{label}</span>
 
-      {status && (
-        <b className={`modern-reading-status ${severity}`}>{status}</b>
-      )}
+      <span className="modern-reading-metric-icon">
+        <Icon size={20} />
+      </span>
+
+      <div>
+        <small>
+          {label}
+        </small>
+
+        <strong>
+          {formatFriendlyText(
+            value
+          )}
+        </strong>
+
+        {status && (
+          <b
+            className={`modern-reading-status ${severity}`}
+          >
+            {formatFriendlyText(
+              status
+            )}
+          </b>
+        )}
+      </div>
     </div>
   );
 }
 
+/* =========================================================
+   PAGE
+========================================================= */
+
 export default function SensorReadingsPage() {
-  const [readings, setReadings] = useState([]);
-  const [source, setSource] = useState("");
-  const [scopeLabel, setScopeLabel] = useState("User view");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [sensorFilter, setSensorFilter] = useState("all");
-  const [readingsPage, setReadingsPage] = useState(1);
-  const [isLoading, setIsLoading] = useState(true);
+  const [
+    readings,
+    setReadings,
+  ] = useState([]);
+
+  const [
+    tanks,
+    setTanks,
+  ] = useState([]);
+
+  const [
+    searchTerm,
+    setSearchTerm,
+  ] = useState("");
+
+  const [
+    statusFilter,
+    setStatusFilter,
+  ] = useState("all");
+
+  const [
+    sensorFilter,
+    setSensorFilter,
+  ] = useState("all");
+
+  const [
+    readingsPage,
+    setReadingsPage,
+  ] = useState(1);
+
+  const [
+    isLoading,
+    setIsLoading,
+  ] = useState(true);
+
+  const [
+    lastUpdated,
+    setLastUpdated,
+  ] = useState(null);
+
+  /* =======================================================
+     LOAD
+  ======================================================= */
 
   const loadReadings = async () => {
-    if (!isSupabaseConfigured || !supabase) {
+    if (
+      !isSupabaseConfigured ||
+      !supabase
+    ) {
       setIsLoading(false);
       return;
     }
@@ -383,25 +809,58 @@ export default function SensorReadingsPage() {
     try {
       setIsLoading(true);
 
-      const currentUser = await getCurrentUserWithRole();
+      const currentUser =
+        await getCurrentUserWithRole();
 
-      if (!currentUser.id) {
+      if (
+        !currentUser.id
+      ) {
         setReadings([]);
-        setScopeLabel("No session");
+        setTanks([]);
         return;
       }
 
-      const result = currentUser.isAdmin
-        ? await fetchAdminRows(readingTables)
-        : await fetchUserRows(readingTables, currentUser.id);
+      const [
+        readingResult,
+        tankResult,
+      ] = await Promise.all([
+        currentUser.isAdmin
+          ? fetchAdminRows(
+              readingTables
+            )
+          : fetchUserRows(
+              readingTables,
+              currentUser.id
+            ),
 
-      setReadings(result.rows);
-      setSource(result.tableUsed);
-      setScopeLabel(
-        currentUser.isAdmin ? "Admin all-records view" : "User account view"
+        currentUser.isAdmin
+          ? fetchAdminRows(
+              tankTables,
+              300
+            )
+          : fetchUserRows(
+              tankTables,
+              currentUser.id,
+              300
+            ),
+      ]);
+
+      setReadings(
+        readingResult.rows
+      );
+
+      setTanks(
+        tankResult.rows
+      );
+
+      setLastUpdated(
+        new Date()
       );
     } catch (error) {
-      console.error("Readings loading error:", error);
+      console.error(
+        "Readings loading error:",
+        error
+      );
     } finally {
       setIsLoading(false);
     }
@@ -413,445 +872,999 @@ export default function SensorReadingsPage() {
 
   useEffect(() => {
     setReadingsPage(1);
-  }, [searchTerm, statusFilter, sensorFilter]);
+  }, [
+    searchTerm,
+    statusFilter,
+    sensorFilter,
+  ]);
 
-  const enrichedReadings = useMemo(() => {
-    return readings.map((reading, index) => {
-      const normalized = normalizeSensorReading(reading);
-      const status = getOverallReadingStatus(normalized);
+  /* =======================================================
+     ENRICH READINGS
+  ======================================================= */
 
-      const tankName =
-        reading?.tank_name ||
-        reading?.tank_label ||
-        reading?.name ||
-        reading?.tank_id ||
-        reading?.iot_device_id ||
-        normalized.deviceUid ||
-        `Reading ${index + 1}`;
+  const enrichedReadings =
+    useMemo(() => {
+      return readings.map(
+        (
+          reading,
+          index
+        ) => {
+          const normalized =
+            normalizeSensorReading(
+              reading
+            );
 
-      const date =
-        normalized.createdAt ||
-        reading?.timestamp ||
-        reading?.date ||
-        reading?.updated_at;
+          const status =
+            getOverallReadingStatus(
+              normalized
+            );
 
-      return {
-        reading,
-        normalized,
-        index,
-        status,
-        tankName: String(tankName),
-        date,
-      };
-    });
-  }, [readings]);
+          const tankName =
+            getTankDisplayName(
+              reading,
+              tanks,
+              index
+            );
 
-  const filteredReadings = useMemo(() => {
-    const filtered = enrichedReadings.filter((item) => {
-      const search = searchTerm.trim().toLowerCase();
-      const normalized = item.normalized;
-      const focus = getSensorFocus(item, sensorFilter);
+          const date =
+            normalized.createdAt ||
+            reading?.timestamp ||
+            reading?.date ||
+            reading?.updated_at;
 
-      const searchableText = [
-        item.tankName,
-        item.status,
-        focus.label,
-        focus.value,
-        focus.status,
-        normalized.temperatureLabel,
-        normalized.temperatureStatus,
-        normalized.phLabel,
-        normalized.phStatus,
-        normalized.phNumberLabel,
-        normalized.turbidityLabel,
-        normalized.turbidityStatus,
-        normalized.turbidityNumberLabel,
-        normalized.waterLabel,
-        normalized.waterStatus,
-        normalized.deviceUid,
-      ]
-        .join(" ")
-        .toLowerCase();
+          return {
+            reading,
+            normalized,
+            index,
+            status,
+            tankName:
+              String(
+                tankName
+              ),
+            date,
+          };
+        }
+      );
+    }, [
+      readings,
+      tanks,
+    ]);
 
-      const matchesSearch = !search || searchableText.includes(search);
+  /* =======================================================
+     FILTERED READINGS
+  ======================================================= */
 
-      const selectedSeverity =
-        sensorFilter === "all" || sensorFilter === "issues"
-          ? item.status
-          : focus.severity;
+  const filteredReadings =
+    useMemo(() => {
+      const filtered =
+        enrichedReadings.filter(
+          (item) => {
+            const search =
+              searchTerm
+                .trim()
+                .toLowerCase();
 
-      const matchesStatus =
-        statusFilter === "all" || selectedSeverity === statusFilter;
+            const normalized =
+              item.normalized;
 
-      const matchesSensor =
-        sensorFilter === "all" ||
-        (sensorFilter === "issues" &&
-          ["warning", "critical"].includes(item.status)) ||
-        focus.hasValue;
+            const focus =
+              getSensorFocus(
+                item,
+                sensorFilter
+              );
 
-      return matchesSearch && matchesStatus && matchesSensor;
-    });
+            const searchableText =
+              [
+                item.tankName,
+                item.status,
+                focus.label,
+                focus.value,
+                focus.status,
+                normalized.temperatureLabel,
+                normalized.temperatureStatus,
+                normalized.phLabel,
+                normalized.phStatus,
+                normalized.phNumberLabel,
+                normalized.turbidityLabel,
+                normalized.turbidityStatus,
+                normalized.turbidityNumberLabel,
+                normalized.waterLabel,
+                normalized.waterStatus,
+              ]
+                .join(" ")
+                .toLowerCase();
 
-    return filtered.sort((a, b) => {
-      const focusA = getSensorFocus(a, sensorFilter);
-      const focusB = getSensorFocus(b, sensorFilter);
+            const matchesSearch =
+              !search ||
+              searchableText.includes(
+                search
+              );
 
-      const severityA =
-        sensorFilter === "all" || sensorFilter === "issues"
-          ? a.status
-          : focusA.severity;
+            const selectedSeverity =
+              sensorFilter ===
+                "all" ||
+              sensorFilter ===
+                "issues"
+                ? item.status
+                : focus.severity;
 
-      const severityB =
-        sensorFilter === "all" || sensorFilter === "issues"
-          ? b.status
-          : focusB.severity;
+            const matchesStatus =
+              statusFilter ===
+                "all" ||
+              selectedSeverity ===
+                statusFilter;
 
-      const rankDifference =
-        getSeverityRank(severityA) - getSeverityRank(severityB);
+            const matchesSensor =
+              sensorFilter ===
+                "all" ||
+              (sensorFilter ===
+                "issues" &&
+                [
+                  "warning",
+                  "critical",
+                ].includes(
+                  item.status
+                )) ||
+              focus.hasValue;
 
-      if (rankDifference !== 0) return rankDifference;
+            return (
+              matchesSearch &&
+              matchesStatus &&
+              matchesSensor
+            );
+          }
+        );
 
-      return new Date(b.date || 0) - new Date(a.date || 0);
-    });
-  }, [enrichedReadings, searchTerm, statusFilter, sensorFilter]);
+      return filtered.sort(
+        (a, b) => {
+          const focusA =
+            getSensorFocus(
+              a,
+              sensorFilter
+            );
 
-  const totalReadingPages = Math.max(
-    1,
-    Math.ceil(filteredReadings.length / READINGS_PER_PAGE)
-  );
+          const focusB =
+            getSensorFocus(
+              b,
+              sensorFilter
+            );
 
-  const currentReadingPage = Math.min(readingsPage, totalReadingPages);
+          const severityA =
+            sensorFilter ===
+              "all" ||
+            sensorFilter ===
+              "issues"
+              ? a.status
+              : focusA.severity;
 
-  const paginatedReadings = filteredReadings.slice(
-    (currentReadingPage - 1) * READINGS_PER_PAGE,
-    currentReadingPage * READINGS_PER_PAGE
-  );
+          const severityB =
+            sensorFilter ===
+              "all" ||
+            sensorFilter ===
+              "issues"
+              ? b.status
+              : focusB.severity;
+
+          const rankDifference =
+            getSeverityRank(
+              severityA
+            ) -
+            getSeverityRank(
+              severityB
+            );
+
+          if (
+            rankDifference !==
+            0
+          ) {
+            return rankDifference;
+          }
+
+          return (
+            new Date(
+              b.date || 0
+            ) -
+            new Date(
+              a.date || 0
+            )
+          );
+        }
+      );
+    }, [
+      enrichedReadings,
+      searchTerm,
+      statusFilter,
+      sensorFilter,
+    ]);
+
+  /* =======================================================
+     PAGINATION
+  ======================================================= */
+
+  const totalReadingPages =
+    Math.max(
+      1,
+      Math.ceil(
+        filteredReadings.length /
+          READINGS_PER_PAGE
+      )
+    );
+
+  const currentReadingPage =
+    Math.min(
+      readingsPage,
+      totalReadingPages
+    );
+
+  const paginatedReadings =
+    filteredReadings.slice(
+      (currentReadingPage -
+        1) *
+        READINGS_PER_PAGE,
+
+      currentReadingPage *
+        READINGS_PER_PAGE
+    );
 
   const showingStart =
-    filteredReadings.length === 0
+    filteredReadings.length ===
+    0
       ? 0
-      : (currentReadingPage - 1) * READINGS_PER_PAGE + 1;
+      : (currentReadingPage -
+          1) *
+          READINGS_PER_PAGE +
+        1;
 
-  const showingEnd = Math.min(
-    currentReadingPage * READINGS_PER_PAGE,
-    filteredReadings.length
-  );
+  const showingEnd =
+    Math.min(
+      currentReadingPage *
+        READINGS_PER_PAGE,
+      filteredReadings.length
+    );
 
-  const summary = useMemo(() => {
-    const normal = enrichedReadings.filter((item) => item.status === "normal").length;
-    const warning = enrichedReadings.filter((item) => item.status === "warning").length;
-    const critical = enrichedReadings.filter(
-      (item) => item.status === "critical"
-    ).length;
+  /* =======================================================
+     SUMMARY
+  ======================================================= */
 
-    return {
-      total: enrichedReadings.length,
-      normal,
-      warning,
-      critical,
-      avgTemp: averageFromNormalized(enrichedReadings, "temperatureValue"),
-      avgWaterDepth: averageFromNormalized(enrichedReadings, "waterValue"),
-    };
-  }, [enrichedReadings]);
+  const summary =
+    useMemo(() => {
+      const normal =
+        enrichedReadings.filter(
+          (item) =>
+            item.status ===
+            "normal"
+        ).length;
 
-  const latestReading = enrichedReadings[0] || null;
+      const warning =
+        enrichedReadings.filter(
+          (item) =>
+            item.status ===
+            "warning"
+        ).length;
+
+      const critical =
+        enrichedReadings.filter(
+          (item) =>
+            item.status ===
+            "critical"
+        ).length;
+
+      return {
+        total:
+          enrichedReadings.length,
+
+        normal,
+
+        warning,
+
+        critical,
+
+        avgTemp:
+          averageFromNormalized(
+            enrichedReadings,
+            "temperatureValue"
+          ),
+
+        avgWaterDepth:
+          averageFromNormalized(
+            enrichedReadings,
+            "waterValue"
+          ),
+      };
+    }, [enrichedReadings]);
+
+  const latestReading =
+    enrichedReadings[0] ||
+    null;
 
   const selectedSensorLabel =
-    sensorOptions.find((option) => option.value === sensorFilter)?.label ||
-    "All Sensors";
+    sensorOptions.find(
+      (option) =>
+        option.value ===
+        sensorFilter
+    )?.label ||
+    "All Water Data";
+
+  /* =======================================================
+     LOADING
+  ======================================================= */
 
   if (isLoading) {
     return (
       <section className="modern-reading-loading">
-        <Loader2 className="spin-icon" size={34} />
-        <h3>Loading readings...</h3>
-        <p>CrayThrive is syncing your sensor records from Supabase.</p>
+
+        <Loader2
+          className="spin-icon"
+          size={34}
+        />
+
+        <h3>
+          Loading water readings...
+        </h3>
+
+        <p>
+          Getting the latest
+          tank information.
+        </p>
       </section>
     );
   }
 
+  /* =======================================================
+     UI
+  ======================================================= */
+
   return (
     <div className="modern-readings-page">
+
+      {/* ===============================================
+          HERO
+      ================================================ */}
+
       <section className="modern-readings-hero">
+
         <div>
-          <p className="dashboard-eyebrow">Sensor Readings</p>
-          <h2>Track your tank water condition in one view.</h2>
+
+          <p className="dashboard-eyebrow">
+            Water Readings
+          </p>
+
+          <h2>
+            Check your water condition
+            without the technical clutter.
+          </h2>
+
           <p>
-            Review live and historical readings for temperature, pH status,
-            turbidity status, and water depth. Selecting a sensor now sorts
-            that sensor&apos;s warning and critical readings first.
+            Review temperature, pH,
+            water clarity, and water
+            level for your tanks.
+            Problems are placed first so
+            they are easier to notice.
           </p>
 
           <div className="modern-readings-actions">
-            <button className="dashboard-primary-button" onClick={loadReadings}>
-              <RefreshCw size={18} />
-              Refresh Readings
+
+            <button
+              type="button"
+              className="dashboard-primary-button"
+              onClick={
+                loadReadings
+              }
+            >
+              <RefreshCw
+                size={18}
+              />
+
+              Refresh
             </button>
 
             <span>
-              Source: {source || "sensor_readings"} • {scopeLabel}
+              {lastUpdated
+                ? `Updated ${formatReadingTime(
+                    lastUpdated
+                  )}`
+                : "Waiting for latest data"}
             </span>
           </div>
         </div>
 
         <div className="modern-readings-live-card">
-          <Activity size={36} />
-          <strong>{summary.total}</strong>
-          <span>Total synced readings</span>
+
+          <Activity
+            size={34}
+          />
+
+          <strong>
+            {summary.total}
+          </strong>
+
+          <span>
+            Water readings
+          </span>
         </div>
       </section>
 
+      {/* ===============================================
+          SUMMARY
+      ================================================ */}
+
       <section className="modern-reading-summary-grid">
-        <SummaryCard
-          icon={Database}
-          label="Total Readings"
-          value={summary.total}
-          helper="Synced sensor logs"
-        />
 
         <SummaryCard
           icon={CheckCircle2}
-          label="Normal"
-          value={summary.normal}
-          helper="Safe condition records"
+          label="Good"
+          value={
+            summary.normal
+          }
+          helper="Normal water conditions"
           tone="success"
         />
 
         <SummaryCard
           icon={AlertTriangle}
-          label="Warnings"
-          value={summary.warning}
-          helper="Needs monitoring"
+          label="Needs Checking"
+          value={
+            summary.warning
+          }
+          helper="Conditions to watch"
           tone="warning"
         />
 
         <SummaryCard
           icon={AlertTriangle}
-          label="Critical"
-          value={summary.critical}
-          helper="Needs immediate review"
+          label="Urgent"
+          value={
+            summary.critical
+          }
+          helper="Needs attention soon"
           tone="danger"
+        />
+
+        <SummaryCard
+          icon={Database}
+          label="Total Records"
+          value={
+            summary.total
+          }
+          helper="Saved water readings"
         />
       </section>
 
+      {/* ===============================================
+          LATEST SNAPSHOT
+      ================================================ */}
+
       <section className="modern-readings-grid">
+
         <article className="modern-readings-panel">
+
           <div className="modern-panel-heading">
+
             <div>
-              <p className="dashboard-eyebrow">Latest Status Snapshot</p>
-              <h3>Readable sensor condition</h3>
+              <p className="dashboard-eyebrow">
+                Water Overview
+              </p>
+
+              <h3>
+                Latest condition
+              </h3>
             </div>
-            <Gauge size={22} />
+
+            <Gauge
+              size={22}
+            />
           </div>
 
           <div className="modern-reading-metric-grid">
+
             <MetricCard
-              icon={Thermometer}
-              label="Avg Temperature"
-              value={summary.avgTemp === "N/A" ? "N/A" : `${summary.avgTemp}°C`}
-              status={latestReading?.normalized?.temperatureStatus || "No Reading"}
+              icon={
+                Thermometer
+              }
+              label="Average Temperature"
+              value={
+                summary.avgTemp ===
+                "N/A"
+                  ? "No Data"
+                  : `${summary.avgTemp}°C`
+              }
+              status={
+                latestReading
+                  ?.normalized
+                  ?.temperatureStatus ||
+                "No Reading"
+              }
             />
 
             <MetricCard
-              icon={Droplets}
-              label="Latest pH Status"
-              value={latestReading?.normalized?.phStatus || "No Reading"}
-              status={latestReading?.normalized?.phStatus || "No Reading"}
+              icon={
+                Droplets
+              }
+              label="pH Level"
+              value={
+                latestReading
+                  ?.normalized
+                  ?.phStatus ||
+                "No Reading"
+              }
+              status={
+                latestReading
+                  ?.normalized
+                  ?.phStatus ||
+                "No Reading"
+              }
             />
 
             <MetricCard
               icon={Waves}
-              label="Latest Turbidity Status"
-              value={latestReading?.normalized?.turbidityStatus || "No Reading"}
-              status={latestReading?.normalized?.turbidityStatus || "No Reading"}
+              label="Water Clarity"
+              value={
+                latestReading
+                  ?.normalized
+                  ?.turbidityStatus ||
+                "No Reading"
+              }
+              status={
+                latestReading
+                  ?.normalized
+                  ?.turbidityStatus ||
+                "No Reading"
+              }
             />
 
             <MetricCard
               icon={Gauge}
-              label="Avg Water Depth"
+              label="Average Water Level"
               value={
-                summary.avgWaterDepth === "N/A"
-                  ? "N/A"
+                summary.avgWaterDepth ===
+                "N/A"
+                  ? "No Data"
                   : `${summary.avgWaterDepth} cm`
               }
-              status={latestReading?.normalized?.waterStatus || "No Reading"}
+              status={
+                latestReading
+                  ?.normalized
+                  ?.waterStatus ||
+                "No Reading"
+              }
             />
           </div>
         </article>
 
+        {/* LATEST SYNC */}
+
         <article className="modern-readings-panel">
+
           <div className="modern-panel-heading">
+
             <div>
-              <p className="dashboard-eyebrow">Latest Sync</p>
-              <h3>Newest reading snapshot</h3>
+              <p className="dashboard-eyebrow">
+                Latest Update
+              </p>
+
+              <h3>
+                Most recent tank
+              </h3>
             </div>
-            <Activity size={22} />
+
+            <Activity
+              size={22}
+            />
           </div>
 
           {latestReading ? (
             <div className="modern-latest-reading">
-              <strong>{latestReading.tankName}</strong>
-              <span>{formatReadingTime(latestReading.date)}</span>
+
+              <span className="modern-latest-reading-icon">
+                <Droplets
+                  size={22}
+                />
+              </span>
 
               <div>
-                <b className={`modern-reading-status ${latestReading.status}`}>
-                  {latestReading.status}
-                </b>
+                <strong>
+                  {
+                    latestReading.tankName
+                  }
+                </strong>
+
+                <span>
+                  {formatReadingTime(
+                    latestReading.date
+                  )}
+                </span>
               </div>
+
+              <b
+                className={`modern-reading-status ${latestReading.status}`}
+              >
+                {getFriendlyStatus(
+                  latestReading.status
+                )}
+              </b>
             </div>
           ) : (
             <div className="modern-reading-empty-small">
-              <span>No latest reading yet.</span>
+
+              <Droplets
+                size={25}
+              />
+
+              <span>
+                No water reading yet.
+              </span>
             </div>
           )}
         </article>
       </section>
 
+      {/* ===============================================
+          FILTERS
+      ================================================ */}
+
       <section className="modern-reading-toolbar">
+
         <div className="modern-reading-search">
-          <Search size={18} />
+
+          <Search
+            size={18}
+          />
+
           <input
-            placeholder="Search by tank, device, value, or status..."
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
+            type="search"
+            placeholder="Search tank name or condition..."
+            value={
+              searchTerm
+            }
+            onChange={(
+              event
+            ) =>
+              setSearchTerm(
+                event.target.value
+              )
+            }
           />
         </div>
 
         <label className="modern-reading-filter">
-          <Filter size={18} />
+
+          <Filter
+            size={18}
+          />
+
           <select
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
+            value={
+              statusFilter
+            }
+            onChange={(
+              event
+            ) =>
+              setStatusFilter(
+                event.target.value
+              )
+            }
           >
-            <option value="all">All Status</option>
-            <option value="normal">Normal</option>
-            <option value="warning">Warning</option>
-            <option value="critical">Critical</option>
+            <option value="all">
+              All Conditions
+            </option>
+
+            <option value="normal">
+              Good
+            </option>
+
+            <option value="warning">
+              Needs Checking
+            </option>
+
+            <option value="critical">
+              Urgent
+            </option>
           </select>
         </label>
 
         <label className="modern-reading-filter">
-          <Database size={18} />
+
+          <Database
+            size={18}
+          />
+
           <select
-            value={sensorFilter}
-            onChange={(event) => setSensorFilter(event.target.value)}
+            value={
+              sensorFilter
+            }
+            onChange={(
+              event
+            ) =>
+              setSensorFilter(
+                event.target.value
+              )
+            }
           >
-            {sensorOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
+            {sensorOptions.map(
+              (option) => (
+                <option
+                  key={
+                    option.value
+                  }
+                  value={
+                    option.value
+                  }
+                >
+                  {
+                    option.label
+                  }
+                </option>
+              )
+            )}
           </select>
         </label>
       </section>
 
-      {filteredReadings.length === 0 ? (
+      {/* ===============================================
+          EMPTY
+      ================================================ */}
+
+      {filteredReadings.length ===
+      0 ? (
         <section className="modern-reading-empty">
-          <Database size={34} />
-          <h3>No readings found</h3>
+
+          <Database
+            size={34}
+          />
+
+          <h3>
+            No readings found
+          </h3>
+
           <p>
-            No readings matched your current filters. Sync sensor data from the
-            mobile/IoT side or adjust the filters.
+            Try another search or
+            change your filters.
           </p>
         </section>
       ) : (
+
+        /* =============================================
+            TABLE
+        ============================================== */
+
         <section className="modern-reading-table-card">
+
+          <div className="modern-reading-table-title">
+
+            <div>
+              <span>
+                Reading History
+              </span>
+
+              <h3>
+                Water records
+              </h3>
+            </div>
+
+            <small>
+              {
+                selectedSensorLabel
+              }
+            </small>
+          </div>
+
           <div className="modern-reading-table-header">
-            <span>Tank / Device</span>
-            <span>Temperature</span>
-            <span>pH Status</span>
-            <span>Turbidity Status</span>
-            <span>Water Depth</span>
-            <span>{selectedSensorLabel}</span>
-            <span>Date</span>
+
+            <span>
+              Tank
+            </span>
+
+            <span>
+              Temperature
+            </span>
+
+            <span>
+              pH
+            </span>
+
+            <span>
+              Water Clarity
+            </span>
+
+            <span>
+              Water Level
+            </span>
+
+            <span>
+              Status
+            </span>
+
+            <span>
+              Date
+            </span>
           </div>
 
           <div className="modern-reading-table-body">
-            {paginatedReadings.map((item) => {
-              const normalized = item.normalized;
-              const row = item.reading;
-              const focus = getSensorFocus(item, sensorFilter);
 
-              return (
-                <div
-                  className="modern-reading-table-row"
-                  key={row?.id || item.index}
-                >
-                  <span data-label="Tank / Device">
-                    {item.tankName}
-                    {normalized.deviceUid ? ` • ${normalized.deviceUid}` : ""}
-                  </span>
+            {paginatedReadings.map(
+              (item) => {
+                const normalized =
+                  item.normalized;
 
-                  <span data-label="Temperature">
-                    {normalized.temperatureLabel}
-                    <small>{normalized.temperatureStatus}</small>
-                  </span>
+                const row =
+                  item.reading;
 
-                  <span data-label="pH Status">
-                    <b
-                      className={`modern-reading-status ${getStatusSeverity([
-                        normalized.phStatus,
-                      ])}`}
-                    >
-                      {normalized.phStatus}
-                    </b>
-                  </span>
+                const focus =
+                  getSensorFocus(
+                    item,
+                    sensorFilter
+                  );
 
-                  <span data-label="Turbidity Status">
-                    <b
-                      className={`modern-reading-status ${getStatusSeverity([
-                        normalized.turbidityStatus,
-                      ])}`}
-                    >
-                      {normalized.turbidityStatus}
-                    </b>
-                  </span>
+                const displaySeverity =
+                  sensorFilter ===
+                    "all" ||
+                  sensorFilter ===
+                    "issues"
+                    ? item.status
+                    : focus.severity;
 
-                  <span data-label="Water Depth">
-                    {normalized.waterLabel}
-                    <small>{normalized.waterStatus}</small>
-                  </span>
+                return (
+                  <div
+                    className="modern-reading-table-row"
+                    key={
+                      row?.id ||
+                      item.index
+                    }
+                  >
 
-                  <span data-label={selectedSensorLabel}>
-                    <b className={`modern-reading-status ${focus.severity}`}>
-                      {sensorFilter === "all" || sensorFilter === "issues"
-                        ? item.status
-                        : focus.status}
-                    </b>
-                  </span>
+                    <span data-label="Tank">
 
-                  <span data-label="Date">{formatDate(item.date)}</span>
-                </div>
-              );
-            })}
+                      <strong>
+                        {
+                          item.tankName
+                        }
+                      </strong>
+                    </span>
+
+                    <span data-label="Temperature">
+
+                      {
+                        normalized.temperatureLabel
+                      }
+
+                      <small>
+                        {formatFriendlyText(
+                          normalized.temperatureStatus
+                        )}
+                      </small>
+                    </span>
+
+                    <span data-label="pH">
+
+                      <b
+                        className={`modern-reading-status ${getStatusSeverity(
+                          [
+                            normalized.phStatus,
+                          ]
+                        )}`}
+                      >
+                        {formatFriendlyText(
+                          normalized.phStatus
+                        )}
+                      </b>
+                    </span>
+
+                    <span data-label="Water Clarity">
+
+                      <b
+                        className={`modern-reading-status ${getStatusSeverity(
+                          [
+                            normalized.turbidityStatus,
+                          ]
+                        )}`}
+                      >
+                        {formatFriendlyText(
+                          normalized.turbidityStatus
+                        )}
+                      </b>
+                    </span>
+
+                    <span data-label="Water Level">
+
+                      {
+                        normalized.waterLabel
+                      }
+
+                      <small>
+                        {formatFriendlyText(
+                          normalized.waterStatus
+                        )}
+                      </small>
+                    </span>
+
+                    <span data-label="Status">
+
+                      <b
+                        className={`modern-reading-status ${displaySeverity}`}
+                      >
+                        {sensorFilter ===
+                          "all" ||
+                        sensorFilter ===
+                          "issues"
+                          ? getFriendlyStatus(
+                              item.status
+                            )
+                          : formatFriendlyText(
+                              focus.status
+                            )}
+                      </b>
+                    </span>
+
+                    <span data-label="Date">
+
+                      {formatDate(
+                        item.date
+                      )}
+                    </span>
+                  </div>
+                );
+              }
+            )}
           </div>
 
+          {/* PAGINATION */}
+
           <div className="modern-reading-pagination">
+
             <span>
-              Showing {showingStart}-{showingEnd} of {filteredReadings.length}
+              Showing{" "}
+              {showingStart}-
+              {showingEnd} of{" "}
+              {
+                filteredReadings.length
+              }
             </span>
 
             <div>
+
               <button
                 type="button"
-                disabled={currentReadingPage === 1}
+                disabled={
+                  currentReadingPage ===
+                  1
+                }
                 onClick={() =>
-                  setReadingsPage((page) => Math.max(1, page - 1))
+                  setReadingsPage(
+                    (page) =>
+                      Math.max(
+                        1,
+                        page - 1
+                      )
+                  )
                 }
               >
                 Previous
               </button>
 
               <strong>
-                Page {currentReadingPage} of {totalReadingPages}
+                Page{" "}
+                {
+                  currentReadingPage
+                }{" "}
+                of{" "}
+                {
+                  totalReadingPages
+                }
               </strong>
 
               <button
                 type="button"
-                disabled={currentReadingPage === totalReadingPages}
+                disabled={
+                  currentReadingPage ===
+                  totalReadingPages
+                }
                 onClick={() =>
-                  setReadingsPage((page) =>
-                    Math.min(totalReadingPages, page + 1)
+                  setReadingsPage(
+                    (page) =>
+                      Math.min(
+                        totalReadingPages,
+                        page + 1
+                      )
                   )
                 }
               >
