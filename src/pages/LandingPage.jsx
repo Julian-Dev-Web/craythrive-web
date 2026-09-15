@@ -5,37 +5,30 @@ import {
   AlertTriangle,
   ArrowRight,
   BarChart3,
-  Camera,
   Database,
   Download,
   Droplets,
   FlaskConical,
+  Gauge,
   LineChart,
   LockKeyhole,
   MonitorCog,
   ShoppingBag,
+  Smartphone,
+  Thermometer,
+  Waves,
 } from "lucide-react";
 import { APP_INFO } from "../constants/theme";
 import ContactKeys from "../components/ContactKeys";
 
 const APK_DOWNLOAD_URL = "/downloads/craythrive.apk";
 
-const previewStats = [
-  {
-    icon: Droplets,
-    label: "Water Quality",
-    value: "Live Monitoring",
-  },
-  {
-    icon: FlaskConical,
-    label: "Ammonia",
-    value: "Camera-Assisted",
-  },
-  {
-    icon: ShoppingBag,
-    label: "Marketplace",
-    value: "Crayfish Only",
-  },
+const readoutChips = [
+  { icon: Thermometer, label: "Temperature" },
+  { icon: FlaskConical, label: "pH" },
+  { icon: Gauge, label: "Turbidity" },
+  { icon: Waves, label: "Water Level" },
+  { icon: Droplets, label: "Ammonia" },
 ];
 
 const features = [
@@ -52,10 +45,10 @@ const features = [
       "Review warning signs from temperature, pH, turbidity, water level, ammonia readings, feeding, and pump activity.",
   },
   {
-    icon: Camera,
+    icon: Smartphone,
     title: "Ammonia Reader",
     description:
-      "Support the ESP32-CAM capture flow for ammonia reading records and history review.",
+      "Dip a LIANKAI test strip, scan it with your phone camera, and get an estimated ammonia range logged straight to your tank.",
   },
   {
     icon: ShoppingBag,
@@ -162,7 +155,12 @@ export default function LandingPage() {
 
   return (
     <main className="app-landing">
-      <section id="home" className="hero-app-section">
+      <section id="home" className="hero-app-section cx-hero">
+        <svg className="cx-hero-ripples" viewBox="0 0 1200 500" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M0 120 Q300 60 600 120 T1200 120" stroke="#0f8f7f" strokeWidth="1" fill="none" opacity="0.35" />
+          <path d="M0 220 Q300 160 600 220 T1200 220" stroke="#00d9c7" strokeWidth="1" fill="none" opacity="0.25" />
+          <path d="M0 340 Q300 280 600 340 T1200 340" stroke="#b8472f" strokeWidth="1" fill="none" opacity="0.18" />
+        </svg>
         <div className="hero-grid-bg" />
         <div className="hero-orb hero-orb-one" />
         <div className="hero-orb hero-orb-two" />
@@ -195,17 +193,16 @@ export default function LandingPage() {
           </div>
         </nav>
 
-        <div className="app-hero-content">
-          <div className="app-hero-copy">
-            <h1>
-              MOBILE APP <br />
-              FOR <span>CRAYFISH KEEPERS</span>
-            </h1>
+        <div className="app-hero-content cx-hero-content">
+          <div className="app-hero-copy cx-hero-copy">
+            <p className="cx-eyebrow">Built for small-scale crayfish keepers</p>
+
+            <h1>A clearer read on every tank you keep.</h1>
 
             <p>
-              CrayThrive helps users monitor crayfish tanks, check water
-              quality, track ammonia readings, manage alerts, and access
-              crayfish-only marketplace records.
+              CrayThrive pairs an app in your pocket with sensors in the tank —
+              temperature, pH, turbidity, water level, and ammonia, logged
+              automatically and flagged the moment something drifts.
             </p>
 
             <div className="hero-buttons">
@@ -220,18 +217,15 @@ export default function LandingPage() {
               </a>
             </div>
 
-            <div className="hero-mini-stats">
-              {previewStats.map((item) => {
-                const Icon = item.icon;
+            <div className="cx-hero-readout">
+              {readoutChips.map((chip) => {
+                const Icon = chip.icon;
 
                 return (
-                  <div className="hero-mini-stat" key={item.label}>
-                    <Icon size={20} />
-                    <div>
-                      <strong>{item.value}</strong>
-                      <span>{item.label}</span>
-                    </div>
-                  </div>
+                  <span className="cx-readout-chip" key={chip.label}>
+                    <Icon size={15} />
+                    {chip.label}
+                  </span>
                 );
               })}
             </div>
@@ -284,9 +278,8 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section id="features" className="app-section features-app-section">
-        <div className="section-heading">
-          <span>Features</span>
+      <section id="features" className="app-section cx-section cx-features">
+        <div className="cx-features-head">
           <h2>Everything needed for tank care and records management.</h2>
           <p>
             The mobile app focuses on daily tank use, while the web dashboard
@@ -295,99 +288,95 @@ export default function LandingPage() {
           </p>
         </div>
 
-        <div className="feature-app-grid">
-          {features.map((feature, index) => {
+        <div className="cx-feature-list">
+          {features.map((feature) => {
             const Icon = feature.icon;
-            const lift = Math.max(0, scrollY - 520) * 0.018;
-            const rotate = (index % 2 === 0 ? 1 : -1) * Math.min(5, lift);
 
             return (
-              <article
-                className="feature-app-card"
-                key={feature.title}
-                style={{
-                  transform: `perspective(900px) rotateX(${rotate}deg) translateY(${
-                    index % 2 === 0 ? 0 : 18
-                  }px)`,
-                }}
-              >
-                <div className="feature-app-icon">
-                  <Icon size={26} />
+              <article className="cx-feature-row" key={feature.title}>
+                <div className="cx-feature-icon">
+                  <Icon size={24} />
                 </div>
-                <h3>{feature.title}</h3>
-                <p>{feature.description}</p>
+                <div>
+                  <h3>{feature.title}</h3>
+                  <p>{feature.description}</p>
+                </div>
               </article>
             );
           })}
         </div>
       </section>
 
-      <section id="details" className="app-section details-section">
-        <div className="details-copy">
-          <span className="section-label">Dashboard Side</span>
+      <section id="details" className="app-section cx-section cx-details">
+        <div className="details-copy cx-details-copy">
           <h2>Built for the website and mobile app ecosystem.</h2>
           <p>
-            The web dashboard will handle tank monitoring reports, alerts,
+            The web dashboard handles tank monitoring reports, alerts,
             marketplace records, reservations, seller profiles, analytics, and
-            threshold settings while using the same Supabase database as the
+            threshold settings — using the same Supabase database as the
             mobile application.
           </p>
 
-          <div className="details-list">
+          <div className="cx-details-list">
             <div>
-              <Database size={22} />
+              <Database size={20} />
               <span>Shared Supabase database</span>
             </div>
             <div>
-              <LockKeyhole size={22} />
+              <LockKeyhole size={20} />
               <span>Protected login access</span>
             </div>
             <div>
-              <LineChart size={22} />
+              <LineChart size={20} />
               <span>Reports and analytics ready</span>
             </div>
           </div>
 
-          <Link to="/login" className="details-login-button">
+          <Link to="/login" className="cx-details-login">
             Continue to Login
             <ArrowRight size={18} />
           </Link>
         </div>
 
-        <div className="details-dashboard-card">
-          <div className="dashboard-card-header">
-            <div>
-              <span />
-              <span />
-              <span />
+        <div className="cx-tank-card">
+          <div className="cx-tank-card-head">
+            <strong>Tank 02 — Log</strong>
+            <span className="cx-tank-card-tag">Stable</span>
+          </div>
+
+          <div className="cx-tank-card-rows">
+            <div className="cx-tank-card-row">
+              <span>Temp</span>
+              <i><b style={{ width: "92%" }} /></i>
             </div>
-            <strong>CrayThrive Web</strong>
+            <div className="cx-tank-card-row">
+              <span>pH</span>
+              <i><b style={{ width: "76%" }} /></i>
+            </div>
+            <div className="cx-tank-card-row">
+              <span>Turbidity</span>
+              <i><b style={{ width: "58%" }} /></i>
+            </div>
           </div>
 
-          <div className="dashboard-bars">
-            <div style={{ width: "92%" }} />
-            <div style={{ width: "76%" }} />
-            <div style={{ width: "58%" }} />
-          </div>
-
-          <div className="dashboard-preview-grid">
+          <div className="cx-tank-card-grid">
             <div>
-              <Activity size={22} />
+              <Activity size={20} />
               <strong>Tank Reports</strong>
               <span>Sensor trends</span>
             </div>
             <div>
-              <AlertTriangle size={22} />
+              <AlertTriangle size={20} />
               <strong>Alerts</strong>
               <span>Active warnings</span>
             </div>
             <div>
-              <ShoppingBag size={22} />
+              <ShoppingBag size={20} />
               <strong>Orders</strong>
               <span>Reservations</span>
             </div>
             <div>
-              <BarChart3 size={22} />
+              <BarChart3 size={20} />
               <strong>Analytics</strong>
               <span>History records</span>
             </div>
