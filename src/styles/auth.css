@@ -1106,6 +1106,24 @@
   text-decoration: underline;
 }
 
+.admin-forgot-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -12px;
+}
+
+.admin-forgot-row a {
+  color: #078e83;
+
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.admin-forgot-row a:hover {
+  text-decoration: underline;
+}
+
 /* underline inputs */
 
 .admin-auth-field input {

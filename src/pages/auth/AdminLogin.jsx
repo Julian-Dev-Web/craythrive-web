@@ -94,21 +94,6 @@ export default function AdminLogin() {
             <span className="pattern-ring pattern-ring-4" />
           </div>
 
-          <div className="admin-showcase-top">
-            <div className="admin-showcase-brand">
-              <div
-                className="admin-showcase-logo"
-                role="img"
-                aria-label={`${APP_INFO.name} logo`}
-                style={{
-                  backgroundImage: `url(${APP_INFO.logoPath})`,
-                }}
-              />
-
-              <span>{APP_INFO.name}</span>
-            </div>
-          </div>
-
           <div className="admin-showcase-content">
             <p className="admin-showcase-kicker">
               SMART AQUACULTURE
@@ -203,13 +188,7 @@ export default function AdminLogin() {
               </label>
 
               <label className="admin-auth-field">
-                <div className="admin-field-label-row">
-                  <span>Password</span>
-
-                  <Link to="/forgot-password">
-                    Forgot password?
-                  </Link>
-                </div>
+                <span>Password</span>
 
                 <div className="admin-password-field">
                   <input
@@ -243,6 +222,10 @@ export default function AdminLogin() {
                   </button>
                 </div>
               </label>
+
+              <div className="admin-forgot-row">
+                <Link to="/forgot-password">Forgot password?</Link>
+              </div>
 
               <button
                 type="submit"
