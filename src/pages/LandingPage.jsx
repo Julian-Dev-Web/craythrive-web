@@ -23,7 +23,7 @@ const APK_DOWNLOAD_URL = "/downloads/craythrive.apk";
 
 // >>> EDIT THESE TWO VALUES WITH YOUR REAL CONTACT INFO <<<
 const CONTACT_EMAIL = "Craythrivesupport@gmail.com";
-const CONTACT_PHONE = "+63 9358196510";
+const CONTACT_PHONE = "+63 935 819 6510";
 
 const previewStats = [
   {
@@ -49,24 +49,28 @@ const features = [
     title: "Tank Monitoring",
     description:
       "Track tank readings, water condition, tank status, and recent sensor updates from the CrayThrive ecosystem.",
+    accent: "teal",
   },
   {
     icon: AlertTriangle,
-    title: "Smart Alerts",
+    title: "Alerts",
     description:
       "Review warning signs from temperature, pH, turbidity, water level, ammonia readings, feeding, and pump activity.",
+    accent: "amber",
   },
   {
     icon: Smartphone,
     title: "Ammonia Reader",
     description:
       "Dip a LIANKAI test strip, scan it with your phone camera, and get an estimated ammonia range logged to your tank.",
+    accent: "cyan",
   },
   {
     icon: ShoppingBag,
     title: "Crayfish Marketplace",
     description:
       "Handle crayfish-only listings, reservations, sellers, completed orders, and listing history.",
+    accent: "blue",
   },
 ];
 
@@ -342,7 +346,7 @@ export default function LandingPage() {
 
             return (
               <article
-                className="feature-app-card"
+                className={`feature-app-card accent-${feature.accent}`}
                 key={feature.title}
                 style={{
                   transform: `perspective(900px) rotateX(${rotate}deg) translateY(${

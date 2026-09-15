@@ -657,6 +657,69 @@ a {
   border-color: rgba(0, 217, 199, 0.5);
 }
 
+/* Per-feature accent color — ties each card to its own meaning instead of
+   every card sharing one identical teal treatment. */
+.feature-app-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.feature-app-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 18px;
+  right: 18px;
+  height: 2px;
+  border-radius: 0 0 4px 4px;
+  background: var(--accent-color, var(--teal));
+  opacity: 0.55;
+  transition: opacity 0.28s ease;
+}
+
+.feature-app-card:hover::before {
+  opacity: 1;
+}
+
+.feature-app-card.accent-teal {
+  --accent-color: var(--teal);
+  --accent-glow: rgba(0, 217, 199, 0.5);
+  --accent-bg: rgba(0, 217, 199, 0.09);
+}
+
+.feature-app-card.accent-amber {
+  --accent-color: var(--warning);
+  --accent-glow: rgba(255, 212, 59, 0.45);
+  --accent-bg: rgba(255, 212, 59, 0.09);
+}
+
+.feature-app-card.accent-cyan {
+  --accent-color: var(--cyan);
+  --accent-glow: rgba(58, 232, 255, 0.45);
+  --accent-bg: rgba(58, 232, 255, 0.09);
+}
+
+.feature-app-card.accent-blue {
+  --accent-color: var(--blue);
+  --accent-glow: rgba(96, 88, 255, 0.5);
+  --accent-bg: rgba(96, 88, 255, 0.12);
+}
+
+.feature-app-card[class*="accent-"] .feature-app-icon {
+  color: var(--accent-color);
+  border-color: color-mix(in srgb, var(--accent-color) 35%, transparent);
+  background: var(--accent-bg);
+}
+
+.feature-app-card[class*="accent-"]:hover {
+  border-color: var(--accent-glow) !important;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--accent-glow) inset !important;
+}
+
+.feature-app-card[class*="accent-"]:hover .feature-app-icon {
+  border-color: var(--accent-glow) !important;
+}
+
 .feature-app-icon {
   width: 58px;
   height: 58px;
