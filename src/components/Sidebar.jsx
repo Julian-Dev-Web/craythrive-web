@@ -1,53 +1,58 @@
 import { NavLink } from "react-router-dom";
-import { ChevronLeft, ChevronRight, LogOut, Waves, X } from "lucide-react";
-import { APP_INFO } from "../constants/theme";
+import {
+  ChevronLeft,
+  ChevronRight,
+  LogOut,
+  X,
+} from "lucide-react";
 
-/**
- * Sidebar navigation, extracted from AdminLayout.jsx.
- *
- * This is a pure, behavior-preserving extraction — the JSX, class names, and
- * props map exactly to what AdminLayout used to render inline. AdminLayout
- * keeps owning the actual state (collapsed/mobile-open/profile/sign-out);
- * this component just renders it. No visual or functional change.
- */
+import "../styles/sidebar.css";
+
 export default function Sidebar({
-  navItems,
-  isCollapsed,
-  isMobileOpen,
+  navItems = [],
+  isCollapsed = false,
+  isMobileOpen = false,
   onCloseMobile,
   onToggleCollapse,
-  displayName,
-  avatarUrl,
+  displayName = "CrayThrive User",
   onSignOut,
 }) {
   return (
     <aside
-      className={`modern-admin-sidebar ${isCollapsed ? "is-collapsed" : ""} ${
-        isMobileOpen ? "is-mobile-open" : ""
-      }`}
+      className={[
+        "modern-sidebar",
+        isCollapsed ? "is-collapsed" : "",
+        isMobileOpen ? "is-mobile-open" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
     >
-      <div className="modern-sidebar-brand">
-        <div
-          className="modern-sidebar-logo"
-          style={{ backgroundImage: `url(${APP_INFO.logoPath})` }}
-          aria-label={`${APP_INFO.name} logo`}
-        />
+      {/* BRAND */}
+      <div className="modern-sidebar-header">
+        <div className="modern-sidebar-brand">
+          {!isCollapsed && (
+            <div className="modern-sidebar-brand-text">
+              <strong>CrayThrive</strong>
+              <span>Admin Dashboard</span>
+            </div>
+          )}
 
-        <div className="modern-sidebar-brand-text">
-          <strong>CrayThrive</strong>
-          <span>Web Dashboard</span>
+          {isCollapsed && (
+            <strong className="modern-sidebar-brand-mini">CT</strong>
+          )}
         </div>
+
+        <button
+          type="button"
+          className="modern-sidebar-mobile-close"
+          onClick={onCloseMobile}
+          aria-label="Close navigation"
+        >
+          <X size={20} />
+        </button>
       </div>
 
-      <button
-        type="button"
-        className="modern-mobile-close"
-        onClick={onCloseMobile}
-        aria-label="Close sidebar"
-      >
-        <X size={20} />
-      </button>
-
+      {/* NAVIGATION */}
       <nav className="modern-sidebar-nav">
         {navItems.map((item) => {
           const Icon = item.icon;
@@ -57,39 +62,61 @@ export default function Sidebar({
               key={item.path}
               to={item.path}
               end={item.end}
-              className={({ isActive }) => `modern-nav-link ${isActive ? "is-active" : ""}`}
-              title={item.label}
+              title={isCollapsed ? item.label : undefined}
+              className={({ isActive }) =>
+                `modern-sidebar-link ${isActive ? "active" : ""}`
+              }
             >
-              <Icon size={20} />
-              <span>{item.label}</span>
+              <span className="modern-sidebar-link-icon">
+                <Icon size={19} strokeWidth={1.9} />
+              </span>
+
+              {!isCollapsed && (
+                <span className="modern-sidebar-link-label">
+                  {item.label}
+                </span>
+              )}
             </NavLink>
           );
         })}
       </nav>
 
-      <div className="modern-sidebar-profile">
-        <div className="modern-profile-avatar">
-          {avatarUrl ? <img src={avatarUrl} alt={displayName} /> : <Waves size={21} />}
-        </div>
+      {/* BOTTOM */}
+      <div className="modern-sidebar-bottom">
+        {/* SIMPLE PROFILE - NO WATER/WAVE ICON */}
+        {!isCollapsed && (
+          <div className="modern-sidebar-profile">
+            <div className="modern-sidebar-profile-text">
+              <strong>{displayName}</strong>
+              <span>Admin</span>
+            </div>
+          </div>
+        )}
 
-        <div className="modern-profile-text">
-          <strong>{displayName}</strong>
-          <span>Admin</span>
-        </div>
+        <button
+          type="button"
+          className="modern-sidebar-signout"
+          onClick={onSignOut}
+          title={isCollapsed ? "Logout" : undefined}
+        >
+          <LogOut size={18} />
+
+          {!isCollapsed && <span>Logout</span>}
+        </button>
       </div>
 
-      <button type="button" className="modern-signout-button" onClick={onSignOut} title="Sign out">
-        <LogOut size={19} />
-        <span>Sign Out</span>
-      </button>
-
+      {/* COLLAPSE BUTTON */}
       <button
         type="button"
         className="modern-sidebar-collapse"
         onClick={onToggleCollapse}
         aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
       >
-        {isCollapsed ? <ChevronRight size={22} /> : <ChevronLeft size={22} />}
+        {isCollapsed ? (
+          <ChevronRight size={17} />
+        ) : (
+          <ChevronLeft size={17} />
+        )}
       </button>
     </aside>
   );
