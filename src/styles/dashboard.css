@@ -1481,6 +1481,7 @@ html[data-theme="dark"] .modern-admin-topbar {
 }
 
 .modern-icon-button {
+  position: relative;
   width: 46px;
   height: 46px;
   display: grid;
@@ -1549,6 +1550,173 @@ html[data-theme="dark"] .modern-admin-topbar {
 .modern-theme-toggle button.is-active {
   color: #04191d;
   background: var(--ct-brand);
+}
+
+/* Notification dropdown */
+
+.modern-notification-wrap {
+  position: relative;
+}
+
+.modern-notification-dot {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  padding: 0 4px;
+  color: white;
+  border-radius: 999px;
+  background: var(--ct-danger);
+  font-size: 0.62rem;
+  font-weight: 900;
+  box-shadow: 0 0 0 2px var(--ct-surface);
+}
+
+.modern-notification-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(360px, 88vw);
+  z-index: 50;
+  overflow: hidden;
+  border: 1px solid var(--ct-border);
+  border-radius: 20px;
+  background: var(--ct-surface-strong);
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(20px);
+  animation: modernNotificationIn 0.18s ease;
+}
+
+@keyframes modernNotificationIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.modern-notification-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--ct-border);
+}
+
+.modern-notification-panel-head strong {
+  color: var(--ct-text);
+  font-family: "Poppins", Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.98rem;
+}
+
+.modern-notification-panel-head span {
+  color: var(--ct-muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.modern-notification-list {
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.modern-notification-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 34px 20px;
+  color: var(--ct-muted);
+  text-align: center;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.modern-notification-state.danger {
+  color: var(--ct-danger);
+}
+
+.modern-notification-item {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 14px 18px;
+  border: 0;
+  border-bottom: 1px solid var(--ct-border);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.18s ease;
+}
+
+.modern-notification-item:last-child {
+  border-bottom: 0;
+}
+
+.modern-notification-item:hover {
+  background: rgba(0, 217, 199, 0.07);
+}
+
+.modern-notification-item.is-unread {
+  background: rgba(0, 217, 199, 0.05);
+}
+
+.modern-notification-item.is-unread .modern-notification-item-title::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 7px;
+  border-radius: 999px;
+  background: var(--ct-brand);
+}
+
+.modern-notification-item-title {
+  color: var(--ct-text);
+  font-size: 0.88rem;
+  font-weight: 900;
+}
+
+.modern-notification-item-message {
+  color: var(--ct-muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modern-notification-item-time {
+  margin-top: 2px;
+  color: var(--ct-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  opacity: 0.8;
+}
+
+.modern-notification-viewall {
+  width: 100%;
+  padding: 13px;
+  color: var(--ct-brand);
+  border: 0;
+  border-top: 1px solid var(--ct-border);
+  background: transparent;
+  cursor: pointer;
+  font-weight: 900;
+  font-size: 0.84rem;
+  transition: background 0.18s ease;
+}
+
+.modern-notification-viewall:hover {
+  background: rgba(0, 217, 199, 0.08);
 }
 
 .modern-user-pill {
