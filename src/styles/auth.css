@@ -1002,7 +1002,7 @@
       rgba(0, 217, 199, 0.1),
       transparent 20rem
     ),
-    #f7fbfa;
+    #c9e8e3;
 }
 
 .admin-auth-form-wrap {
@@ -1194,9 +1194,9 @@
 .admin-auth-field input:-webkit-autofill:focus {
   -webkit-text-fill-color: #071c26;
   -webkit-box-shadow:
-    0 0 0 1000px #f7fbfa inset;
+    0 0 0 1000px #c9e8e3 inset;
   box-shadow:
-    0 0 0 1000px #f7fbfa inset;
+    0 0 0 1000px #c9e8e3 inset;
 
   transition: background-color 9999s ease-in-out 0s;
 }
