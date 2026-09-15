@@ -755,6 +755,11 @@
   color: #ffffff;
 
   background:
+    linear-gradient(
+      90deg,
+      transparent 82%,
+      rgba(201, 232, 227, 0.4) 100%
+    ),
     radial-gradient(
       circle at 16% 8%,
       rgba(53, 255, 226, 0.2),
@@ -987,17 +992,22 @@
   color: #071c26;
 
   background:
+    linear-gradient(
+      90deg,
+      rgba(6, 30, 42, 0.32) 0%,
+      transparent 18%
+    ),
     radial-gradient(
       circle at 100% 0%,
-      rgba(0, 217, 199, 0.16),
+      rgba(0, 217, 199, 0.2),
       transparent 22rem
     ),
     radial-gradient(
       circle at 0% 100%,
-      rgba(58, 232, 255, 0.08),
+      rgba(58, 232, 255, 0.12),
       transparent 20rem
     ),
-    #eaf7f6;
+    #c9e8e3;
 }
 
 .admin-auth-form-wrap {
@@ -1189,9 +1199,9 @@
 .admin-auth-field input:-webkit-autofill:focus {
   -webkit-text-fill-color: #071c26;
   -webkit-box-shadow:
-    0 0 0 1000px #eaf7f6 inset;
+    0 0 0 1000px #c9e8e3 inset;
   box-shadow:
-    0 0 0 1000px #eaf7f6 inset;
+    0 0 0 1000px #c9e8e3 inset;
 
   transition: background-color 9999s ease-in-out 0s;
 }
