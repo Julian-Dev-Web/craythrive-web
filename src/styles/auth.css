@@ -1345,9 +1345,9 @@
 .admin-auth-divider p {
   margin: 0;
 
-  color: #95a4a8;
+  color: #587277;
 
-  font-size: 0.71rem;
+  font-size: 0.71rem; 
   font-weight: 700;
 }
 
@@ -1420,14 +1420,14 @@
 
   margin-top: 3px;
 
-  color: #899b9f;
+  color: #587277;
 
   font-size: 0.67rem;
   line-height: 1.35;
 }
 
 .admin-download-arrow {
-  color: #84999d;
+  color: #587277;
 
   transition:
     transform 0.2s ease,
@@ -1450,7 +1450,7 @@
 
   margin-top: 19px;
 
-  color: #94a4a8;
+  color: #587277;
 }
 
 .admin-auth-security-note svg {
