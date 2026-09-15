@@ -23,11 +23,17 @@ import {
   Wifi,
   WifiOff,
 } from "lucide-react";
+
 import { isSupabaseConfigured, supabase } from "../../lib/supabase";
+
 import {
   formatReadingTime,
   normalizeSensorReading,
 } from "../../utils/sensorReadingUtils";
+
+/* =========================================================
+   TABLES
+========================================================= */
 
 const tankTables = ["tanks"];
 const readingTables = ["sensor_readings"];
@@ -37,13 +43,32 @@ const controlLogTables = ["device_commands"];
 
 const READINGS_PER_PAGE = 5;
 const LOGS_PER_PAGE = 5;
+
 const ACTION_WAIT_MS = 5 * 60 * 1000;
-const ACTION_COMMAND_TYPES = ["FEED_ONCE", "DRAIN_FOR", "REFILL_FOR"];
-const PUMP_COMMAND_TYPES = ["DRAIN_FOR", "REFILL_FOR"];
+
+const ACTION_COMMAND_TYPES = [
+  "FEED_ONCE",
+  "DRAIN_FOR",
+  "REFILL_FOR",
+];
+
+const PUMP_COMMAND_TYPES = [
+  "DRAIN_FOR",
+  "REFILL_FOR",
+];
+
 const WATER_STABLE_REQUIRED_COUNT = 3;
 const WATER_STABLE_MAX_SPREAD_CM = 0.7;
-const SENSOR_FRESHNESS_MS = 5 * 60 * 1000;
-const PUMP_SETTLE_MS = 90 * 1000;
+
+const SENSOR_FRESHNESS_MS =
+  5 * 60 * 1000;
+
+const PUMP_SETTLE_MS =
+  90 * 1000;
+
+/* =========================================================
+   GENERAL HELPERS
+========================================================= */
 
 function clean(value) {
   return String(value || "").trim();
@@ -54,11 +79,35 @@ function lower(value) {
 }
 
 function normalizeStatusText(value) {
-  return lower(value).replaceAll("_", " ").replaceAll("-", " ");
+  return lower(value)
+    .replaceAll("_", " ")
+    .replaceAll("-", " ");
 }
 
+function formatFriendlyText(value) {
+  const text = clean(value);
+
+  if (!text) {
+    return "No Reading";
+  }
+
+  return text
+    .replaceAll("_", " ")
+    .replaceAll("-", " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) =>
+      letter.toUpperCase()
+    );
+}
+
+/* =========================================================
+   STATUS
+========================================================= */
+
 function getStatusSeverity(statuses) {
-  const joined = statuses.map(normalizeStatusText).join(" ");
+  const joined = statuses
+    .map(normalizeStatusText)
+    .join(" ");
 
   if (
     joined.includes("critical") ||
@@ -89,23 +138,12 @@ function getStatusSeverity(statuses) {
     return "warning";
   }
 
-  if (
-    joined.includes("ideal") ||
-    joined.includes("safe") ||
-    joined.includes("normal") ||
-    joined.includes("clear") ||
-    joined.includes("measured") ||
-    joined.includes("done") ||
-    joined.includes("online") ||
-    joined.includes("connected")
-  ) {
-    return "normal";
-  }
-
   return "normal";
 }
 
-function getOverallReadingStatus(normalizedReading) {
+function getOverallReadingStatus(
+  normalizedReading
+) {
   return getStatusSeverity([
     normalizedReading.temperatureStatus,
     normalizedReading.phStatus,
@@ -114,11 +152,36 @@ function getOverallReadingStatus(normalizedReading) {
   ]);
 }
 
+function getFriendlyTankStatus(status) {
+  switch (status) {
+    case "critical":
+      return "Needs Attention";
+
+    case "warning":
+      return "Check";
+
+    case "no-data":
+      return "No Data";
+
+    default:
+      return "Good";
+  }
+}
+
+/* =========================================================
+   FORMATTERS
+========================================================= */
+
 function formatDate(value) {
-  if (!value) return "No date";
+  if (!value) {
+    return "No date";
+  }
 
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "No date";
+
+  if (Number.isNaN(date.getTime())) {
+    return "No date";
+  }
 
   return date.toLocaleString([], {
     month: "short",
@@ -129,9 +192,17 @@ function formatDate(value) {
   });
 }
 
-function getValue(row, keys, fallback = "N/A") {
+function getValue(
+  row,
+  keys,
+  fallback = "N/A"
+) {
   for (const key of keys) {
-    if (row?.[key] !== null && row?.[key] !== undefined && row?.[key] !== "") {
+    if (
+      row?.[key] !== null &&
+      row?.[key] !== undefined &&
+      row?.[key] !== ""
+    ) {
       return row[key];
     }
   }
@@ -139,15 +210,39 @@ function getValue(row, keys, fallback = "N/A") {
   return fallback;
 }
 
-function getTankId(tank, index = 0) {
-  return tank?.id || tank?.tank_id || tank?.uuid || `tank-${index}`;
+/* =========================================================
+   TANK HELPERS
+========================================================= */
+
+function getTankId(
+  tank,
+  index = 0
+) {
+  return (
+    tank?.id ||
+    tank?.tank_id ||
+    tank?.uuid ||
+    `tank-${index}`
+  );
 }
 
-function getPrimaryTankId(tank, routeTankId = "") {
-  return String(tank?.id || tank?.tank_id || tank?.uuid || routeTankId || "");
+function getPrimaryTankId(
+  tank,
+  routeTankId = ""
+) {
+  return String(
+    tank?.id ||
+      tank?.tank_id ||
+      tank?.uuid ||
+      routeTankId ||
+      ""
+  );
 }
 
-function getTankName(tank, index = 0) {
+function getTankName(
+  tank,
+  index = 0
+) {
   return (
     tank?.name ||
     tank?.tank_name ||
@@ -158,7 +253,12 @@ function getTankName(tank, index = 0) {
 }
 
 function getTankType(tank) {
-  return tank?.type || tank?.tank_type || tank?.category || "Crayfish Tank";
+  return (
+    tank?.type ||
+    tank?.tank_type ||
+    tank?.category ||
+    "Crayfish Tank"
+  );
 }
 
 function getTankOwnerId(tank) {
@@ -176,11 +276,20 @@ function getProfileName(profile) {
   return (
     profile?.username ||
     profile?.full_name ||
-    [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
+    [
+      profile?.first_name,
+      profile?.last_name,
+    ]
+      .filter(Boolean)
+      .join(" ") ||
     profile?.email ||
     "Unknown owner"
   );
 }
+
+/* =========================================================
+   RECORD MATCHING
+========================================================= */
 
 function getTankMatchKeys(tank) {
   return [
@@ -192,8 +301,13 @@ function getTankMatchKeys(tank) {
     tank?.device_uid,
     tank?.tank_code,
   ]
-    .filter((value) => value !== null && value !== undefined && value !== "")
-    .map((value) => String(value));
+    .filter(
+      (value) =>
+        value !== null &&
+        value !== undefined &&
+        value !== ""
+    )
+    .map(String);
 }
 
 function getRecordMatchKeys(row) {
@@ -206,23 +320,47 @@ function getRecordMatchKeys(row) {
     row?.device_id,
     row?.device_uid,
   ]
-    .filter((value) => value !== null && value !== undefined && value !== "")
-    .map((value) => String(value));
+    .filter(
+      (value) =>
+        value !== null &&
+        value !== undefined &&
+        value !== ""
+    )
+    .map(String);
 }
 
 function getRecordDate(row) {
-  return row?.created_at || row?.timestamp || row?.date || row?.updated_at || "";
+  return (
+    row?.created_at ||
+    row?.timestamp ||
+    row?.date ||
+    row?.updated_at ||
+    ""
+  );
 }
 
-function recordMatchesTank(row, tank) {
-  const tankKeys = getTankMatchKeys(tank);
-  const rowKeys = getRecordMatchKeys(row);
+function recordMatchesTank(
+  row,
+  tank
+) {
+  const tankKeys =
+    getTankMatchKeys(tank);
 
-  return rowKeys.some((key) => tankKeys.includes(key));
+  const rowKeys =
+    getRecordMatchKeys(row);
+
+  return rowKeys.some((key) =>
+    tankKeys.includes(key)
+  );
 }
 
-function rowMatchesUser(row, userId) {
-  if (!userId) return true;
+function rowMatchesUser(
+  row,
+  userId
+) {
+  if (!userId) {
+    return true;
+  }
 
   const ids = [
     row?.user_id,
@@ -234,30 +372,45 @@ function rowMatchesUser(row, userId) {
     .filter(Boolean)
     .map(String);
 
-  if (ids.length === 0) return true;
+  if (ids.length === 0) {
+    return true;
+  }
 
-  return ids.includes(String(userId));
+  return ids.includes(
+    String(userId)
+  );
 }
 
 function uniqueRows(rows) {
   const map = new Map();
 
-  rows.forEach((row, index) => {
-    const id =
-      row?.id ||
-      row?.uuid ||
-      row?.tank_id ||
-      row?.reading_id ||
-      row?.alert_id ||
-      row?.command_id ||
-      row?.created_at ||
-      `row-${index}`;
+  rows.forEach(
+    (row, index) => {
+      const id =
+        row?.id ||
+        row?.uuid ||
+        row?.tank_id ||
+        row?.reading_id ||
+        row?.alert_id ||
+        row?.command_id ||
+        row?.created_at ||
+        `row-${index}`;
 
-    map.set(String(id), row);
-  });
+      map.set(
+        String(id),
+        row
+      );
+    }
+  );
 
-  return Array.from(map.values());
+  return Array.from(
+    map.values()
+  );
 }
+
+/* =========================================================
+   TODAY RANGE
+========================================================= */
 
 function getTodayRangeForSupabase() {
   const now = new Date();
@@ -288,88 +441,183 @@ function getTodayRangeForSupabase() {
   };
 }
 
+/* =========================================================
+   COMMAND HELPERS
+========================================================= */
+
 function getCommandLabel(commandType) {
   const labels = {
-    FEED_ONCE: "Feed Once",
-    REFILL_FOR: "Refill Pump",
-    DRAIN_FOR: "Drain Pump",
-    STOP_ALL: "Stop All",
+    FEED_ONCE: "Feed",
+    REFILL_FOR: "Add Water",
+    DRAIN_FOR: "Drain Water",
+    STOP_ALL: "Emergency Stop",
   };
 
-  return labels[commandType] || commandType || "Command";
+  return (
+    labels[commandType] ||
+    commandType ||
+    "Action"
+  );
 }
 
-function getShortResultMessage(message = "") {
-  const text = String(message || "").trim();
+function getShortResultMessage(
+  message = ""
+) {
+  const text =
+    String(message || "").trim();
 
-  if (!text) return "";
-
-  if (text.toLowerCase().includes("completed")) {
-    return "Completed successfully. View Logs for full sensor check.";
+  if (!text) {
+    return "";
   }
 
-  if (text.toLowerCase().includes("rejected")) {
+  if (
+    text
+      .toLowerCase()
+      .includes("completed")
+  ) {
+    return "Completed successfully.";
+  }
+
+  if (
+    text
+      .toLowerCase()
+      .includes("rejected")
+  ) {
     return `${text.split(".")[0]}.`;
   }
 
   if (text.length > 120) {
-    return `${text.slice(0, 120)}...`;
+    return `${text.slice(
+      0,
+      120
+    )}...`;
   }
 
   return text;
 }
 
 function getTimeMs(value) {
-  if (!value) return 0;
+  if (!value) {
+    return 0;
+  }
 
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 0;
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return 0;
+  }
 
   return date.getTime();
 }
 
 function formatCountdown(ms) {
-  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
+  const totalSeconds =
+    Math.max(
+      0,
+      Math.ceil(ms / 1000)
+    );
 
-  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+  const minutes =
+    Math.floor(
+      totalSeconds / 60
+    );
+
+  const seconds =
+    totalSeconds % 60;
+
+  return `${minutes}:${String(
+    seconds
+  ).padStart(2, "0")}`;
 }
 
-function isActionCommand(commandType) {
-  return ACTION_COMMAND_TYPES.includes(commandType);
+function isActionCommand(
+  commandType
+) {
+  return ACTION_COMMAND_TYPES.includes(
+    commandType
+  );
 }
 
-function isCompletedActionCommand(command) {
-  const commandType = command?.command_type || command?.action || "";
-  const commandStatus =
-    command?.command_status || command?.status || command?.result || "";
-
-  return isActionCommand(commandType) && lower(commandStatus) === "done";
-}
-
-function isPumpCommand(commandOrType) {
+function isCompletedActionCommand(
+  command
+) {
   const commandType =
-    typeof commandOrType === "string"
-      ? commandOrType
-      : commandOrType?.command_type || commandOrType?.action || "";
+    command?.command_type ||
+    command?.action ||
+    "";
 
-  return PUMP_COMMAND_TYPES.includes(commandType);
-}
-
-function isCompletedPumpCommand(command) {
   const commandStatus =
-    command?.command_status || command?.status || command?.result || "";
+    command?.command_status ||
+    command?.status ||
+    command?.result ||
+    "";
 
-  return isPumpCommand(command) && lower(commandStatus) === "done";
+  return (
+    isActionCommand(
+      commandType
+    ) &&
+    lower(commandStatus) ===
+      "done"
+  );
 }
+
+function isPumpCommand(
+  commandOrType
+) {
+  const commandType =
+    typeof commandOrType ===
+    "string"
+      ? commandOrType
+      : commandOrType
+          ?.command_type ||
+        commandOrType?.action ||
+        "";
+
+  return PUMP_COMMAND_TYPES.includes(
+    commandType
+  );
+}
+
+function isCompletedPumpCommand(
+  command
+) {
+  const commandStatus =
+    command?.command_status ||
+    command?.status ||
+    command?.result ||
+    "";
+
+  return (
+    isPumpCommand(command) &&
+    lower(commandStatus) ===
+      "done"
+  );
+}
+
+/* =========================================================
+   WATER SAFETY
+========================================================= */
 
 function parseNumberFromText(value) {
-  const match = String(value || "").match(/-?\d+(?:\.\d+)?/);
-  if (!match) return null;
+  const match =
+    String(value || "").match(
+      /-?\d+(?:\.\d+)?/
+    );
 
-  const number = Number(match[0]);
-  return Number.isFinite(number) ? number : null;
+  if (!match) {
+    return null;
+  }
+
+  const number =
+    Number(match[0]);
+
+  return Number.isFinite(number)
+    ? number
+    : null;
 }
 
 function getWaterCmFromReading(item) {
@@ -384,22 +632,30 @@ function getWaterCmFromReading(item) {
     item?.reading?.water_depth ??
     item?.reading?.distance_cm ??
     item?.reading?.water_cm ??
-    parseNumberFromText(item?.normalized?.waterLabel);
+    parseNumberFromText(
+      item?.normalized?.waterLabel
+    );
 
-  const number = Number(raw);
+  const number =
+    Number(raw);
 
-  if (!Number.isFinite(number)) return null;
-  if (number <= 0) return null;
+  if (
+    !Number.isFinite(number) ||
+    number <= 0
+  ) {
+    return null;
+  }
 
   return number;
 }
 
 function isBadWaterStatus(status) {
-  const value = String(status || "")
-    .trim()
-    .toUpperCase()
-    .replaceAll(" ", "_")
-    .replaceAll("-", "_");
+  const value =
+    String(status || "")
+      .trim()
+      .toUpperCase()
+      .replaceAll(" ", "_")
+      .replaceAll("-", "_");
 
   return (
     value.includes("NO_READING") ||
@@ -410,209 +666,380 @@ function isBadWaterStatus(status) {
 }
 
 function formatWaitSeconds(ms) {
-  return `${Math.max(0, Math.ceil(ms / 1000))}s`;
+  return `${Math.max(
+    0,
+    Math.ceil(ms / 1000)
+  )}s`;
 }
 
-function getWaterStabilityState(enrichedReadings, latestPumpAction, nowMs) {
-  const latestReading = enrichedReadings[0] || null;
-  const latestReadingMs = getTimeMs(latestReading?.date);
+function getWaterStabilityState(
+  enrichedReadings,
+  latestPumpAction,
+  nowMs
+) {
+  const latestReading =
+    enrichedReadings[0] ||
+    null;
+
+  const latestReadingMs =
+    getTimeMs(
+      latestReading?.date
+    );
 
   if (!latestReading) {
     return {
       canPump: false,
       level: "warning",
-      title: "No sensor data",
+      title:
+        "Waiting for water reading",
       message:
-        "Drain/refill is blocked until a fresh water reading is available.",
+        "Water controls are temporarily unavailable until a fresh water-level reading is received.",
     };
   }
 
-  if (!latestReadingMs || nowMs - latestReadingMs > SENSOR_FRESHNESS_MS) {
+  if (
+    !latestReadingMs ||
+    nowMs -
+      latestReadingMs >
+      SENSOR_FRESHNESS_MS
+  ) {
     return {
       canPump: false,
       level: "warning",
-      title: "Sensor data is stale",
+      title:
+        "Water reading needs updating",
       message:
-        "Drain/refill is blocked because the latest sensor reading is older than 5 minutes.",
+        "Refresh or wait for the sensor to send a newer reading before using the water controls.",
     };
   }
 
   const latestWaterStatus =
-    latestReading?.normalized?.waterStatus ||
-    latestReading?.reading?.water_status ||
+    latestReading?.normalized
+      ?.waterStatus ||
+    latestReading?.reading
+      ?.water_status ||
     "";
 
-  if (isBadWaterStatus(latestWaterStatus)) {
+  if (
+    isBadWaterStatus(
+      latestWaterStatus
+    )
+  ) {
     return {
       canPump: false,
       level: "warning",
-      title: "Water sensor is not ready",
+      title:
+        "Water sensor is not ready",
       message:
-        "Drain/refill is blocked because the latest water reading is NO_READING or invalid.",
+        "Water controls are unavailable until the water-level sensor reports a valid reading.",
     };
   }
 
-  const latestPumpTimeMs = getTimeMs(
-    latestPumpAction?.executed_at ||
-      latestPumpAction?.updated_at ||
-      latestPumpAction?.created_at
-  );
-
-  if (latestPumpTimeMs > 0) {
-    const settleRemainingMs = Math.max(
-      0,
-      latestPumpTimeMs + PUMP_SETTLE_MS - nowMs
+  const latestPumpTimeMs =
+    getTimeMs(
+      latestPumpAction
+        ?.executed_at ||
+        latestPumpAction
+          ?.updated_at ||
+        latestPumpAction
+          ?.created_at
     );
 
-    if (settleRemainingMs > 0) {
+  if (
+    latestPumpTimeMs > 0
+  ) {
+    const settleRemainingMs =
+      Math.max(
+        0,
+        latestPumpTimeMs +
+          PUMP_SETTLE_MS -
+          nowMs
+      );
+
+    if (
+      settleRemainingMs > 0
+    ) {
       return {
         canPump: false,
         level: "warning",
-        title: "Water is settling",
-        message: `Wait ${formatWaitSeconds(
+        title:
+          "Water is settling",
+        message: `Please wait ${formatWaitSeconds(
           settleRemainingMs
-        )} more before another drain/refill. This prevents hose vibration or water movement from causing wrong readings.`,
+        )} before using another water control.`,
       };
     }
 
-    if (latestReadingMs <= latestPumpTimeMs) {
+    if (
+      latestReadingMs <=
+      latestPumpTimeMs
+    ) {
       return {
         canPump: false,
         level: "warning",
-        title: "Waiting for new sensor reading",
+        title:
+          "Waiting for a new reading",
         message:
-          "Drain/refill is blocked until a new sensor reading is synced after the last pump action.",
+          "A fresh sensor reading is needed after the last pump action.",
       };
     }
   }
 
-  const validWaterValues = enrichedReadings
-    .map((item) => {
-      const waterStatus =
-        item?.normalized?.waterStatus || item?.reading?.water_status || "";
+  const validWaterValues =
+    enrichedReadings
+      .map((item) => {
+        const waterStatus =
+          item?.normalized
+            ?.waterStatus ||
+          item?.reading
+            ?.water_status ||
+          "";
 
-      if (isBadWaterStatus(waterStatus)) return null;
+        if (
+          isBadWaterStatus(
+            waterStatus
+          )
+        ) {
+          return null;
+        }
 
-      return getWaterCmFromReading(item);
-    })
-    .filter((value) => value !== null)
-    .slice(0, WATER_STABLE_REQUIRED_COUNT);
+        return getWaterCmFromReading(
+          item
+        );
+      })
+      .filter(
+        (value) =>
+          value !== null
+      )
+      .slice(
+        0,
+        WATER_STABLE_REQUIRED_COUNT
+      );
 
-  if (validWaterValues.length < WATER_STABLE_REQUIRED_COUNT) {
+  if (
+    validWaterValues.length <
+    WATER_STABLE_REQUIRED_COUNT
+  ) {
     return {
       canPump: false,
       level: "warning",
-      title: "Waiting for stable water readings",
-      message: `Need ${WATER_STABLE_REQUIRED_COUNT} valid water readings before allowing drain/refill.`,
+      title:
+        "Checking water level",
+      message:
+        "CrayThrive is waiting for enough stable water readings before enabling the pump controls.",
     };
   }
 
-  const minValue = Math.min(...validWaterValues);
-  const maxValue = Math.max(...validWaterValues);
-  const spread = maxValue - minValue;
+  const minValue =
+    Math.min(
+      ...validWaterValues
+    );
 
-  if (spread > WATER_STABLE_MAX_SPREAD_CM) {
+  const maxValue =
+    Math.max(
+      ...validWaterValues
+    );
+
+  const spread =
+    maxValue - minValue;
+
+  if (
+    spread >
+    WATER_STABLE_MAX_SPREAD_CM
+  ) {
     return {
       canPump: false,
       level: "warning",
-      title: "Water reading is unstable",
-      message: `Latest water readings differ by ${spread.toFixed(
-        2
-      )} cm. Wait until the sensor stabilizes before using drain/refill.`,
+      title:
+        "Water reading is still moving",
+      message:
+        "Please wait until the water level becomes stable before using drain or refill.",
     };
   }
 
   return {
     canPump: true,
     level: "normal",
-    title: "Water reading stable",
-    message: `Latest ${validWaterValues.length} water readings are stable.`,
+    title:
+      "Water controls ready",
+    message:
+      "Water readings are stable.",
   };
 }
+
+/* =========================================================
+   ALERT HELPERS
+========================================================= */
 
 function getSimpleAlertTitle(item) {
   return getValue(
     item,
-    ["title", "alert_title", "type", "alert_type"],
+    [
+      "title",
+      "alert_title",
+      "type",
+      "alert_type",
+    ],
     "Tank alert"
   );
 }
 
 function getSimpleAlertMessage(item) {
-  const message = getValue(
-    item,
-    ["message", "description", "body", "result_message"],
-    "View logs for more details."
-  );
+  const message =
+    getValue(
+      item,
+      [
+        "message",
+        "description",
+        "body",
+        "result_message",
+      ],
+      "Open the alert for more information."
+    );
 
-  if (String(message).length > 150) {
-    return `${String(message).slice(0, 150)}...`;
+  if (
+    String(message).length >
+    150
+  ) {
+    return `${String(
+      message
+    ).slice(0, 150)}...`;
   }
 
   return message;
 }
 
-function getActuatorConnectionState(device) {
+/* =========================================================
+   ACTUATOR STATUS
+========================================================= */
+
+function getActuatorConnectionState(
+  device
+) {
   if (!device) {
     return {
-      label: "Not connected",
-      severity: "critical",
-      icon: WifiOff,
-      isConnected: false,
-      detail: "No claimed actuator hub found for this tank.",
+      label:
+        "Not Connected",
+      severity:
+        "critical",
+      icon:
+        WifiOff,
+      isConnected:
+        false,
+      detail:
+        "No actuator is connected to this tank.",
     };
   }
 
   if (device.setup_mode) {
     return {
-      label: "Setup mode",
-      severity: "warning",
-      icon: WifiOff,
-      isConnected: false,
-      detail: "Actuator is currently in WiFi setup mode.",
+      label:
+        "Setup Mode",
+      severity:
+        "warning",
+      icon:
+        WifiOff,
+      isConnected:
+        false,
+      detail:
+        "The actuator is currently being set up.",
     };
   }
 
-  const rawStatus = lower(device.connection_status);
-  const lastSeenValue = device.last_seen || device.updated_at || device.created_at;
-  const lastSeenDate = lastSeenValue ? new Date(lastSeenValue) : null;
-  const isLastSeenValid = lastSeenDate && !Number.isNaN(lastSeenDate.getTime());
-  const minutesSinceSeen = isLastSeenValid
-    ? (Date.now() - lastSeenDate.getTime()) / 60000
-    : null;
+  const rawStatus =
+    lower(
+      device.connection_status
+    );
 
-  if (rawStatus.includes("offline")) {
+  const lastSeenValue =
+    device.last_seen ||
+    device.updated_at ||
+    device.created_at;
+
+  const lastSeenDate =
+    lastSeenValue
+      ? new Date(
+          lastSeenValue
+        )
+      : null;
+
+  const validLastSeen =
+    lastSeenDate &&
+    !Number.isNaN(
+      lastSeenDate.getTime()
+    );
+
+  const minutesSinceSeen =
+    validLastSeen
+      ? (Date.now() -
+          lastSeenDate.getTime()) /
+        60000
+      : null;
+
+  if (
+    rawStatus.includes(
+      "offline"
+    )
+  ) {
     return {
-      label: "Offline",
-      severity: "critical",
-      icon: WifiOff,
-      isConnected: false,
-      detail: `Last seen: ${formatDate(lastSeenValue)}`,
+      label:
+        "Offline",
+      severity:
+        "critical",
+      icon:
+        WifiOff,
+      isConnected:
+        false,
+      detail: `Last connected: ${formatDate(
+        lastSeenValue
+      )}`,
     };
   }
 
-  if (minutesSinceSeen !== null && minutesSinceSeen > 3) {
+  if (
+    minutesSinceSeen !==
+      null &&
+    minutesSinceSeen > 3
+  ) {
     return {
-      label: "Connected but stale",
-      severity: "warning",
-      icon: Wifi,
-      isConnected: false,
-      detail: `Last seen: ${formatDate(lastSeenValue)}`,
+      label:
+        "Needs Reconnection",
+      severity:
+        "warning",
+      icon:
+        Wifi,
+      isConnected:
+        false,
+      detail: `Last connected: ${formatDate(
+        lastSeenValue
+      )}`,
     };
   }
 
   return {
-    label: "Connected",
-    severity: "normal",
-    icon: Wifi,
-    isConnected: true,
-    detail: `Device UID: ${device.device_uid || "N/A"}`,
+    label:
+      "Connected",
+    severity:
+      "normal",
+    icon:
+      Wifi,
+    isConnected:
+      true,
+    detail:
+      "Actuator is ready.",
   };
 }
 
+/* =========================================================
+   CURRENT USER
+========================================================= */
+
 async function getCurrentUserWithRole() {
-  const { data } = await supabase.auth.getSession();
-  const user = data?.session?.user;
+  const { data } =
+    await supabase.auth.getSession();
+
+  const user =
+    data?.session?.user;
 
   if (!user) {
     return {
@@ -625,179 +1052,403 @@ async function getCurrentUserWithRole() {
 
   let profile = null;
 
-  const byId = await supabase
-    .from("profiles")
-    .select("id,email,role")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (!byId.error && byId.data) {
-    profile = byId.data;
-  }
-
-  if (!profile && user.email) {
-    const byEmail = await supabase
+  const byId =
+    await supabase
       .from("profiles")
-      .select("id,email,role")
-      .ilike("email", user.email)
+      .select(
+        "id,email,role"
+      )
+      .eq(
+        "id",
+        user.id
+      )
       .maybeSingle();
 
-    if (!byEmail.error && byEmail.data) {
-      profile = byEmail.data;
+  if (
+    !byId.error &&
+    byId.data
+  ) {
+    profile =
+      byId.data;
+  }
+
+  if (
+    !profile &&
+    user.email
+  ) {
+    const byEmail =
+      await supabase
+        .from("profiles")
+        .select(
+          "id,email,role"
+        )
+        .ilike(
+          "email",
+          user.email
+        )
+        .maybeSingle();
+
+    if (
+      !byEmail.error &&
+      byEmail.data
+    ) {
+      profile =
+        byEmail.data;
     }
   }
 
-  const role = lower(profile?.role);
+  const role =
+    lower(
+      profile?.role
+    );
 
   return {
-    id: user.id || "",
-    email: user.email || "",
+    id:
+      user.id || "",
+
+    email:
+      user.email || "",
+
     role,
-    isAdmin: role === "admin",
+
+    isAdmin:
+      role === "admin",
   };
 }
 
-async function fetchRowsNoColumnErrors(tableNames, currentUser, limit = 300) {
-  for (const tableName of tableNames) {
-    const ordered = await supabase
-      .from(tableName)
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(limit);
+/* =========================================================
+   FETCH HELPERS
+========================================================= */
 
-    if (!ordered.error && Array.isArray(ordered.data)) {
-      const rows = uniqueRows(ordered.data);
+async function fetchRowsNoColumnErrors(
+  tableNames,
+  currentUser,
+  limit = 300
+) {
+  for (
+    const tableName
+    of tableNames
+  ) {
+    const ordered =
+      await supabase
+        .from(tableName)
+        .select("*")
+        .order(
+          "created_at",
+          {
+            ascending:
+              false,
+          }
+        )
+        .limit(limit);
 
-      if (currentUser.isAdmin) {
+    if (
+      !ordered.error &&
+      Array.isArray(
+        ordered.data
+      )
+    ) {
+      const rows =
+        uniqueRows(
+          ordered.data
+        );
+
+      if (
+        currentUser.isAdmin
+      ) {
         return {
           rows,
-          tableUsed: tableName,
+          tableUsed:
+            tableName,
         };
       }
 
-      const scopedRows = rows.filter((row) => rowMatchesUser(row, currentUser.id));
+      const scopedRows =
+        rows.filter(
+          (row) =>
+            rowMatchesUser(
+              row,
+              currentUser.id
+            )
+        );
 
       return {
-        rows: scopedRows.length > 0 ? scopedRows : rows,
-        tableUsed: tableName,
+        rows:
+          scopedRows.length >
+          0
+            ? scopedRows
+            : rows,
+
+        tableUsed:
+          tableName,
       };
     }
 
-    const plain = await supabase.from(tableName).select("*").limit(limit);
+    const plain =
+      await supabase
+        .from(tableName)
+        .select("*")
+        .limit(limit);
 
-    if (!plain.error && Array.isArray(plain.data)) {
-      const rows = uniqueRows(plain.data);
+    if (
+      !plain.error &&
+      Array.isArray(
+        plain.data
+      )
+    ) {
+      const rows =
+        uniqueRows(
+          plain.data
+        );
 
-      if (currentUser.isAdmin) {
+      if (
+        currentUser.isAdmin
+      ) {
         return {
           rows,
-          tableUsed: tableName,
+          tableUsed:
+            tableName,
         };
       }
 
-      const scopedRows = rows.filter((row) => rowMatchesUser(row, currentUser.id));
+      const scopedRows =
+        rows.filter(
+          (row) =>
+            rowMatchesUser(
+              row,
+              currentUser.id
+            )
+        );
 
       return {
-        rows: scopedRows.length > 0 ? scopedRows : rows,
-        tableUsed: tableName,
+        rows:
+          scopedRows.length >
+          0
+            ? scopedRows
+            : rows,
+
+        tableUsed:
+          tableName,
       };
     }
   }
 
   return {
     rows: [],
-    tableUsed: tableNames[0],
+    tableUsed:
+      tableNames[0],
   };
 }
 
-async function fetchRowsByScope(tableNames, currentUser, limit = 300) {
-  return fetchRowsNoColumnErrors(tableNames, currentUser, limit);
+async function fetchRowsByScope(
+  tableNames,
+  currentUser,
+  limit = 300
+) {
+  return fetchRowsNoColumnErrors(
+    tableNames,
+    currentUser,
+    limit
+  );
 }
 
-async function fetchProfiles(currentUser) {
-  if (currentUser.isAdmin) {
-    return fetchRowsNoColumnErrors(["profiles"], currentUser, 400);
+async function fetchProfiles(
+  currentUser
+) {
+  if (
+    currentUser.isAdmin
+  ) {
+    return fetchRowsNoColumnErrors(
+      ["profiles"],
+      currentUser,
+      400
+    );
   }
 
-  const byId = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", currentUser.id)
-    .maybeSingle();
+  const byId =
+    await supabase
+      .from("profiles")
+      .select("*")
+      .eq(
+        "id",
+        currentUser.id
+      )
+      .maybeSingle();
 
-  if (!byId.error && byId.data) {
+  if (
+    !byId.error &&
+    byId.data
+  ) {
     return {
       rows: [byId.data],
-      tableUsed: "profiles",
+      tableUsed:
+        "profiles",
     };
   }
 
   return {
     rows: [],
-    tableUsed: "profiles",
+    tableUsed:
+      "profiles",
   };
 }
 
-async function fetchActuatorDeviceForTank(selectedTank, routeTankId) {
-  if (!selectedTank) return null;
+/* =========================================================
+   ACTUATOR LOOKUP
+========================================================= */
 
-  const commandTankId = getPrimaryTankId(selectedTank, routeTankId);
+async function fetchActuatorDeviceForTank(
+  selectedTank,
+  routeTankId
+) {
+  if (!selectedTank) {
+    return null;
+  }
+
+  const commandTankId =
+    getPrimaryTankId(
+      selectedTank,
+      routeTankId
+    );
+
   const actuatorUidFromTank =
-    selectedTank?.actuator_device_uid ||
-    selectedTank?.actuator_uid ||
-    selectedTank?.actuator_device ||
+    selectedTank
+      ?.actuator_device_uid ||
+    selectedTank
+      ?.actuator_uid ||
+    selectedTank
+      ?.actuator_device ||
     "";
 
-  if (actuatorUidFromTank) {
-    const byUid = await supabase
-      .from("iot_devices")
-      .select("*")
-      .eq("device_uid", actuatorUidFromTank)
-      .eq("device_type", "actuator_hub")
-      .maybeSingle();
+  if (
+    actuatorUidFromTank
+  ) {
+    const byUid =
+      await supabase
+        .from(
+          "iot_devices"
+        )
+        .select("*")
+        .eq(
+          "device_uid",
+          actuatorUidFromTank
+        )
+        .eq(
+          "device_type",
+          "actuator_hub"
+        )
+        .maybeSingle();
 
-    if (!byUid.error && byUid.data) {
+    if (
+      !byUid.error &&
+      byUid.data
+    ) {
       return byUid.data;
     }
   }
 
   if (commandTankId) {
-    const byTank = await supabase
-      .from("iot_devices")
-      .select("*")
-      .eq("tank_id", commandTankId)
-      .eq("device_type", "actuator_hub")
-      .eq("is_claimed", true)
-      .order("updated_at", { ascending: false })
-      .limit(1);
+    const byTank =
+      await supabase
+        .from(
+          "iot_devices"
+        )
+        .select("*")
+        .eq(
+          "tank_id",
+          commandTankId
+        )
+        .eq(
+          "device_type",
+          "actuator_hub"
+        )
+        .eq(
+          "is_claimed",
+          true
+        )
+        .order(
+          "updated_at",
+          {
+            ascending:
+              false,
+          }
+        )
+        .limit(1);
 
-    if (!byTank.error && Array.isArray(byTank.data) && byTank.data.length > 0) {
+    if (
+      !byTank.error &&
+      Array.isArray(
+        byTank.data
+      ) &&
+      byTank.data.length >
+        0
+    ) {
       return byTank.data[0];
     }
   }
 
-  const ownerId = getTankOwnerId(selectedTank);
+  const ownerId =
+    getTankOwnerId(
+      selectedTank
+    );
 
   if (ownerId) {
-    const byOwner = await supabase
-      .from("iot_devices")
-      .select("*")
-      .eq("user_id", ownerId)
-      .eq("device_type", "actuator_hub")
-      .eq("is_claimed", true)
-      .order("updated_at", { ascending: false })
-      .limit(10);
+    const byOwner =
+      await supabase
+        .from(
+          "iot_devices"
+        )
+        .select("*")
+        .eq(
+          "user_id",
+          ownerId
+        )
+        .eq(
+          "device_type",
+          "actuator_hub"
+        )
+        .eq(
+          "is_claimed",
+          true
+        )
+        .order(
+          "updated_at",
+          {
+            ascending:
+              false,
+          }
+        )
+        .limit(10);
 
-    if (!byOwner.error && Array.isArray(byOwner.data)) {
-      const tankKeys = getTankMatchKeys(selectedTank);
+    if (
+      !byOwner.error &&
+      Array.isArray(
+        byOwner.data
+      )
+    ) {
+      const tankKeys =
+        getTankMatchKeys(
+          selectedTank
+        );
 
       return (
-        byOwner.data.find((device) =>
-          [device?.tank_id, device?.device_uid, device?.id]
-            .filter(Boolean)
-            .map(String)
-            .some((key) => tankKeys.includes(key))
-        ) || byOwner.data[0] || null
+        byOwner.data.find(
+          (device) =>
+            [
+              device?.tank_id,
+              device?.device_uid,
+              device?.id,
+            ]
+              .filter(Boolean)
+              .map(String)
+              .some((key) =>
+                tankKeys.includes(
+                  key
+                )
+              )
+        ) ||
+        byOwner.data[0] ||
+        null
       );
     }
   }
@@ -805,51 +1456,160 @@ async function fetchActuatorDeviceForTank(selectedTank, routeTankId) {
   return null;
 }
 
-async function fetchActiveCommandsForActuator(selectedTank, actuatorDevice, routeTankId) {
-  if (!selectedTank || !actuatorDevice?.device_uid) return [];
+async function fetchActiveCommandsForActuator(
+  selectedTank,
+  actuatorDevice,
+  routeTankId
+) {
+  if (
+    !selectedTank ||
+    !actuatorDevice?.device_uid
+  ) {
+    return [];
+  }
 
-  const commandTankId = getPrimaryTankId(selectedTank, routeTankId);
+  const commandTankId =
+    getPrimaryTankId(
+      selectedTank,
+      routeTankId
+    );
 
-  const { data, error } = await supabase
+  const {
+    data,
+    error,
+  } = await supabase
     .from("device_commands")
     .select("*")
-    .eq("tank_id", commandTankId)
-    .eq("device_uid", actuatorDevice.device_uid)
-    .in("command_status", ["pending", "running"])
-    .neq("command_type", "STOP_ALL")
-    .order("created_at", { ascending: false })
+    .eq(
+      "tank_id",
+      commandTankId
+    )
+    .eq(
+      "device_uid",
+      actuatorDevice.device_uid
+    )
+    .in(
+      "command_status",
+      [
+        "pending",
+        "running",
+      ]
+    )
+    .neq(
+      "command_type",
+      "STOP_ALL"
+    )
+    .order(
+      "created_at",
+      {
+        ascending: false,
+      }
+    )
     .limit(10);
 
-  if (error || !Array.isArray(data)) return [];
+  if (
+    error ||
+    !Array.isArray(data)
+  ) {
+    return [];
+  }
 
   return data;
 }
 
-async function fetchTodaysFeedCommands(selectedTank, actuatorDevice, routeTankId) {
-  if (!selectedTank || !actuatorDevice?.device_uid) return [];
+async function fetchTodaysFeedCommands(
+  selectedTank,
+  actuatorDevice,
+  routeTankId
+) {
+  if (
+    !selectedTank ||
+    !actuatorDevice?.device_uid
+  ) {
+    return [];
+  }
 
-  const commandTankId = getPrimaryTankId(selectedTank, routeTankId);
-  const { startIso, endIso } = getTodayRangeForSupabase();
+  const commandTankId =
+    getPrimaryTankId(
+      selectedTank,
+      routeTankId
+    );
 
-  const { data, error } = await supabase
+  const {
+    startIso,
+    endIso,
+  } =
+    getTodayRangeForSupabase();
+
+  const {
+    data,
+    error,
+  } = await supabase
     .from("device_commands")
     .select("*")
-    .eq("tank_id", commandTankId)
-    .eq("device_uid", actuatorDevice.device_uid)
-    .eq("command_type", "FEED_ONCE")
-    .eq("command_status", "done")
-    .gte("created_at", startIso)
-    .lt("created_at", endIso)
-    .order("created_at", { ascending: false })
+    .eq(
+      "tank_id",
+      commandTankId
+    )
+    .eq(
+      "device_uid",
+      actuatorDevice.device_uid
+    )
+    .eq(
+      "command_type",
+      "FEED_ONCE"
+    )
+    .eq(
+      "command_status",
+      "done"
+    )
+    .gte(
+      "created_at",
+      startIso
+    )
+    .lt(
+      "created_at",
+      endIso
+    )
+    .order(
+      "created_at",
+      {
+        ascending: false,
+      }
+    )
     .limit(5);
 
-  if (error || !Array.isArray(data)) return [];
+  if (
+    error ||
+    !Array.isArray(data)
+  ) {
+    return [];
+  }
 
   return data;
 }
 
-function DetailMetricCard({ icon: Icon, label, value, status }) {
-  const severity = getStatusSeverity([status]);
+/* =========================================================
+   SMALL COMPONENTS
+========================================================= */
+
+function DetailMetricCard({
+  icon: Icon,
+  label,
+  value,
+  status,
+}) {
+  const hasStatus =
+    clean(status) &&
+    lower(status) !==
+      "no reading";
+
+  const severity =
+    hasStatus
+      ? getStatusSeverity(
+          [status]
+        )
+      : "warning";
 
   return (
     <article className="modern-tank-detail-metric">
@@ -858,178 +1618,437 @@ function DetailMetricCard({ icon: Icon, label, value, status }) {
       </span>
 
       <div>
-        <strong>{value}</strong>
-        <p>{label}</p>
-        <b className={`modern-tank-status ${severity}`}>{status}</b>
+        <strong>
+          {formatFriendlyText(
+            value
+          )}
+        </strong>
+
+        <p>
+          {label}
+        </p>
+
+        <b
+          className={`modern-tank-status ${severity}`}
+        >
+          {hasStatus
+            ? formatFriendlyText(
+                status
+              )
+            : "No Reading"}
+        </b>
       </div>
     </article>
   );
 }
 
-function EmptyBlock({ icon: Icon, title, text }) {
+function EmptyBlock({
+  icon: Icon,
+  title,
+  text,
+}) {
   return (
     <div className="modern-tank-detail-empty">
       <Icon size={28} />
-      <strong>{title}</strong>
-      <span>{text}</span>
+
+      <strong>
+        {title}
+      </strong>
+
+      <span>
+        {text}
+      </span>
     </div>
   );
 }
 
+/* =========================================================
+   PAGE
+========================================================= */
+
 export default function TankDetailsPage() {
-  const { tankId } = useParams();
+  const { tankId } =
+    useParams();
 
-  const [currentUser, setCurrentUser] = useState(null);
-  const [tank, setTank] = useState(null);
-  const [profiles, setProfiles] = useState([]);
-  const [readings, setReadings] = useState([]);
-  const [ammoniaReadings, setAmmoniaReadings] = useState([]);
-  const [alerts, setAlerts] = useState([]);
-  const [controlLogs, setControlLogs] = useState([]);
-  const [actuatorDevice, setActuatorDevice] = useState(null);
-  const [activeCommands, setActiveCommands] = useState([]);
-  const [todaysFeedCommands, setTodaysFeedCommands] = useState([]);
-  const [sources, setSources] = useState({});
-  const [scopeLabel, setScopeLabel] = useState("User view");
-  const [isLoading, setIsLoading] = useState(true);
-  const [readingsPage, setReadingsPage] = useState(1);
-  const [logsPage, setLogsPage] = useState(1);
-  const [isSendingCommand, setIsSendingCommand] = useState(false);
-  const [commandMessage, setCommandMessage] = useState("");
-  const [durationSeconds, setDurationSeconds] = useState("10");
-  const [activeTankTab, setActiveTankTab] = useState("overview");
-  const [commandWaitSeconds, setCommandWaitSeconds] = useState(0);
-  const [nowMs, setNowMs] = useState(Date.now());
+  const [
+    currentUser,
+    setCurrentUser,
+  ] = useState(null);
 
-  const loadTankDetails = async (silent = false) => {
-    if (!isSupabaseConfigured || !supabase) {
-      setIsLoading(false);
-      return;
-    }
+  const [
+    tank,
+    setTank,
+  ] = useState(null);
 
-    try {
-      if (!silent) setIsLoading(true);
+  const [
+    profiles,
+    setProfiles,
+  ] = useState([]);
 
-      const loadedUser = await getCurrentUserWithRole();
-      setCurrentUser(loadedUser);
+  const [
+    readings,
+    setReadings,
+  ] = useState([]);
 
-      if (!loadedUser.id) {
-        setTank(null);
-        setActuatorDevice(null);
-        setActiveCommands([]);
-        setTodaysFeedCommands([]);
-        setScopeLabel("No session");
+  const [
+    ammoniaReadings,
+    setAmmoniaReadings,
+  ] = useState([]);
+
+  const [
+    alerts,
+    setAlerts,
+  ] = useState([]);
+
+  const [
+    controlLogs,
+    setControlLogs,
+  ] = useState([]);
+
+  const [
+    actuatorDevice,
+    setActuatorDevice,
+  ] = useState(null);
+
+  const [
+    activeCommands,
+    setActiveCommands,
+  ] = useState([]);
+
+  const [
+    todaysFeedCommands,
+    setTodaysFeedCommands,
+  ] = useState([]);
+
+  const [
+    isLoading,
+    setIsLoading,
+  ] = useState(true);
+
+  const [
+    readingsPage,
+    setReadingsPage,
+  ] = useState(1);
+
+  const [
+    logsPage,
+    setLogsPage,
+  ] = useState(1);
+
+  const [
+    isSendingCommand,
+    setIsSendingCommand,
+  ] = useState(false);
+
+  const [
+    commandMessage,
+    setCommandMessage,
+  ] = useState("");
+
+  const [
+    durationSeconds,
+    setDurationSeconds,
+  ] = useState("10");
+
+  const [
+    activeTankTab,
+    setActiveTankTab,
+  ] = useState("overview");
+
+  const [
+    commandWaitSeconds,
+    setCommandWaitSeconds,
+  ] = useState(0);
+
+  const [
+    nowMs,
+    setNowMs,
+  ] = useState(
+    Date.now()
+  );
+
+  /* =======================================================
+     LOAD
+  ======================================================= */
+
+  const loadTankDetails =
+    async (
+      silent = false
+    ) => {
+      if (
+        !isSupabaseConfigured ||
+        !supabase
+      ) {
+        setIsLoading(false);
         return;
       }
 
-      const [
-        tankResult,
-        readingResult,
-        ammoniaResult,
-        alertResult,
-        logResult,
-        profileResult,
-      ] = await Promise.all([
-        fetchRowsByScope(tankTables, loadedUser, 400),
-        fetchRowsByScope(readingTables, loadedUser, 400),
-        fetchRowsByScope(ammoniaTables, loadedUser, 300),
-        fetchRowsByScope(alertTables, loadedUser, 300),
-        fetchRowsByScope(controlLogTables, loadedUser, 300),
-        fetchProfiles(loadedUser),
-      ]);
+      try {
+        if (!silent) {
+          setIsLoading(true);
+        }
 
-      const selectedTank =
-        tankResult.rows.find((item, index) => {
-          const keys = [
-            getTankId(item, index),
-            item?.id,
-            item?.tank_id,
-            item?.uuid,
-            item?.device_uid,
-            item?.iot_device_id,
-            item?.actuator_device_uid,
-          ]
-            .filter(Boolean)
-            .map((value) => String(value));
+        const loadedUser =
+          await getCurrentUserWithRole();
 
-          return keys.includes(String(tankId));
-        }) || null;
-
-      setTank(selectedTank);
-      setProfiles(profileResult.rows);
-
-      let loadedActuator = null;
-      let loadedActiveCommands = [];
-      let loadedTodaysFeedCommands = [];
-
-      if (selectedTank) {
-        loadedActuator = await fetchActuatorDeviceForTank(selectedTank, tankId);
-
-        loadedActiveCommands = await fetchActiveCommandsForActuator(
-          selectedTank,
-          loadedActuator,
-          tankId
+        setCurrentUser(
+          loadedUser
         );
 
-        loadedTodaysFeedCommands = await fetchTodaysFeedCommands(
-          selectedTank,
-          loadedActuator,
-          tankId
+        if (
+          !loadedUser.id
+        ) {
+          setTank(null);
+          setActuatorDevice(
+            null
+          );
+          setActiveCommands(
+            []
+          );
+          setTodaysFeedCommands(
+            []
+          );
+
+          return;
+        }
+
+        const [
+          tankResult,
+          readingResult,
+          ammoniaResult,
+          alertResult,
+          logResult,
+          profileResult,
+        ] =
+          await Promise.all([
+            fetchRowsByScope(
+              tankTables,
+              loadedUser,
+              400
+            ),
+
+            fetchRowsByScope(
+              readingTables,
+              loadedUser,
+              400
+            ),
+
+            fetchRowsByScope(
+              ammoniaTables,
+              loadedUser,
+              300
+            ),
+
+            fetchRowsByScope(
+              alertTables,
+              loadedUser,
+              300
+            ),
+
+            fetchRowsByScope(
+              controlLogTables,
+              loadedUser,
+              300
+            ),
+
+            fetchProfiles(
+              loadedUser
+            ),
+          ]);
+
+        const selectedTank =
+          tankResult.rows.find(
+            (
+              item,
+              index
+            ) => {
+              const keys = [
+                getTankId(
+                  item,
+                  index
+                ),
+                item?.id,
+                item?.tank_id,
+                item?.uuid,
+                item?.device_uid,
+                item?.iot_device_id,
+                item?.actuator_device_uid,
+              ]
+                .filter(
+                  Boolean
+                )
+                .map(
+                  String
+                );
+
+              return keys.includes(
+                String(tankId)
+              );
+            }
+          ) || null;
+
+        setTank(
+          selectedTank
         );
 
-        setReadings(
-          readingResult.rows
-            .filter((row) => recordMatchesTank(row, selectedTank))
-            .sort((a, b) => new Date(getRecordDate(b)) - new Date(getRecordDate(a)))
+        setProfiles(
+          profileResult.rows
         );
 
-        setAmmoniaReadings(
-          ammoniaResult.rows
-            .filter((row) => recordMatchesTank(row, selectedTank))
-            .sort((a, b) => new Date(getRecordDate(b)) - new Date(getRecordDate(a)))
+        let loadedActuator =
+          null;
+
+        let loadedActiveCommands =
+          [];
+
+        let loadedTodaysFeedCommands =
+          [];
+
+        if (selectedTank) {
+          loadedActuator =
+            await fetchActuatorDeviceForTank(
+              selectedTank,
+              tankId
+            );
+
+          loadedActiveCommands =
+            await fetchActiveCommandsForActuator(
+              selectedTank,
+              loadedActuator,
+              tankId
+            );
+
+          loadedTodaysFeedCommands =
+            await fetchTodaysFeedCommands(
+              selectedTank,
+              loadedActuator,
+              tankId
+            );
+
+          setReadings(
+            readingResult.rows
+              .filter((row) =>
+                recordMatchesTank(
+                  row,
+                  selectedTank
+                )
+              )
+              .sort(
+                (a, b) =>
+                  new Date(
+                    getRecordDate(
+                      b
+                    )
+                  ) -
+                  new Date(
+                    getRecordDate(
+                      a
+                    )
+                  )
+              )
+          );
+
+          setAmmoniaReadings(
+            ammoniaResult.rows
+              .filter((row) =>
+                recordMatchesTank(
+                  row,
+                  selectedTank
+                )
+              )
+              .sort(
+                (a, b) =>
+                  new Date(
+                    getRecordDate(
+                      b
+                    )
+                  ) -
+                  new Date(
+                    getRecordDate(
+                      a
+                    )
+                  )
+              )
+          );
+
+          setAlerts(
+            alertResult.rows
+              .filter((row) =>
+                recordMatchesTank(
+                  row,
+                  selectedTank
+                )
+              )
+              .sort(
+                (a, b) =>
+                  new Date(
+                    getRecordDate(
+                      b
+                    )
+                  ) -
+                  new Date(
+                    getRecordDate(
+                      a
+                    )
+                  )
+              )
+          );
+
+          setControlLogs(
+            logResult.rows
+              .filter((row) =>
+                recordMatchesTank(
+                  row,
+                  selectedTank
+                )
+              )
+              .sort(
+                (a, b) =>
+                  new Date(
+                    getRecordDate(
+                      b
+                    )
+                  ) -
+                  new Date(
+                    getRecordDate(
+                      a
+                    )
+                  )
+              )
+          );
+        } else {
+          setReadings([]);
+          setAmmoniaReadings(
+            []
+          );
+          setAlerts([]);
+          setControlLogs([]);
+        }
+
+        setActuatorDevice(
+          loadedActuator
         );
 
-        setAlerts(
-          alertResult.rows
-            .filter((row) => recordMatchesTank(row, selectedTank))
-            .sort((a, b) => new Date(getRecordDate(b)) - new Date(getRecordDate(a)))
+        setActiveCommands(
+          loadedActiveCommands
         );
 
-        setControlLogs(
-          logResult.rows
-            .filter((row) => recordMatchesTank(row, selectedTank))
-            .sort((a, b) => new Date(getRecordDate(b)) - new Date(getRecordDate(a)))
+        setTodaysFeedCommands(
+          loadedTodaysFeedCommands
         );
-      } else {
-        setReadings([]);
-        setAmmoniaReadings([]);
-        setAlerts([]);
-        setControlLogs([]);
+      } catch (error) {
+        console.error(
+          "Tank details loading error:",
+          error
+        );
+      } finally {
+        if (!silent) {
+          setIsLoading(
+            false
+          );
+        }
       }
-
-      setActuatorDevice(loadedActuator);
-      setActiveCommands(loadedActiveCommands);
-      setTodaysFeedCommands(loadedTodaysFeedCommands);
-
-      setSources({
-        tanks: tankResult.tableUsed,
-        readings: readingResult.tableUsed,
-        ammonia: ammoniaResult.tableUsed,
-        alerts: alertResult.tableUsed,
-        logs: logResult.tableUsed,
-        profiles: profileResult.tableUsed,
-        actuator: "iot_devices",
-      });
-
-      setScopeLabel(
-        loadedUser.isAdmin ? "Admin all-records view" : "User account view"
-      );
-    } catch (error) {
-      console.error("Tank details loading error:", error);
-    } finally {
-      if (!silent) setIsLoading(false);
-    }
-  };
+    };
 
   useEffect(() => {
     loadTankDetails(false);
@@ -1040,188 +2059,418 @@ export default function TankDetailsPage() {
     setLogsPage(1);
     setCommandWaitSeconds(0);
     setCommandMessage("");
+    setActiveTankTab(
+      "overview"
+    );
   }, [tankId]);
 
-  const hasActiveCommand = activeCommands.length > 0;
+  const hasActiveCommand =
+    activeCommands.length > 0;
 
   useEffect(() => {
-    if (!tankId) return;
-
-    const intervalMs = hasActiveCommand ? 1500 : 8000;
-
-    const interval = setInterval(() => {
-      loadTankDetails(true);
-    }, intervalMs);
-
-    return () => clearInterval(interval);
-  }, [tankId, hasActiveCommand]);
-
-  useEffect(() => {
-    if (!hasActiveCommand) {
-      setCommandWaitSeconds(0);
+    if (!tankId) {
       return;
     }
 
-    const timer = setInterval(() => {
-      setCommandWaitSeconds((seconds) => seconds + 1);
-    }, 1000);
+    const intervalMs =
+      hasActiveCommand
+        ? 1500
+        : 8000;
 
-    return () => clearInterval(timer);
+    const interval =
+      setInterval(() => {
+        loadTankDetails(
+          true
+        );
+      }, intervalMs);
+
+    return () =>
+      clearInterval(
+        interval
+      );
+  }, [
+    tankId,
+    hasActiveCommand,
+  ]);
+
+  useEffect(() => {
+    if (
+      !hasActiveCommand
+    ) {
+      setCommandWaitSeconds(
+        0
+      );
+      return;
+    }
+
+    const timer =
+      setInterval(() => {
+        setCommandWaitSeconds(
+          (seconds) =>
+            seconds + 1
+        );
+      }, 1000);
+
+    return () =>
+      clearInterval(timer);
   }, [hasActiveCommand]);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setNowMs(Date.now());
-    }, 1000);
+    const timer =
+      setInterval(() => {
+        setNowMs(
+          Date.now()
+        );
+      }, 1000);
 
-    return () => clearInterval(timer);
+    return () =>
+      clearInterval(timer);
   }, []);
 
-  const profileMap = useMemo(() => {
-    const map = new Map();
+  /* =======================================================
+     OWNER
+  ======================================================= */
 
-    profiles.forEach((profile) => {
-      if (profile?.id) map.set(String(profile.id), profile);
-      if (profile?.user_id) map.set(String(profile.user_id), profile);
-      if (profile?.email) {
-        map.set(String(profile.email).toLowerCase(), profile);
+  const profileMap =
+    useMemo(() => {
+      const map =
+        new Map();
+
+      profiles.forEach(
+        (profile) => {
+          if (
+            profile?.id
+          ) {
+            map.set(
+              String(
+                profile.id
+              ),
+              profile
+            );
+          }
+
+          if (
+            profile?.user_id
+          ) {
+            map.set(
+              String(
+                profile.user_id
+              ),
+              profile
+            );
+          }
+
+          if (
+            profile?.email
+          ) {
+            map.set(
+              String(
+                profile.email
+              ).toLowerCase(),
+              profile
+            );
+          }
+        }
+      );
+
+      return map;
+    }, [profiles]);
+
+  const owner =
+    useMemo(() => {
+      if (!tank) {
+        return null;
       }
-    });
 
-    return map;
-  }, [profiles]);
+      const ownerId =
+        getTankOwnerId(
+          tank
+        );
 
-  const owner = useMemo(() => {
-    if (!tank) return null;
+      return (
+        profileMap.get(
+          String(ownerId)
+        ) ||
+        profileMap.get(
+          String(
+            tank?.email ||
+              ""
+          ).toLowerCase()
+        ) ||
+        null
+      );
+    }, [
+      tank,
+      profileMap,
+    ]);
 
-    const ownerId = getTankOwnerId(tank);
+  /* =======================================================
+     READINGS
+  ======================================================= */
 
-    return (
-      profileMap.get(String(ownerId)) ||
-      profileMap.get(String(tank?.email || "").toLowerCase()) ||
-      null
+  const enrichedReadings =
+    useMemo(() => {
+      return readings.map(
+        (
+          reading,
+          index
+        ) => {
+          const normalized =
+            normalizeSensorReading(
+              reading
+            );
+
+          const status =
+            getOverallReadingStatus(
+              normalized
+            );
+
+          return {
+            reading,
+            normalized,
+            status,
+            index,
+
+            date:
+              normalized.createdAt ||
+              reading?.timestamp ||
+              reading?.date ||
+              reading?.updated_at,
+          };
+        }
+      );
+    }, [readings]);
+
+  const latestReading =
+    enrichedReadings[0] ||
+    null;
+
+  const totalReadingPages =
+    Math.max(
+      1,
+      Math.ceil(
+        enrichedReadings.length /
+          READINGS_PER_PAGE
+      )
     );
-  }, [tank, profileMap]);
 
-  const enrichedReadings = useMemo(() => {
-    return readings.map((reading, index) => {
-      const normalized = normalizeSensorReading(reading);
-      const status = getOverallReadingStatus(normalized);
-
-      return {
-        reading,
-        normalized,
-        status,
-        index,
-        date:
-          normalized.createdAt ||
-          reading?.timestamp ||
-          reading?.date ||
-          reading?.updated_at,
-      };
-    });
-  }, [readings]);
-
-  const latestReading = enrichedReadings[0] || null;
-
-  const totalReadingPages = Math.max(
-    1,
-    Math.ceil(enrichedReadings.length / READINGS_PER_PAGE)
-  );
-
-  const currentReadingPage = Math.min(readingsPage, totalReadingPages);
-
-  const paginatedReadings = enrichedReadings.slice(
-    (currentReadingPage - 1) * READINGS_PER_PAGE,
-    currentReadingPage * READINGS_PER_PAGE
-  );
-
-  const sortedControlLogs = useMemo(() => {
-    return [...controlLogs].sort(
-      (a, b) => new Date(getRecordDate(b)) - new Date(getRecordDate(a))
+  const currentReadingPage =
+    Math.min(
+      readingsPage,
+      totalReadingPages
     );
-  }, [controlLogs]);
 
-  const totalLogPages = Math.max(
-    1,
-    Math.ceil(sortedControlLogs.length / LOGS_PER_PAGE)
-  );
+  const paginatedReadings =
+    enrichedReadings.slice(
+      (currentReadingPage -
+        1) *
+        READINGS_PER_PAGE,
 
-  const currentLogPage = Math.min(logsPage, totalLogPages);
-
-  const paginatedControlLogs = sortedControlLogs.slice(
-    (currentLogPage - 1) * LOGS_PER_PAGE,
-    currentLogPage * LOGS_PER_PAGE
-  );
-
-  const sortedAlerts = useMemo(() => {
-    return [...alerts].sort(
-      (a, b) => new Date(getRecordDate(b)) - new Date(getRecordDate(a))
+      currentReadingPage *
+        READINGS_PER_PAGE
     );
-  }, [alerts]);
 
-  const latestCommandLog = sortedControlLogs[0] || null;
-  const latestAlert = sortedAlerts[0] || null;
-  const latestPumpAction = sortedControlLogs.find(isCompletedPumpCommand) || null;
-  const waterSafetyState = getWaterStabilityState(
-    enrichedReadings,
-    latestPumpAction,
-    nowMs
-  );
-  const shouldBlockPumpCommands = !waterSafetyState.canPump;
+  /* =======================================================
+     LOGS / ALERTS
+  ======================================================= */
+
+  const sortedControlLogs =
+    useMemo(() => {
+      return [
+        ...controlLogs,
+      ].sort(
+        (a, b) =>
+          new Date(
+            getRecordDate(b)
+          ) -
+          new Date(
+            getRecordDate(a)
+          )
+      );
+    }, [controlLogs]);
+
+  const totalLogPages =
+    Math.max(
+      1,
+      Math.ceil(
+        sortedControlLogs.length /
+          LOGS_PER_PAGE
+      )
+    );
+
+  const currentLogPage =
+    Math.min(
+      logsPage,
+      totalLogPages
+    );
+
+  const paginatedControlLogs =
+    sortedControlLogs.slice(
+      (currentLogPage -
+        1) *
+        LOGS_PER_PAGE,
+
+      currentLogPage *
+        LOGS_PER_PAGE
+    );
+
+  const sortedAlerts =
+    useMemo(() => {
+      return [
+        ...alerts,
+      ].sort(
+        (a, b) =>
+          new Date(
+            getRecordDate(b)
+          ) -
+          new Date(
+            getRecordDate(a)
+          )
+      );
+    }, [alerts]);
+
+  const latestCommandLog =
+    sortedControlLogs[0] ||
+    null;
+
+  const latestAlert =
+    sortedAlerts[0] ||
+    null;
+
+  const latestPumpAction =
+    sortedControlLogs.find(
+      isCompletedPumpCommand
+    ) || null;
+
+  /* =======================================================
+     SAFETY STATE
+  ======================================================= */
+
+  const waterSafetyState =
+    getWaterStabilityState(
+      enrichedReadings,
+      latestPumpAction,
+      nowMs
+    );
+
+  const shouldBlockPumpCommands =
+    !waterSafetyState.canPump;
 
   const latestCompletedAction =
-    sortedControlLogs.find(isCompletedActionCommand) || null;
+    sortedControlLogs.find(
+      isCompletedActionCommand
+    ) || null;
 
-  const latestCompletedActionTimeMs = getTimeMs(
-    latestCompletedAction?.executed_at ||
-      latestCompletedAction?.updated_at ||
-      latestCompletedAction?.created_at
-  );
+  const latestCompletedActionTimeMs =
+    getTimeMs(
+      latestCompletedAction
+        ?.executed_at ||
+        latestCompletedAction
+          ?.updated_at ||
+        latestCompletedAction
+          ?.created_at
+    );
 
-  const latestSensorReadingTimeMs = getTimeMs(latestReading?.date);
+  const latestSensorReadingTimeMs =
+    getTimeMs(
+      latestReading?.date
+    );
 
   const hasNewSensorReadingAfterAction =
-    latestCompletedActionTimeMs > 0 &&
-    latestSensorReadingTimeMs > latestCompletedActionTimeMs;
+    latestCompletedActionTimeMs >
+      0 &&
+    latestSensorReadingTimeMs >
+      latestCompletedActionTimeMs;
 
   const actionWaitRemainingMs =
-    latestCompletedActionTimeMs > 0
-      ? Math.max(0, latestCompletedActionTimeMs + ACTION_WAIT_MS - nowMs)
+    latestCompletedActionTimeMs >
+    0
+      ? Math.max(
+          0,
+          latestCompletedActionTimeMs +
+            ACTION_WAIT_MS -
+            nowMs
+        )
       : 0;
 
   const shouldWaitForSensorRefresh =
-    latestCompletedActionTimeMs > 0 &&
+    latestCompletedActionTimeMs >
+      0 &&
     !hasNewSensorReadingAfterAction &&
-    actionWaitRemainingMs > 0;
+    actionWaitRemainingMs >
+      0;
 
-  const actionWaitText = formatCountdown(actionWaitRemainingMs);
+  const actionWaitText =
+    formatCountdown(
+      actionWaitRemainingMs
+    );
 
-  const latestCompletedActionLabel = getCommandLabel(
-    latestCompletedAction?.command_type || latestCompletedAction?.action
-  );
+  const latestCompletedActionLabel =
+    getCommandLabel(
+      latestCompletedAction
+        ?.command_type ||
+        latestCompletedAction
+          ?.action
+    );
 
-  const tankStatus = latestReading ? latestReading.status : "normal";
-  const actuatorState = getActuatorConnectionState(actuatorDevice);
-  const ActuatorIcon = actuatorState.icon;
-  const hasFedToday = todaysFeedCommands.length > 0;
-  const latestFeedToday = todaysFeedCommands[0] || null;
-  const activeCommand = activeCommands[0] || null;
-  const isStuckLong = hasActiveCommand && commandWaitSeconds >= 30;
+  const tankStatus =
+    latestReading
+      ? latestReading.status
+      : "no-data";
+
+  const actuatorState =
+    getActuatorConnectionState(
+      actuatorDevice
+    );
+
+  const ActuatorIcon =
+    actuatorState.icon;
+
+  const hasFedToday =
+    todaysFeedCommands.length >
+    0;
+
+  const latestFeedToday =
+    todaysFeedCommands[0] ||
+    null;
+
+  const activeCommand =
+    activeCommands[0] ||
+    null;
+
+  const isStuckLong =
+    hasActiveCommand &&
+    commandWaitSeconds >= 30;
+
+  /* =======================================================
+     COMMAND STATE CLEANUP
+  ======================================================= */
 
   useEffect(() => {
-    const latestStatus = lower(
-      latestCommandLog?.command_status ||
-        latestCommandLog?.status ||
-        latestCommandLog?.result ||
-        ""
-    );
+    const latestStatus =
+      lower(
+        latestCommandLog
+          ?.command_status ||
+          latestCommandLog
+            ?.status ||
+          latestCommandLog
+            ?.result ||
+          ""
+      );
 
     if (
       !hasActiveCommand &&
-      ["done", "rejected", "failed"].includes(latestStatus)
+      [
+        "done",
+        "rejected",
+        "failed",
+      ].includes(
+        latestStatus
+      )
     ) {
-      setCommandMessage("");
+      setCommandMessage(
+        ""
+      );
     }
   }, [
     hasActiveCommand,
@@ -1231,163 +2480,321 @@ export default function TankDetailsPage() {
     latestCommandLog?.result,
   ]);
 
-  function getCommandDurationMs() {
-    const seconds = Number(durationSeconds);
+  /* =======================================================
+     CONTROL HELPERS
+  ======================================================= */
 
-    if (!Number.isFinite(seconds) || seconds <= 0) {
+  function getCommandDurationMs() {
+    const seconds =
+      Number(
+        durationSeconds
+      );
+
+    if (
+      !Number.isFinite(
+        seconds
+      ) ||
+      seconds <= 0
+    ) {
       return 10000;
     }
 
-    return Math.min(seconds, 15) * 1000;
+    return (
+      Math.min(
+        seconds,
+        15
+      ) * 1000
+    );
   }
 
   async function clearStuckActiveCommands() {
-    if (!activeCommands.length) {
-      setCommandMessage("No pending or running command to reset.");
+    if (
+      !activeCommands.length
+    ) {
+      setCommandMessage(
+        "There is no active command to reset."
+      );
       return;
     }
 
     try {
-      setIsSendingCommand(true);
+      setIsSendingCommand(
+        true
+      );
 
-      const ids = activeCommands.map((command) => command.id).filter(Boolean);
+      const ids =
+        activeCommands
+          .map(
+            (command) =>
+              command.id
+          )
+          .filter(Boolean);
 
-      const { error } = await supabase
-        .from("device_commands")
-        .update({
-          command_status: "failed",
-          result_message:
-            "Manually reset from web because the command stayed pending/running.",
-          executed_at: new Date().toISOString(),
-        })
-        .in("id", ids);
+      const { error } =
+        await supabase
+          .from(
+            "device_commands"
+          )
+          .update({
+            command_status:
+              "failed",
+
+            result_message:
+              "Manually reset from web because the command stayed pending/running.",
+
+            executed_at:
+              new Date().toISOString(),
+          })
+          .in(
+            "id",
+            ids
+          );
 
       if (error) {
-        throw new Error(error.message);
+        throw new Error(
+          error.message
+        );
       }
 
-      setCommandMessage("Stuck actuator command reset. You can try again now.");
-      setCommandWaitSeconds(0);
-      await loadTankDetails(true);
+      setCommandMessage(
+        "The stuck command was reset. You can try again."
+      );
+
+      setCommandWaitSeconds(
+        0
+      );
+
+      await loadTankDetails(
+        true
+      );
     } catch (error) {
-      setCommandMessage(error.message || "Failed to reset stuck command.");
+      setCommandMessage(
+        error.message ||
+          "Could not reset the command."
+      );
     } finally {
-      setIsSendingCommand(false);
+      setIsSendingCommand(
+        false
+      );
     }
   }
 
   async function resetTodayFeedLogForTesting() {
-    if (!tank || !actuatorDevice?.device_uid) {
-      setCommandMessage("No tank or actuator selected.");
+    if (
+      !tank ||
+      !actuatorDevice?.device_uid
+    ) {
+      setCommandMessage(
+        "No tank or actuator is selected."
+      );
       return;
     }
 
-    const confirmReset = window.confirm(
-      "This is only for testing. It will reset today's successful FEED_ONCE log so you can test the feeder again. Continue?"
-    );
+    const confirmReset =
+      window.confirm(
+        "Testing only: reset today's successful feeding record so the feeder can be tested again?"
+      );
 
-    if (!confirmReset) return;
+    if (!confirmReset) {
+      return;
+    }
 
     try {
-      setIsSendingCommand(true);
+      setIsSendingCommand(
+        true
+      );
 
-      const commandTankId = getPrimaryTankId(tank, tankId);
-      const { startIso, endIso } = getTodayRangeForSupabase();
+      const commandTankId =
+        getPrimaryTankId(
+          tank,
+          tankId
+        );
 
-      const { error } = await supabase
-        .from("device_commands")
-        .update({
-          command_status: "failed",
-          result_message:
-            "Successful feed log reset from web for feeder testing.",
-          executed_at: new Date().toISOString(),
-        })
-        .eq("tank_id", commandTankId)
-        .eq("device_uid", actuatorDevice.device_uid)
-        .eq("command_type", "FEED_ONCE")
-        .eq("command_status", "done")
-        .gte("created_at", startIso)
-        .lt("created_at", endIso);
+      const {
+        startIso,
+        endIso,
+      } =
+        getTodayRangeForSupabase();
+
+      const { error } =
+        await supabase
+          .from(
+            "device_commands"
+          )
+          .update({
+            command_status:
+              "failed",
+
+            result_message:
+              "Successful feed log reset from web for feeder testing.",
+
+            executed_at:
+              new Date().toISOString(),
+          })
+          .eq(
+            "tank_id",
+            commandTankId
+          )
+          .eq(
+            "device_uid",
+            actuatorDevice.device_uid
+          )
+          .eq(
+            "command_type",
+            "FEED_ONCE"
+          )
+          .eq(
+            "command_status",
+            "done"
+          )
+          .gte(
+            "created_at",
+            startIso
+          )
+          .lt(
+            "created_at",
+            endIso
+          );
 
       if (error) {
-        throw new Error(error.message);
+        throw new Error(
+          error.message
+        );
       }
 
-      setCommandMessage("Today feed test log reset. You can test Feed Once again.");
-      await loadTankDetails(true);
+      setCommandMessage(
+        "Today's feed test record was reset."
+      );
+
+      await loadTankDetails(
+        true
+      );
     } catch (error) {
-      setCommandMessage(error.message || "Failed to reset today feed log.");
+      setCommandMessage(
+        error.message ||
+          "Could not reset today's feed record."
+      );
     } finally {
-      setIsSendingCommand(false);
+      setIsSendingCommand(
+        false
+      );
     }
   }
 
-  async function sendDeviceCommand(commandType, durationMs = 0) {
+  /* =======================================================
+     SEND COMMAND
+  ======================================================= */
+
+  async function sendDeviceCommand(
+    commandType,
+    durationMs = 0
+  ) {
     setCommandMessage("");
 
-    if (!isSupabaseConfigured || !supabase) {
-      setCommandMessage("Supabase is not configured.");
+    if (
+      !isSupabaseConfigured ||
+      !supabase
+    ) {
+      setCommandMessage(
+        "The system is not connected to Supabase."
+      );
       return;
     }
 
     if (!tank) {
-      setCommandMessage("No selected tank.");
-      return;
-    }
-
-    if (!actuatorDevice?.device_uid) {
       setCommandMessage(
-        "No connected actuator hub found. Pair the actuator ESP32 to this tank in the mobile app first."
+        "No tank is selected."
       );
-      return;
-    }
-
-    if (!actuatorState.isConnected && commandType !== "STOP_ALL") {
-      setCommandMessage(
-        "Warning: actuator is stale/offline, but the command will still be queued. If it stays pending, check ESP32 power or hotspot."
-      );
-    }
-
-    if (hasActiveCommand && commandType !== "STOP_ALL") {
-      setCommandMessage(
-        "There is already a pending/running actuator command. Wait for it to finish or reset it if it is stuck."
-      );
-      return;
-    }
-
-    if (isPumpCommand(commandType) && shouldBlockPumpCommands) {
-      setCommandMessage(waterSafetyState.message);
       return;
     }
 
     if (
-      commandType !== "STOP_ALL" &&
-      isActionCommand(commandType) &&
-      shouldWaitForSensorRefresh
+      !actuatorDevice?.device_uid
     ) {
       setCommandMessage(
-        `Please wait ${actionWaitText} before sending another command, or wait until a new sensor reading is synced after the last ${latestCompletedActionLabel}.`
+        "No actuator is connected to this tank. Connect the actuator first."
       );
       return;
     }
 
-    if (commandType === "FEED_ONCE" && hasFedToday) {
-      const continueFeed = window.confirm(
-        "This tank already has a successful feeding log today. Extra feeding may leave uneaten food and increase ammonia buildup. Do you still want to continue feeding?"
+    if (
+      hasActiveCommand &&
+      commandType !==
+        "STOP_ALL"
+    ) {
+      setCommandMessage(
+        "Another action is still running. Please wait for it to finish."
+      );
+      return;
+    }
+
+    if (
+      isPumpCommand(
+        commandType
+      ) &&
+      shouldBlockPumpCommands
+    ) {
+      setCommandMessage(
+        waterSafetyState.message
+      );
+      return;
+    }
+
+    if (
+      commandType !==
+        "STOP_ALL" &&
+      isActionCommand(
+        commandType
+      ) &&
+      shouldWaitForSensorRefresh
+    ) {
+      setCommandMessage(
+        `Please wait ${actionWaitText} before another action, or wait for a fresh sensor reading after ${latestCompletedActionLabel}.`
       );
 
-      if (!continueFeed) {
-        setCommandMessage("Feeding cancelled. Tank already has a feed log today.");
+      return;
+    }
+
+    if (
+      commandType ===
+        "FEED_ONCE" &&
+      hasFedToday
+    ) {
+      const continueFeed =
+        window.confirm(
+          "This tank was already fed today. Extra feeding can leave uneaten food and increase ammonia. Feed again anyway?"
+        );
+
+      if (
+        !continueFeed
+      ) {
+        setCommandMessage(
+          "Feeding cancelled."
+        );
+
         return;
       }
     }
 
-    const commandTankId = getPrimaryTankId(tank, tankId);
-    const commandUserId =
-      actuatorDevice?.user_id || getTankOwnerId(tank) || currentUser?.id || "";
+    const commandTankId =
+      getPrimaryTankId(
+        tank,
+        tankId
+      );
 
-    if (!commandTankId || !commandUserId) {
-      setCommandMessage("Missing tank ID or user ID.");
+    const commandUserId =
+      actuatorDevice?.user_id ||
+      getTankOwnerId(tank) ||
+      currentUser?.id ||
+      "";
+
+    if (
+      !commandTankId ||
+      !commandUserId
+    ) {
+      setCommandMessage(
+        "The tank or user information is incomplete."
+      );
       return;
     }
 
@@ -1399,44 +2806,103 @@ export default function TankDetailsPage() {
     };
 
     try {
-      setIsSendingCommand(true);
+      setIsSendingCommand(
+        true
+      );
 
       const payload = {
-        user_id: commandUserId,
-        tank_id: commandTankId,
-        device_uid: actuatorDevice.device_uid,
-        command_type: commandType,
-        command_value: commandValueMap[commandType] || "manual",
-        duration_ms: durationMs || 0,
-        command_status: "pending",
-        result_message: "Command queued from web dashboard.",
+        user_id:
+          commandUserId,
+
+        tank_id:
+          commandTankId,
+
+        device_uid:
+          actuatorDevice.device_uid,
+
+        command_type:
+          commandType,
+
+        command_value:
+          commandValueMap[
+            commandType
+          ] || "manual",
+
+        duration_ms:
+          durationMs || 0,
+
+        command_status:
+          "pending",
+
+        result_message:
+          "Command queued from web dashboard.",
       };
 
-      const { error } = await supabase.from("device_commands").insert(payload);
+      const { error } =
+        await supabase
+          .from(
+            "device_commands"
+          )
+          .insert(payload);
 
       if (error) {
-        throw new Error(error.message);
+        throw new Error(
+          error.message
+        );
       }
 
-      const label = getCommandLabel(commandType);
+      const label =
+        getCommandLabel(
+          commandType
+        );
 
-      setCommandMessage(`${label} command queued. Waiting for ESP32 feedback...`);
-      setCommandWaitSeconds(0);
-      setActiveTankTab("controls");
-      await loadTankDetails(true);
+      setCommandMessage(
+        `${label} request sent. Waiting for the device...`
+      );
+
+      setCommandWaitSeconds(
+        0
+      );
+
+      setActiveTankTab(
+        "controls"
+      );
+
+      await loadTankDetails(
+        true
+      );
     } catch (error) {
-      setCommandMessage(error.message || "Failed to send device command.");
+      setCommandMessage(
+        error.message ||
+          "Could not send the action."
+      );
     } finally {
-      setIsSendingCommand(false);
+      setIsSendingCommand(
+        false
+      );
     }
   }
+
+  /* =======================================================
+     LOADING / NOT FOUND
+  ======================================================= */
 
   if (isLoading) {
     return (
       <section className="modern-tank-loading">
-        <Loader2 className="spin-icon" size={34} />
-        <h3>Loading tank details...</h3>
-        <p>CrayThrive is preparing this tank&apos;s readings and reports.</p>
+        <Loader2
+          className="spin-icon"
+          size={34}
+        />
+
+        <h3>
+          Loading tank...
+        </h3>
+
+        <p>
+          Getting the latest
+          information for this tank.
+        </p>
       </section>
     );
   }
@@ -1445,255 +2911,593 @@ export default function TankDetailsPage() {
     return (
       <section className="modern-tank-detail-empty-page">
         <Database size={34} />
-        <h3>Tank not found</h3>
+
+        <h3>
+          Tank not found
+        </h3>
+
         <p>
-          This tank could not be found or your account does not have access to it.
+          This tank could not
+          be found or your account
+          does not have access to it.
         </p>
 
-        <Link to="/admin/tanks" className="modern-tank-link">
-          <ArrowLeft size={18} />
+        <Link
+          to="/admin/tanks"
+          className="modern-tank-link"
+        >
+          <ArrowLeft
+            size={18}
+          />
+
           Back to Tanks
         </Link>
       </section>
     );
   }
 
+  /* =======================================================
+     UI
+  ======================================================= */
+
   return (
     <div className="modern-tank-detail-page">
+
+      {/* ===============================================
+          HERO
+      ================================================ */}
+
       <section className="modern-tank-detail-hero">
+
         <div>
-          <Link to="/admin/tanks" className="modern-back-link">
-            <ArrowLeft size={18} />
+          <Link
+            to="/admin/tanks"
+            className="modern-back-link"
+          >
+            <ArrowLeft
+              size={18}
+            />
+
             Back to Tanks
           </Link>
 
-          <p className="dashboard-eyebrow">Tank Details</p>
-          <h2>{getTankName(tank)}</h2>
+          <p className="dashboard-eyebrow">
+            Tank Details
+          </p>
+
+          <h2>
+            {getTankName(tank)}
+          </h2>
+
           <p>
-            Detailed view for latest sensor condition, actuator controls,
-            command feedback, user alerts, ammonia records, and technical logs.
+            Check the tank condition,
+            control feeding and water,
+            and review recent activity.
           </p>
 
           <div className="modern-tank-detail-actions">
+
             <button
               type="button"
               className="dashboard-primary-button"
-              onClick={() => loadTankDetails(true)}
+              onClick={() =>
+                loadTankDetails(
+                  true
+                )
+              }
             >
-              <RefreshCw size={18} />
-              Refresh Details
+              <RefreshCw
+                size={18}
+              />
+
+              Refresh
             </button>
 
             <span>
-              Source: {sources.tanks || "tanks"} /{" "}
-              {sources.readings || "sensor_readings"} • {scopeLabel}
+              Last sensor update:{" "}
+              <strong>
+                {formatReadingTime(
+                  latestReading?.date
+                )}
+              </strong>
             </span>
           </div>
         </div>
 
         <div className="modern-tank-detail-hero-card">
-          <Droplets size={38} />
-          <strong className={tankStatus}>{tankStatus}</strong>
-          <span>Current tank status</span>
+
+          {tankStatus ===
+          "normal" ? (
+            <CheckCircle2
+              size={36}
+            />
+          ) : (
+            <AlertTriangle
+              size={36}
+            />
+          )}
+
+          <strong
+            className={
+              tankStatus
+            }
+          >
+            {getFriendlyTankStatus(
+              tankStatus
+            )}
+          </strong>
+
+          <span>
+            Current tank condition
+          </span>
         </div>
       </section>
 
+      {/* ===============================================
+          SIMPLE INFORMATION
+      ================================================ */}
+
       <section className="modern-tank-detail-info-grid">
-        <article className="modern-tank-detail-info-card">
-          <UserRound size={22} />
-          <strong>{owner ? getProfileName(owner) : "Unknown owner"}</strong>
-          <span>{owner?.email || tank?.email || "No owner email"}</span>
-        </article>
 
         <article className="modern-tank-detail-info-card">
-          <Database size={22} />
-          <strong>{getTankType(tank)}</strong>
-          <span>Tank type</span>
-        </article>
 
-        <article className="modern-tank-detail-info-card">
-          <Camera size={22} />
+          <UserRound
+            size={22}
+          />
+
           <strong>
-            {actuatorDevice?.device_uid ||
-              tank?.actuator_device_uid ||
-              tank?.device_uid ||
-              tank?.iot_device_id ||
-              "N/A"}
+            {owner
+              ? getProfileName(
+                  owner
+                )
+              : "Unknown owner"}
           </strong>
-          <span>Actuator / IoT reference</span>
+
+          <span>
+            Tank owner
+          </span>
         </article>
 
         <article className="modern-tank-detail-info-card">
-          <Activity size={22} />
-          <strong>{formatReadingTime(latestReading?.date)}</strong>
-          <span>Latest sensor sync</span>
-        </article>
 
-        <article className="modern-tank-detail-info-card">
-          <ActuatorIcon size={22} />
+          <Droplets
+            size={22}
+          />
+
           <strong>
-            <b className={`modern-tank-status ${actuatorState.severity}`}>
+            {formatFriendlyText(
+              getTankType(
+                tank
+              )
+            )}
+          </strong>
+
+          <span>
+            Tank type
+          </span>
+        </article>
+
+        <article className="modern-tank-detail-info-card">
+
+          <Activity
+            size={22}
+          />
+
+          <strong>
+            {formatReadingTime(
+              latestReading?.date
+            )}
+          </strong>
+
+          <span>
+            Latest water check
+          </span>
+        </article>
+
+        <article className="modern-tank-detail-info-card">
+
+          <ActuatorIcon
+            size={22}
+          />
+
+          <strong>
+            <b
+              className={`modern-tank-status ${actuatorState.severity}`}
+            >
               {actuatorState.label}
             </b>
           </strong>
-          <span>{actuatorState.detail}</span>
-        </article>
 
-        <article className="modern-tank-detail-info-card">
-          <ShieldCheck size={22} />
-          <strong>{hasActiveCommand ? activeCommands.length : "None"}</strong>
-          <span>Pending / running commands</span>
+          <span>
+            Device connection
+          </span>
         </article>
       </section>
 
+      {/* ===============================================
+          OPTIONAL TECHNICAL INFORMATION
+      ================================================ */}
+
+      <details className="modern-tank-technical-details">
+
+        <summary>
+          More technical information
+        </summary>
+
+        <div className="modern-tank-technical-grid">
+
+          <div>
+            <Camera size={18} />
+
+            <span>
+              <small>
+                Device Reference
+              </small>
+
+              <strong>
+                {actuatorDevice
+                  ?.device_uid ||
+                  tank
+                    ?.actuator_device_uid ||
+                  tank
+                    ?.device_uid ||
+                  tank
+                    ?.iot_device_id ||
+                  "Not connected"}
+              </strong>
+            </span>
+          </div>
+
+          <div>
+            <ShieldCheck
+              size={18}
+            />
+
+            <span>
+              <small>
+                Active Commands
+              </small>
+
+              <strong>
+                {hasActiveCommand
+                  ? activeCommands.length
+                  : "None"}
+              </strong>
+            </span>
+          </div>
+
+          <div>
+            <Wifi size={18} />
+
+            <span>
+              <small>
+                Connection Details
+              </small>
+
+              <strong>
+                {
+                  actuatorState.detail
+                }
+              </strong>
+            </span>
+          </div>
+        </div>
+      </details>
+
+      {/* ===============================================
+          TABS
+      ================================================ */}
+
       <div className="tank-tabs">
+
         <button
           type="button"
-          className={activeTankTab === "overview" ? "active" : ""}
-          onClick={() => setActiveTankTab("overview")}
+          className={
+            activeTankTab ===
+            "overview"
+              ? "active"
+              : ""
+          }
+          onClick={() =>
+            setActiveTankTab(
+              "overview"
+            )
+          }
         >
           Overview
         </button>
 
         <button
           type="button"
-          className={activeTankTab === "controls" ? "active" : ""}
-          onClick={() => setActiveTankTab("controls")}
+          className={
+            activeTankTab ===
+            "controls"
+              ? "active"
+              : ""
+          }
+          onClick={() =>
+            setActiveTankTab(
+              "controls"
+            )
+          }
         >
           Controls
         </button>
 
         <button
           type="button"
-          className={activeTankTab === "readings" ? "active" : ""}
-          onClick={() => setActiveTankTab("readings")}
+          className={
+            activeTankTab ===
+            "readings"
+              ? "active"
+              : ""
+          }
+          onClick={() =>
+            setActiveTankTab(
+              "readings"
+            )
+          }
         >
           Readings
         </button>
 
         <button
           type="button"
-          className={activeTankTab === "alerts" ? "active" : ""}
-          onClick={() => setActiveTankTab("alerts")}
+          className={
+            activeTankTab ===
+            "alerts"
+              ? "active"
+              : ""
+          }
+          onClick={() =>
+            setActiveTankTab(
+              "alerts"
+            )
+          }
         >
           Alerts
         </button>
 
         <button
           type="button"
-          className={activeTankTab === "logs" ? "active" : ""}
-          onClick={() => setActiveTankTab("logs")}
+          className={
+            activeTankTab ===
+            "logs"
+              ? "active"
+              : ""
+          }
+          onClick={() =>
+            setActiveTankTab(
+              "logs"
+            )
+          }
         >
-          Logs
+          Activity
         </button>
       </div>
 
-      {activeTankTab === "overview" && (
+      {/* ===============================================
+          OVERVIEW TAB
+      ================================================ */}
+
+      {activeTankTab ===
+        "overview" && (
         <>
+
           <section className="modern-tank-detail-panel">
+
             <div className="modern-panel-heading">
+
               <div>
-                <p className="dashboard-eyebrow">Overview</p>
-                <h3>Current water condition</h3>
+                <p className="dashboard-eyebrow">
+                  Current Status
+                </p>
+
+                <h3>
+                  Water condition
+                </h3>
               </div>
-              <Gauge size={22} />
+
+              <Gauge
+                size={22}
+              />
             </div>
 
             {latestReading ? (
               <div className="modern-tank-detail-metric-grid">
+
                 <DetailMetricCard
-                  icon={Thermometer}
+                  icon={
+                    Thermometer
+                  }
                   label="Temperature"
-                  value={latestReading.normalized.temperatureLabel}
-                  status={latestReading.normalized.temperatureStatus}
+                  value={
+                    latestReading
+                      .normalized
+                      .temperatureLabel
+                  }
+                  status={
+                    latestReading
+                      .normalized
+                      .temperatureStatus
+                  }
                 />
 
                 <DetailMetricCard
-                  icon={Droplets}
-                  label="pH Status"
-                  value={latestReading.normalized.phStatus}
-                  status={latestReading.normalized.phStatus}
+                  icon={
+                    Droplets
+                  }
+                  label="pH Level"
+                  value={
+                    latestReading
+                      .normalized
+                      .phStatus
+                  }
+                  status={
+                    latestReading
+                      .normalized
+                      .phStatus
+                  }
                 />
 
                 <DetailMetricCard
-                  icon={Waves}
-                  label="Turbidity Status"
-                  value={latestReading.normalized.turbidityStatus}
-                  status={latestReading.normalized.turbidityStatus}
+                  icon={
+                    Waves
+                  }
+                  label="Water Clarity"
+                  value={
+                    latestReading
+                      .normalized
+                      .turbidityStatus
+                  }
+                  status={
+                    latestReading
+                      .normalized
+                      .turbidityStatus
+                  }
                 />
 
                 <DetailMetricCard
-                  icon={Gauge}
-                  label="Water Depth"
-                  value={latestReading.normalized.waterLabel}
-                  status={latestReading.normalized.waterStatus}
+                  icon={
+                    Gauge
+                  }
+                  label="Water Level"
+                  value={
+                    latestReading
+                      .normalized
+                      .waterLabel
+                  }
+                  status={
+                    latestReading
+                      .normalized
+                      .waterStatus
+                  }
                 />
               </div>
             ) : (
               <EmptyBlock
                 icon={Database}
-                title="No sensor reading yet"
-                text="No matching reading was found for this tank."
+                title="No water reading yet"
+                text="This tank has not sent a recent sensor reading."
               />
             )}
           </section>
 
+          {/* LATEST ALERT */}
+
           {latestAlert && (
             <section className="modern-tank-detail-panel">
+
               <div className="modern-panel-heading">
+
                 <div>
-                  <p className="dashboard-eyebrow">Latest Alert</p>
-                  <h3>User notification</h3>
+                  <p className="dashboard-eyebrow">
+                    Latest Alert
+                  </p>
+
+                  <h3>
+                    Something may need your attention
+                  </h3>
                 </div>
-                <Bell size={22} />
+
+                <Bell
+                  size={22}
+                />
               </div>
 
               <div className="command-status-card">
+
                 <div>
-                  <strong>{getSimpleAlertTitle(latestAlert)}</strong>
-                  <p>{getSimpleAlertMessage(latestAlert)}</p>
+                  <strong>
+                    {getSimpleAlertTitle(
+                      latestAlert
+                    )}
+                  </strong>
+
+                  <p>
+                    {getSimpleAlertMessage(
+                      latestAlert
+                    )}
+                  </p>
                 </div>
 
-                <button type="button" onClick={() => setActiveTankTab("alerts")}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setActiveTankTab(
+                      "alerts"
+                    )
+                  }
+                >
                   View Alerts
                 </button>
               </div>
             </section>
           )}
 
+          {/* LATEST ACTION */}
+
           {latestCommandLog && (
             <section className="modern-tank-detail-panel">
+
               <div className="modern-panel-heading">
+
                 <div>
-                  <p className="dashboard-eyebrow">Latest Command</p>
-                  <h3>ESP32 feedback</h3>
+                  <p className="dashboard-eyebrow">
+                    Latest Action
+                  </p>
+
+                  <h3>
+                    Recent tank control
+                  </h3>
                 </div>
-                <Settings size={22} />
+
+                <Settings
+                  size={22}
+                />
               </div>
 
               <div className="command-status-card">
+
                 <div>
                   <strong>
                     {getCommandLabel(
-                      latestCommandLog?.command_type || latestCommandLog?.action
+                      latestCommandLog
+                        ?.command_type ||
+                        latestCommandLog
+                          ?.action
                     )}
                   </strong>
+
                   <p>
                     Status:{" "}
+
                     <b
-                      className={`modern-tank-status ${getStatusSeverity([
-                        latestCommandLog?.command_status ||
-                          latestCommandLog?.status ||
-                          latestCommandLog?.result ||
-                          "",
-                      ])}`}
+                      className={`modern-tank-status ${getStatusSeverity(
+                        [
+                          latestCommandLog
+                            ?.command_status ||
+                            latestCommandLog
+                              ?.status ||
+                            latestCommandLog
+                              ?.result ||
+                            "",
+                        ]
+                      )}`}
                     >
-                      {latestCommandLog?.command_status ||
-                        latestCommandLog?.status ||
-                        latestCommandLog?.result ||
-                        "Logged"}
+                      {formatFriendlyText(
+                        latestCommandLog
+                          ?.command_status ||
+                          latestCommandLog
+                            ?.status ||
+                          latestCommandLog
+                            ?.result ||
+                          "Logged"
+                      )}
                     </b>
-                    {latestCommandLog?.result_message
+
+                    {latestCommandLog
+                      ?.result_message
                       ? ` • ${getShortResultMessage(
                           latestCommandLog.result_message
                         )}`
@@ -1701,8 +3505,15 @@ export default function TankDetailsPage() {
                   </p>
                 </div>
 
-                <button type="button" onClick={() => setActiveTankTab("logs")}>
-                  View Logs
+                <button
+                  type="button"
+                  onClick={() =>
+                    setActiveTankTab(
+                      "logs"
+                    )
+                  }
+                >
+                  View Activity
                 </button>
               </div>
             </section>
@@ -1710,180 +3521,278 @@ export default function TankDetailsPage() {
         </>
       )}
 
-      {activeTankTab === "controls" && (
+      {/* ===============================================
+          CONTROLS TAB
+      ================================================ */}
+
+      {activeTankTab ===
+        "controls" && (
         <section className="modern-tank-detail-panel">
+
           <div className="modern-panel-heading">
+
             <div>
-              <p className="dashboard-eyebrow">Device Controls</p>
-              <h3>Feeder and pump commands</h3>
+              <p className="dashboard-eyebrow">
+                Tank Controls
+              </p>
+
+              <h3>
+                Feeding and water
+              </h3>
             </div>
-            <Settings size={22} />
+
+            <Settings
+              size={22}
+            />
           </div>
 
+          {/* CONNECTION */}
+
           <div className="modern-device-command-note">
-            <TimerReset size={17} />
+
+            <ActuatorIcon
+              size={17}
+            />
+
             <span>
-              Actuator:{" "}
-              <b className={`modern-tank-status ${actuatorState.severity}`}>
+              Device:{" "}
+
+              <b
+                className={`modern-tank-status ${actuatorState.severity}`}
+              >
                 {actuatorState.label}
-              </b>{" "}
-              • ESP32 still checks rule-based safety before running any pump or
-              feeder command.
+              </b>
             </span>
           </div>
 
+          {/* PUMP TIME */}
+
           <div className="modern-device-command-note">
-            <Gauge size={17} />
+
+            <TimerReset
+              size={17}
+            />
+
             <span>
-              Pump duration:
+              Pump run time:
+
               <input
                 type="number"
                 min="1"
                 max="15"
-                value={durationSeconds}
-                onChange={(event) => setDurationSeconds(event.target.value)}
+                value={
+                  durationSeconds
+                }
+                onChange={(
+                  event
+                ) =>
+                  setDurationSeconds(
+                    event
+                      .target
+                      .value
+                  )
+                }
               />
-              seconds. Max safety limit is 15 seconds.
+
+              seconds
             </span>
           </div>
 
+          {/* ACTIVE COMMAND */}
+
           {hasActiveCommand && (
             <div className="command-status-card waiting">
+
               <div>
-                <strong>Waiting for ESP32</strong>
+                <strong>
+                  Action in progress
+                </strong>
+
                 <p>
-                  {getCommandLabel(activeCommand?.command_type)} is{" "}
-                  {activeCommand?.command_status || "pending"}. Waiting{" "}
-                  {commandWaitSeconds}s...
-                </p>
-              </div>
-
-              <button type="button" onClick={() => loadTankDetails(true)}>
-                Refresh
-              </button>
-            </div>
-          )}
-
-          {shouldWaitForSensorRefresh && !hasActiveCommand && (
-            <div className="command-status-card sensor-wait">
-              <div>
-                <strong>Waiting for updated sensor reading</strong>
-                <p>
-                  Last action: {latestCompletedActionLabel}. Wait {actionWaitText}{" "}
-                  more or wait for a new sensor reading before sending another
-                  Feed, Drain, or Refill command.
-                </p>
-                <small>
-                  Latest sensor sync: {formatReadingTime(latestReading?.date)}
-                </small>
-              </div>
-
-              <button type="button" onClick={() => loadTankDetails(true)}>
-                Refresh
-              </button>
-            </div>
-          )}
-
-          {shouldBlockPumpCommands &&
-            !hasActiveCommand &&
-            !shouldWaitForSensorRefresh && (
-              <div className="command-status-card sensor-wait">
-                <div>
-                  <strong>{waterSafetyState.title}</strong>
-                  <p>{waterSafetyState.message}</p>
-                  <small>
-                    Latest sensor sync: {formatReadingTime(latestReading?.date)}
-                  </small>
-                </div>
-
-                <button type="button" onClick={() => loadTankDetails(true)}>
-                  Refresh
-                </button>
-              </div>
-            )}
-
-          {isStuckLong && (
-            <div className="command-status-card waiting">
-              <div>
-                <strong>Command may be stuck</strong>
-                <p>
-                  If hotspot or ESP32 power was interrupted, reset the stuck
-                  pending command then send again.
+                  {getCommandLabel(
+                    activeCommand
+                      ?.command_type
+                  )}{" "}
+                  is{" "}
+                  {formatFriendlyText(
+                    activeCommand
+                      ?.command_status ||
+                      "pending"
+                  )}
+                  . Waiting{" "}
+                  {
+                    commandWaitSeconds
+                  }
+                  s...
                 </p>
               </div>
 
               <button
                 type="button"
-                className="danger"
-                onClick={clearStuckActiveCommands}
-                disabled={isSendingCommand}
+                onClick={() =>
+                  loadTankDetails(
+                    true
+                  )
+                }
               >
-                Reset Stuck
+                Refresh
               </button>
             </div>
           )}
 
+          {/* SENSOR WAIT */}
+
+          {shouldWaitForSensorRefresh &&
+            !hasActiveCommand && (
+              <div className="command-status-card sensor-wait">
+
+                <div>
+                  <strong>
+                    Waiting for updated water reading
+                  </strong>
+
+                  <p>
+                    Please wait{" "}
+                    {
+                      actionWaitText
+                    }{" "}
+                    before another action.
+                  </p>
+
+                  <small>
+                    Latest update:{" "}
+                    {formatReadingTime(
+                      latestReading
+                        ?.date
+                    )}
+                  </small>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    loadTankDetails(
+                      true
+                    )
+                  }
+                >
+                  Refresh
+                </button>
+              </div>
+            )}
+
+          {/* WATER SAFETY */}
+
+          {shouldBlockPumpCommands &&
+            !hasActiveCommand &&
+            !shouldWaitForSensorRefresh && (
+              <div className="command-status-card sensor-wait">
+
+                <div>
+                  <strong>
+                    {
+                      waterSafetyState.title
+                    }
+                  </strong>
+
+                  <p>
+                    {
+                      waterSafetyState.message
+                    }
+                  </p>
+
+                  <small>
+                    Latest update:{" "}
+                    {formatReadingTime(
+                      latestReading
+                        ?.date
+                    )}
+                  </small>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    loadTankDetails(
+                      true
+                    )
+                  }
+                >
+                  Refresh
+                </button>
+              </div>
+            )}
+
+          {/* STUCK */}
+
+          {isStuckLong && (
+            <div className="command-status-card waiting">
+
+              <div>
+                <strong>
+                  The action is taking longer than expected
+                </strong>
+
+                <p>
+                  Check the actuator connection. You can reset the action from Advanced / Troubleshooting below.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* FED TODAY */}
+
           {hasFedToday && (
             <div className="modern-device-command-message warning">
-              <AlertTriangle size={18} />
+
+              <AlertTriangle
+                size={18}
+              />
+
               <span>
-                Already fed today
-                {latestFeedToday?.created_at
-                  ? ` at ${formatDate(latestFeedToday.created_at)}`
+                This tank was already
+                fed today
+                {latestFeedToday
+                  ?.created_at
+                  ? ` at ${formatDate(
+                      latestFeedToday.created_at
+                    )}`
                   : ""}
-                . Extra feeding will ask for confirmation.
+                .
               </span>
             </div>
           )}
 
-          {latestCommandLog && (
-            <div className="modern-device-command-message">
-              <CheckCircle2 size={18} />
-              <span>
-                Latest:{" "}
-                <b>
-                  {getCommandLabel(
-                    latestCommandLog?.command_type || latestCommandLog?.action
-                  )}
-                </b>{" "}
-                /{" "}
-                <b
-                  className={`modern-tank-status ${getStatusSeverity([
-                    latestCommandLog?.command_status ||
-                      latestCommandLog?.status ||
-                      latestCommandLog?.result ||
-                      "",
-                  ])}`}
-                >
-                  {latestCommandLog?.command_status ||
-                    latestCommandLog?.status ||
-                    latestCommandLog?.result ||
-                    "Logged"}
-                </b>
-                {latestCommandLog?.result_message
-                  ? ` • ${getShortResultMessage(latestCommandLog.result_message)}`
-                  : ""}
-              </span>
-            </div>
-          )}
+          {/* ACTION BUTTONS */}
 
           <div className="modern-device-command-grid">
+
             <button
               type="button"
               disabled={
                 isSendingCommand ||
-                !actuatorDevice?.device_uid ||
+                !actuatorDevice
+                  ?.device_uid ||
                 hasActiveCommand ||
                 shouldWaitForSensorRefresh
               }
-              onClick={() => sendDeviceCommand("FEED_ONCE", 500)}
+              onClick={() =>
+                sendDeviceCommand(
+                  "FEED_ONCE",
+                  500
+                )
+              }
             >
-              <Play size={20} />
-              <strong>Feed Once</strong>
+              <Play
+                size={20}
+              />
+
+              <strong>
+                Feed Now
+              </strong>
+
               <span>
-                {hasFedToday
-                  ? "Already fed today. Click to confirm extra feeding."
-                  : "Servo feeder one safe cycle"}
+                Give one feeding cycle
               </span>
             </button>
 
@@ -1891,142 +3800,330 @@ export default function TankDetailsPage() {
               type="button"
               disabled={
                 isSendingCommand ||
-                !actuatorDevice?.device_uid ||
+                !actuatorDevice
+                  ?.device_uid ||
                 hasActiveCommand ||
                 shouldWaitForSensorRefresh ||
                 shouldBlockPumpCommands
               }
-              onClick={() => sendDeviceCommand("REFILL_FOR", getCommandDurationMs())}
+              onClick={() =>
+                sendDeviceCommand(
+                  "REFILL_FOR",
+                  getCommandDurationMs()
+                )
+              }
             >
-              <Droplets size={20} />
-              <strong>Refill Pump</strong>
-              <span>Allowed only when latest water level is low</span>
+              <Droplets
+                size={20}
+              />
+
+              <strong>
+                Add Water
+              </strong>
+
+              <span>
+                Refill the tank safely
+              </span>
             </button>
 
             <button
               type="button"
               disabled={
                 isSendingCommand ||
-                !actuatorDevice?.device_uid ||
+                !actuatorDevice
+                  ?.device_uid ||
                 hasActiveCommand ||
                 shouldWaitForSensorRefresh ||
                 shouldBlockPumpCommands
               }
-              onClick={() => sendDeviceCommand("DRAIN_FOR", getCommandDurationMs())}
+              onClick={() =>
+                sendDeviceCommand(
+                  "DRAIN_FOR",
+                  getCommandDurationMs()
+                )
+              }
             >
-              <Waves size={20} />
-              <strong>Drain Pump</strong>
-              <span>Allowed only when water level is safe or high</span>
+              <Waves
+                size={20}
+              />
+
+              <strong>
+                Drain Water
+              </strong>
+
+              <span>
+                Remove water safely
+              </span>
             </button>
 
             <button
               type="button"
-              disabled={isSendingCommand || !actuatorDevice?.device_uid}
-              onClick={() => sendDeviceCommand("STOP_ALL", 0)}
+              disabled={
+                isSendingCommand ||
+                !actuatorDevice
+                  ?.device_uid
+              }
+              onClick={() =>
+                sendDeviceCommand(
+                  "STOP_ALL",
+                  0
+                )
+              }
               className="danger"
             >
-              <Power size={20} />
-              <strong>Stop All</strong>
-              <span>Emergency stop command for pumps and feeder</span>
+              <Power
+                size={20}
+              />
+
+              <strong>
+                Emergency Stop
+              </strong>
+
+              <span>
+                Stop pumps and feeder
+              </span>
             </button>
           </div>
 
-          <div className="modern-device-command-actions">
-            <button
-              type="button"
-              disabled={isSendingCommand || !hasActiveCommand}
-              onClick={clearStuckActiveCommands}
-            >
-              Reset Stuck Command
-            </button>
-
-            <button
-              type="button"
-              disabled={isSendingCommand || !hasFedToday}
-              onClick={resetTodayFeedLogForTesting}
-              className="warning"
-            >
-              Reset Feed Test Today
-            </button>
-          </div>
+          {/* MESSAGE */}
 
           {commandMessage && (
             <div className="modern-device-command-message">
-              <CheckCircle2 size={18} />
-              <span>{commandMessage}</span>
+
+              <CheckCircle2
+                size={18}
+              />
+
+              <span>
+                {
+                  commandMessage
+                }
+              </span>
             </div>
           )}
+
+          {/* ADVANCED */}
+
+          <details className="modern-tank-advanced-controls">
+
+            <summary>
+              Advanced / Troubleshooting
+            </summary>
+
+            <p>
+              These options are mainly
+              for testing or recovering
+              from a device problem.
+            </p>
+
+            <div className="modern-device-command-actions">
+
+              <button
+                type="button"
+                disabled={
+                  isSendingCommand ||
+                  !hasActiveCommand
+                }
+                onClick={
+                  clearStuckActiveCommands
+                }
+              >
+                Reset Stuck Action
+              </button>
+
+              <button
+                type="button"
+                disabled={
+                  isSendingCommand ||
+                  !hasFedToday
+                }
+                onClick={
+                  resetTodayFeedLogForTesting
+                }
+                className="warning"
+              >
+                Reset Feed Test Today
+              </button>
+            </div>
+          </details>
         </section>
       )}
 
-      {activeTankTab === "readings" && (
+      {/* ===============================================
+          READINGS TAB
+      ================================================ */}
+
+      {activeTankTab ===
+        "readings" && (
         <section className="modern-tank-detail-grid">
+
           <article className="modern-tank-detail-panel">
+
             <div className="modern-panel-heading">
+
               <div>
-                <p className="dashboard-eyebrow">Sensor History</p>
-                <h3>Recent readings</h3>
+                <p className="dashboard-eyebrow">
+                  Water History
+                </p>
+
+                <h3>
+                  Recent readings
+                </h3>
               </div>
-              <Database size={22} />
+
+              <Database
+                size={22}
+              />
             </div>
 
-            {enrichedReadings.length === 0 ? (
+            {enrichedReadings.length ===
+            0 ? (
               <EmptyBlock
                 icon={Database}
                 title="No reading history"
-                text="Sensor readings for this tank will appear here."
+                text="Water readings from this tank will appear here."
               />
             ) : (
               <div className="modern-tank-detail-table">
+
                 <div className="modern-tank-detail-table-head">
-                  <span>Date</span>
-                  <span>Temp</span>
-                  <span>pH</span>
-                  <span>Turbidity</span>
-                  <span>Water</span>
-                  <span>Status</span>
+
+                  <span>
+                    Date
+                  </span>
+
+                  <span>
+                    Temp
+                  </span>
+
+                  <span>
+                    pH
+                  </span>
+
+                  <span>
+                    Clarity
+                  </span>
+
+                  <span>
+                    Water
+                  </span>
+
+                  <span>
+                    Status
+                  </span>
                 </div>
 
-                {paginatedReadings.map((item) => (
-                  <div
-                    className="modern-tank-detail-table-row"
-                    key={item.reading?.id || item.index}
-                  >
-                    <span>{formatDate(item.date)}</span>
-                    <span>{item.normalized.temperatureLabel}</span>
-                    <span>{item.normalized.phStatus}</span>
-                    <span>{item.normalized.turbidityStatus}</span>
-                    <span>{item.normalized.waterLabel}</span>
-                    <span>
-                      <b className={`modern-tank-status ${item.status}`}>
-                        {item.status}
-                      </b>
-                    </span>
-                  </div>
-                ))}
+                {paginatedReadings.map(
+                  (item) => (
+                    <div
+                      className="modern-tank-detail-table-row"
+                      key={
+                        item
+                          .reading
+                          ?.id ||
+                        item.index
+                      }
+                    >
+                      <span>
+                        {formatDate(
+                          item.date
+                        )}
+                      </span>
 
-                {enrichedReadings.length > READINGS_PER_PAGE && (
+                      <span>
+                        {
+                          item
+                            .normalized
+                            .temperatureLabel
+                        }
+                      </span>
+
+                      <span>
+                        {formatFriendlyText(
+                          item
+                            .normalized
+                            .phStatus
+                        )}
+                      </span>
+
+                      <span>
+                        {formatFriendlyText(
+                          item
+                            .normalized
+                            .turbidityStatus
+                        )}
+                      </span>
+
+                      <span>
+                        {
+                          item
+                            .normalized
+                            .waterLabel
+                        }
+                      </span>
+
+                      <span>
+                        <b
+                          className={`modern-tank-status ${item.status}`}
+                        >
+                          {getFriendlyTankStatus(
+                            item.status
+                          )}
+                        </b>
+                      </span>
+                    </div>
+                  )
+                )}
+
+                {enrichedReadings.length >
+                  READINGS_PER_PAGE && (
                   <div className="modern-tank-detail-pagination">
+
                     <button
                       type="button"
-                      disabled={currentReadingPage === 1}
+                      disabled={
+                        currentReadingPage ===
+                        1
+                      }
                       onClick={() =>
-                        setReadingsPage((page) => Math.max(1, page - 1))
+                        setReadingsPage(
+                          (page) =>
+                            Math.max(
+                              1,
+                              page -
+                                1
+                            )
+                        )
                       }
                     >
                       Previous
                     </button>
 
                     <span>
-                      Page {currentReadingPage} of {totalReadingPages}
+                      Page{" "}
+                      {
+                        currentReadingPage
+                      }{" "}
+                      of{" "}
+                      {
+                        totalReadingPages
+                      }
                     </span>
 
                     <button
                       type="button"
-                      disabled={currentReadingPage === totalReadingPages}
+                      disabled={
+                        currentReadingPage ===
+                        totalReadingPages
+                      }
                       onClick={() =>
-                        setReadingsPage((page) =>
-                          Math.min(totalReadingPages, page + 1)
+                        setReadingsPage(
+                          (page) =>
+                            Math.min(
+                              totalReadingPages,
+                              page +
+                                1
+                            )
                         )
                       }
                     >
@@ -2038,194 +4135,367 @@ export default function TankDetailsPage() {
             )}
           </article>
 
+          {/* AMMONIA */}
+
           <article className="modern-tank-detail-panel">
+
             <div className="modern-panel-heading">
+
               <div>
-                <p className="dashboard-eyebrow">Ammonia</p>
-                <h3>Ammonia history</h3>
+                <p className="dashboard-eyebrow">
+                  Ammonia
+                </p>
+
+                <h3>
+                  Ammonia checks
+                </h3>
               </div>
-              <AlertTriangle size={22} />
+
+              <AlertTriangle
+                size={22}
+              />
             </div>
 
-            {ammoniaReadings.length === 0 ? (
+            {ammoniaReadings.length ===
+            0 ? (
               <EmptyBlock
-                icon={AlertTriangle}
-                title="No ammonia records"
-                text="No ammonia reading yet. ESP32 actuator will assume 0 ppm / safe until ammonia data exists."
+                icon={
+                  AlertTriangle
+                }
+                title="No ammonia scan yet"
+                text="Ammonia test-strip results scanned using the mobile app will appear here."
               />
             ) : (
               <div className="modern-tank-detail-list">
-                {ammoniaReadings.slice(0, 8).map((item, index) => (
-                  <div
-                    className="modern-tank-detail-list-row"
-                    key={item?.id || index}
-                  >
-                    <div>
-                      <strong>
-                        {getValue(
-                          item,
-                          ["ammonia_status", "status", "result", "level"],
-                          "Ammonia Reading"
-                        )}
-                      </strong>
-                      <span>{formatDate(getRecordDate(item))}</span>
-                    </div>
 
-                    <b>
-                      {getValue(
-                        item,
-                        [
-                          "ammonia_mg_l",
-                          "ammonia_level",
-                          "ammonia_ppm",
-                          "ammonia_value",
-                          "value",
-                          "ppm",
-                        ],
-                        "N/A"
-                      )}
-                    </b>
-                  </div>
-                ))}
+                {ammoniaReadings
+                  .slice(0, 8)
+                  .map(
+                    (
+                      item,
+                      index
+                    ) => (
+                      <div
+                        className="modern-tank-detail-list-row"
+                        key={
+                          item?.id ||
+                          index
+                        }
+                      >
+                        <div>
+                          <strong>
+                            {formatFriendlyText(
+                              getValue(
+                                item,
+                                [
+                                  "ammonia_status",
+                                  "status",
+                                  "result",
+                                  "level",
+                                ],
+                                "Ammonia Reading"
+                              )
+                            )}
+                          </strong>
+
+                          <span>
+                            {formatDate(
+                              getRecordDate(
+                                item
+                              )
+                            )}
+                          </span>
+                        </div>
+
+                        <b>
+                          {getValue(
+                            item,
+                            [
+                              "ammonia_mg_l",
+                              "ammonia_level",
+                              "ammonia_ppm",
+                              "ammonia_value",
+                              "value",
+                              "ppm",
+                            ],
+                            "N/A"
+                          )}
+                        </b>
+                      </div>
+                    )
+                  )}
               </div>
             )}
           </article>
         </section>
       )}
 
-      {activeTankTab === "alerts" && (
+      {/* ===============================================
+          ALERTS TAB
+      ================================================ */}
+
+      {activeTankTab ===
+        "alerts" && (
         <section className="modern-tank-detail-panel">
+
           <div className="modern-panel-heading">
+
             <div>
-              <p className="dashboard-eyebrow">Alerts</p>
-              <h3>User-friendly notifications</h3>
+              <p className="dashboard-eyebrow">
+                Alerts
+              </p>
+
+              <h3>
+                Tank notifications
+              </h3>
             </div>
-            <Bell size={22} />
+
+            <Bell
+              size={22}
+            />
           </div>
 
-          {sortedAlerts.length === 0 ? (
+          {sortedAlerts.length ===
+          0 ? (
             <EmptyBlock
-              icon={CheckCircle2}
+              icon={
+                CheckCircle2
+              }
               title="No alerts"
-              text="Simple actuator notifications will appear here after feed, drain, refill, stop, rejected, or failed actions."
+              text="There are no recent alerts for this tank."
             />
           ) : (
             <div className="modern-tank-detail-list">
-              {sortedAlerts.slice(0, 12).map((item, index) => {
-                const severity = getStatusSeverity([
-                  item?.severity,
-                  item?.priority,
-                  item?.status,
-                  item?.type,
-                ]);
 
-                return (
-                  <div
-                    className="modern-tank-detail-list-row"
-                    key={item?.id || item?.command_id || index}
-                  >
-                    <div>
-                      <strong>{getSimpleAlertTitle(item)}</strong>
-                      <span>
-                        {getSimpleAlertMessage(item)} •{" "}
-                        {formatDate(getRecordDate(item))}
-                      </span>
-                    </div>
+              {sortedAlerts
+                .slice(0, 12)
+                .map(
+                  (
+                    item,
+                    index
+                  ) => {
+                    const severity =
+                      getStatusSeverity(
+                        [
+                          item?.severity,
+                          item?.priority,
+                          item?.status,
+                          item?.type,
+                        ]
+                      );
 
-                    <b className={`modern-tank-status ${severity}`}>
-                      {severity}
-                    </b>
-                  </div>
-                );
-              })}
+                    return (
+                      <div
+                        className="modern-tank-detail-list-row"
+                        key={
+                          item?.id ||
+                          item?.command_id ||
+                          index
+                        }
+                      >
+                        <div>
+                          <strong>
+                            {getSimpleAlertTitle(
+                              item
+                            )}
+                          </strong>
+
+                          <span>
+                            {getSimpleAlertMessage(
+                              item
+                            )}{" "}
+                            •{" "}
+                            {formatDate(
+                              getRecordDate(
+                                item
+                              )
+                            )}
+                          </span>
+                        </div>
+
+                        <b
+                          className={`modern-tank-status ${severity}`}
+                        >
+                          {severity ===
+                          "critical"
+                            ? "Urgent"
+                            : severity ===
+                                "warning"
+                              ? "Check"
+                              : "Good"}
+                        </b>
+                      </div>
+                    );
+                  }
+                )}
             </div>
           )}
         </section>
       )}
 
-      {activeTankTab === "logs" && (
+      {/* ===============================================
+          ACTIVITY TAB
+      ================================================ */}
+
+      {activeTankTab ===
+        "logs" && (
         <section className="modern-tank-detail-panel">
+
           <div className="modern-panel-heading">
+
             <div>
-              <p className="dashboard-eyebrow">Control Logs</p>
-              <h3>Recent activity</h3>
+              <p className="dashboard-eyebrow">
+                Activity
+              </p>
+
+              <h3>
+                Recent tank actions
+              </h3>
             </div>
-            <Settings size={22} />
+
+            <Settings
+              size={22}
+            />
           </div>
 
-          {sortedControlLogs.length === 0 ? (
+          {sortedControlLogs.length ===
+          0 ? (
             <EmptyBlock
               icon={Settings}
-              title="No control logs"
-              text="Feeder, pump, and other control actions will appear here."
+              title="No activity yet"
+              text="Feeding and water-control activity will appear here."
             />
           ) : (
             <>
               <div className="modern-tank-detail-list">
-                {paginatedControlLogs.map((item, index) => {
-                  const status = getValue(
+
+                {paginatedControlLogs.map(
+                  (
                     item,
-                    ["command_status", "status", "result", "state"],
-                    "Logged"
-                  );
+                    index
+                  ) => {
+                    const status =
+                      getValue(
+                        item,
+                        [
+                          "command_status",
+                          "status",
+                          "result",
+                          "state",
+                        ],
+                        "Logged"
+                      );
 
-                  const severity = getStatusSeverity([status]);
+                    const severity =
+                      getStatusSeverity(
+                        [status]
+                      );
 
-                  return (
-                    <div
-                      className="modern-tank-detail-list-row"
-                      key={item?.id || `log-${currentLogPage}-${index}`}
-                    >
-                      <div>
-                        <strong>
-                          {getCommandLabel(
-                            getValue(
-                              item,
-                              [
-                                "command_type",
-                                "action",
-                                "control_action",
-                                "command",
-                                "type",
-                              ],
-                              `Control Log ${index + 1}`
-                            )
+                    return (
+                      <div
+                        className="modern-tank-detail-list-row"
+                        key={
+                          item?.id ||
+                          `log-${currentLogPage}-${index}`
+                        }
+                      >
+                        <div>
+                          <strong>
+                            {getCommandLabel(
+                              getValue(
+                                item,
+                                [
+                                  "command_type",
+                                  "action",
+                                  "control_action",
+                                  "command",
+                                  "type",
+                                ],
+                                `Activity ${
+                                  index +
+                                  1
+                                }`
+                              )
+                            )}
+                          </strong>
+
+                          <span>
+                            {formatDate(
+                              getRecordDate(
+                                item
+                              )
+                            )}
+
+                            {item
+                              ?.result_message
+                              ? ` • ${getShortResultMessage(
+                                  item.result_message
+                                )}`
+                              : ""}
+                          </span>
+                        </div>
+
+                        <b
+                          className={`modern-tank-status ${severity}`}
+                        >
+                          {formatFriendlyText(
+                            status
                           )}
-                        </strong>
-                        <span>
-                          {formatDate(getRecordDate(item))}
-                          {item?.duration_ms ? ` • ${item.duration_ms} ms` : ""}
-                          {item?.result_message ? ` • ${item.result_message}` : ""}
-                        </span>
+                        </b>
                       </div>
-
-                      <b className={`modern-tank-status ${severity}`}>
-                        {status}
-                      </b>
-                    </div>
-                  );
-                })}
+                    );
+                  }
+                )}
               </div>
 
-              {sortedControlLogs.length > LOGS_PER_PAGE && (
+              {sortedControlLogs.length >
+                LOGS_PER_PAGE && (
                 <div className="modern-list-pagination">
+
                   <button
                     type="button"
-                    disabled={currentLogPage === 1}
-                    onClick={() => setLogsPage((page) => Math.max(1, page - 1))}
+                    disabled={
+                      currentLogPage ===
+                      1
+                    }
+                    onClick={() =>
+                      setLogsPage(
+                        (page) =>
+                          Math.max(
+                            1,
+                            page - 1
+                          )
+                      )
+                    }
                   >
                     Previous
                   </button>
 
                   <span>
-                    Page {currentLogPage} of {totalLogPages}
+                    Page{" "}
+                    {
+                      currentLogPage
+                    }{" "}
+                    of{" "}
+                    {
+                      totalLogPages
+                    }
                   </span>
 
                   <button
                     type="button"
-                    disabled={currentLogPage === totalLogPages}
+                    disabled={
+                      currentLogPage ===
+                      totalLogPages
+                    }
                     onClick={() =>
-                      setLogsPage((page) => Math.min(totalLogPages, page + 1))
+                      setLogsPage(
+                        (page) =>
+                          Math.min(
+                            totalLogPages,
+                            page + 1
+                          )
+                      )
                     }
                   >
                     Next

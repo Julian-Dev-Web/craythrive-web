@@ -1,771 +1,338 @@
-/* TANKS PAGE + TANK DETAILS PAGE */
+/* =========================================================
+   CRAYTHRIVE — TANKS + TANK DETAILS
+   Shared stylesheet
+========================================================= */
 
-.tanks-page,
-.tank-details-page {
+/* =========================================================
+   SHARED
+========================================================= */
+
+.modern-tanks-page,
+.modern-tank-detail-page {
+  width: 100%;
+  min-width: 0;
   display: grid;
   gap: 22px;
+  color: var(--ct-text, #eefcff);
 }
 
-.tanks-header-card,
-.tank-summary-card,
-.tank-toolbar,
-.tank-card,
-.tank-empty-state,
-.tank-details-hero,
-.tank-detail-stat-card,
-.tank-details-empty {
-  border: 1px solid rgba(0, 217, 199, 0.16);
-  background:
-    radial-gradient(circle at top right, rgba(0, 217, 199, 0.12), transparent 22rem),
-    linear-gradient(145deg, rgba(8, 42, 51, 0.82), rgba(0, 20, 29, 0.66));
-  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.24);
-  backdrop-filter: blur(18px);
+.modern-tanks-page *,
+.modern-tank-detail-page * {
+  box-sizing: border-box;
 }
 
-/* TANKS LIST */
+/* =========================================================
+   LOADING
+========================================================= */
 
-.tanks-header-card {
-  padding: 28px;
-  border-radius: 30px;
-}
-
-.tanks-header-card h2,
-.tank-details-hero h2 {
-  margin: 0;
-  color: white;
-  font-size: clamp(2rem, 4vw, 3.4rem);
-  line-height: 1;
-  letter-spacing: -0.055em;
-}
-
-.tanks-header-card p,
-.tank-details-hero p {
-  max-width: 760px;
-  margin: 18px 0 0;
-  color: #a4bdc6;
-  line-height: 1.75;
-}
-
-.tanks-header-actions {
+.modern-tank-loading {
+  min-height: 420px;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 14px;
-  margin-top: 24px;
-}
-
-.tanks-header-actions span {
-  color: #a4bdc6;
-  font-size: 0.88rem;
-}
-
-.tank-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.tank-summary-card {
-  display: grid;
-  gap: 10px;
-  padding: 20px;
-  border-radius: 24px;
-}
-
-.tank-summary-card span,
-.tank-detail-stat-card span {
-  width: 50px;
-  height: 50px;
-  display: grid;
-  place-items: center;
-  color: #00d9c7;
-  border: 1px solid rgba(0, 217, 199, 0.18);
-  border-radius: 18px;
-  background: rgba(0, 217, 199, 0.08);
-}
-
-.tank-summary-card strong,
-.tank-detail-stat-card strong {
-  color: white;
-  font-size: 2rem;
-  letter-spacing: -0.05em;
-}
-
-.tank-summary-card p,
-.tank-detail-stat-card p {
-  margin: 0;
-  color: #a4bdc6;
-  font-weight: 850;
-}
-
-.tank-toolbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 220px 220px;
-  gap: 14px;
-  padding: 16px;
-  border-radius: 24px;
-}
-
-.tank-search-box,
-.tank-filter {
-  min-height: 52px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 14px;
-  border: 1px solid rgba(0, 217, 199, 0.16);
-  border-radius: 17px;
-  background: rgba(0, 20, 29, 0.44);
-}
-
-.tank-search-box svg,
-.tank-filter svg {
-  color: #00d9c7;
-  flex: 0 0 auto;
-}
-
-.tank-search-box input,
-.tank-filter select {
-  width: 100%;
-  border: 0;
-  outline: 0;
-  color: white;
-  background: transparent;
-}
-
-.tank-search-box input::placeholder {
-  color: rgba(164, 189, 198, 0.72);
-}
-
-.tank-filter select {
-  cursor: pointer;
-}
-
-.tank-filter option {
-  color: #00141d;
-}
-
-.tank-card-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.tank-card {
-  padding: 22px;
-  border-radius: 28px;
-}
-
-.tank-card-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 14px;
-}
-
-.tank-type-pill,
-.tank-status-pill {
-  width: fit-content;
-  min-height: 28px;
-  display: inline-flex;
-  align-items: center;
-  padding: 0 11px;
-  border-radius: 999px;
-  font-size: 0.72rem;
-  font-weight: 950;
-  text-transform: capitalize;
-}
-
-.tank-type-pill {
-  color: #00d9c7;
-  border: 1px solid rgba(0, 217, 199, 0.18);
-  background: rgba(0, 217, 199, 0.08);
-}
-
-.tank-status-pill {
-  color: #04191d;
-  background: #00d9c7;
-}
-
-.tank-status-pill.warning {
-  background: #ffd43b;
-}
-
-.tank-status-pill.critical,
-.tank-status-pill.danger {
-  color: white;
-  background: #ff5c7a;
-}
-
-.tank-card h3 {
-  margin: 10px 0 0;
-  color: white;
-  font-size: 1.35rem;
-  letter-spacing: -0.04em;
-}
-
-.tank-meta-row,
-.tank-details-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.tank-meta-row {
-  margin-bottom: 16px;
-}
-
-.tank-meta-row span,
-.tank-details-meta span {
-  padding: 8px 10px;
-  color: #a4bdc6;
-  border-radius: 999px;
-  background: rgba(0, 20, 29, 0.32);
-  font-size: 0.78rem;
-  font-weight: 850;
-}
-
-.tank-reading-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.tank-reading-grid div {
-  min-height: 108px;
-  display: grid;
-  align-content: center;
-  gap: 5px;
-  padding: 13px;
-  border: 1px solid rgba(0, 217, 199, 0.12);
-  border-radius: 18px;
-  background: rgba(0, 20, 29, 0.34);
-}
-
-.tank-reading-grid svg {
-  color: #00d9c7;
-}
-
-.tank-reading-grid strong,
-.tank-reading-grid span {
-  display: block;
-}
-
-.tank-reading-grid strong {
-  color: white;
-  font-size: 1rem;
-}
-
-.tank-reading-grid span {
-  color: #a4bdc6;
-  font-size: 0.74rem;
-}
-
-.tank-extra-row {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 12px;
-}
-
-.tank-extra-row div {
-  padding: 13px;
-  border: 1px solid rgba(0, 217, 199, 0.12);
-  border-radius: 18px;
-  background: rgba(0, 20, 29, 0.28);
-}
-
-.tank-extra-row span,
-.tank-extra-row strong {
-  display: block;
-}
-
-.tank-extra-row span {
-  color: #a4bdc6;
-  font-size: 0.74rem;
-}
-
-.tank-extra-row strong {
-  margin-top: 5px;
-  overflow: hidden;
-  color: white;
-  font-size: 0.88rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tank-details-link,
-.tank-details-back-button {
-  min-height: 46px;
-  display: inline-flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 9px;
-  width: 100%;
-  margin-top: 16px;
-  color: #04191d;
-  border-radius: 16px;
-  background: #00d9c7;
-  font-weight: 950;
-}
-
-.tank-empty-state,
-.tank-details-empty {
-  min-height: 300px;
-  display: grid;
-  place-items: center;
-  gap: 10px;
-  padding: 34px;
-  text-align: center;
-  border-radius: 30px;
-}
-
-.tank-empty-state svg,
-.tank-details-empty svg {
-  color: #00d9c7;
-}
-
-.tank-empty-state h3,
-.tank-details-empty h3 {
-  margin: 0;
-  color: white;
-  font-size: 1.5rem;
-}
-
-.tank-empty-state p,
-.tank-details-empty p {
-  max-width: 500px;
-  margin: 0;
-  color: #a4bdc6;
-  line-height: 1.7;
-}
-
-/* TANK DETAILS */
-
-.tank-details-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 260px;
-  align-items: center;
-  gap: 22px;
-  padding: 28px;
-  border-radius: 30px;
-}
-
-.tank-details-back-link {
-  width: fit-content;
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  margin-bottom: 20px;
-  color: #46f2df;
-  font-weight: 900;
-}
-
-.tank-details-meta {
-  margin-top: 16px;
-}
-
-.tank-details-status-card {
-  min-height: 190px;
-  display: grid;
-  place-items: center;
-  padding: 22px;
-  text-align: center;
-  border: 1px solid rgba(0, 217, 199, 0.14);
-  border-radius: 24px;
-  background: rgba(0, 20, 29, 0.34);
-}
-
-.tank-details-status-card strong {
-  color: #00d9c7;
-  font-size: clamp(1.8rem, 4vw, 2.8rem);
-  text-transform: capitalize;
-}
-
-.tank-details-status-card span,
-.tank-details-status-card p {
-  margin: 0;
-  color: #a4bdc6;
-}
-
-.tank-detail-stat-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.tank-detail-stat-card {
-  display: grid;
-  gap: 10px;
-  padding: 20px;
-  border-radius: 24px;
-}
-
-.tank-detail-main-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(340px, 0.82fr);
-  gap: 16px;
-}
-
-.tank-table-list {
-  display: grid;
-  gap: 12px;
-}
-
-.tank-table-list.compact {
-  margin-top: 12px;
-}
-
-.tank-table-row {
-  display: grid;
-  grid-template-columns: 170px minmax(0, 1fr);
-  gap: 12px;
-  padding: 14px;
-  border: 1px solid rgba(0, 217, 199, 0.12);
-  border-radius: 18px;
-  background: rgba(0, 20, 29, 0.34);
-}
-
-.tank-table-row strong,
-.tank-table-row span,
-.tank-table-row small {
-  display: block;
-}
-
-.tank-table-row strong {
-  color: white;
-}
-
-.tank-table-row span {
-  color: #a4bdc6;
-  font-size: 0.84rem;
-}
-
-.tank-table-row > div:last-child {
-  display: flex;
-  flex-wrap: wrap;
   gap: 8px;
-}
-
-.tank-table-row > div:last-child span {
-  padding: 7px 10px;
-  border-radius: 999px;
-  background: rgba(0, 217, 199, 0.08);
-}
-
-.tank-ammonia-focus {
-  min-height: 170px;
-  display: grid;
-  place-items: center;
-  padding: 22px;
+  padding: 28px;
   text-align: center;
-  border: 1px solid rgba(0, 217, 199, 0.12);
-  border-radius: 22px;
-  background:
-    radial-gradient(circle at top, rgba(0, 217, 199, 0.14), transparent 18rem),
-    rgba(0, 20, 29, 0.34);
+
+  border: 1px solid var(--ct-border, rgba(0, 217, 199, 0.14));
+  border-radius: 24px;
+
+  background: var(--ct-surface, rgba(8, 42, 51, 0.7));
+  box-shadow: var(--ct-shadow-soft, 0 16px 45px rgba(0, 0, 0, 0.12));
 }
 
-.tank-ammonia-focus strong {
-  color: white;
-  font-size: clamp(2rem, 4vw, 3rem);
-  letter-spacing: -0.055em;
+.modern-tank-loading svg {
+  color: var(--ct-brand, #00d9c7);
 }
 
-.tank-ammonia-focus span {
-  color: #00d9c7;
-  font-weight: 950;
-  text-transform: capitalize;
+.modern-tank-loading h3 {
+  margin: 8px 0 0;
+  color: var(--ct-text, #eefcff);
+  font-size: 1.15rem;
 }
 
-.tank-ammonia-focus p {
+.modern-tank-loading p {
   margin: 0;
-  color: #a4bdc6;
+  color: var(--ct-muted, #8faab1);
+  font-size: 0.8rem;
 }
 
-.tank-small-row,
-.tank-alert-row,
-.tank-control-row {
-  display: flex;
-  gap: 12px;
-  padding: 14px;
-  border: 1px solid rgba(0, 217, 199, 0.12);
-  border-radius: 18px;
-  background: rgba(0, 20, 29, 0.34);
-}
-
-.tank-small-row {
-  justify-content: space-between;
-}
-
-.tank-small-row span {
-  color: #a4bdc6;
-}
-
-.tank-small-row strong,
-.tank-alert-row strong,
-.tank-control-row strong {
-  color: white;
-}
-
-.tank-alert-row p,
-.tank-control-row p {
-  margin: 5px 0 0;
-  color: #a4bdc6;
-  line-height: 1.5;
-  font-size: 0.86rem;
-}
-
-.tank-alert-row small,
-.tank-control-row small {
-  display: block;
-  margin-top: 6px;
-  color: rgba(164, 189, 198, 0.72);
-}
-
-.tank-control-row > span {
-  width: 38px;
-  height: 38px;
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  color: #00d9c7;
-  border-radius: 14px;
-  background: rgba(0, 217, 199, 0.08);
-}
-
-.tank-mini-empty {
-  min-height: 120px;
-  display: grid;
-  place-items: center;
-  padding: 20px;
-  color: #a4bdc6;
-  text-align: center;
-  border: 1px dashed rgba(0, 217, 199, 0.18);
-  border-radius: 18px;
-  background: rgba(0, 20, 29, 0.24);
-}
-
-@media (max-width: 1080px) {
-  .tank-card-grid,
-  .tank-toolbar,
-  .tank-details-hero,
-  .tank-detail-main-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .tank-summary-grid,
-  .tank-detail-stat-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .tank-reading-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .tank-table-row {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 560px) {
-  .tank-summary-grid,
-  .tank-reading-grid,
-  .tank-extra-row,
-  .tank-detail-stat-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .tanks-header-card,
-  .tank-card,
-  .tank-empty-state,
-  .tank-details-hero,
-  .tank-detail-stat-card,
-  .tank-details-empty {
-    padding: 22px;
-    border-radius: 24px;
-  }
-
-  .tank-card-top {
-    flex-direction: column;
-  }
-}
-/* PHASE 3 MODERN TANKS PAGE */
-
-.modern-tanks-page {
-  display: grid;
-  gap: 20px;
-}
-
-.modern-tanks-hero,
-.modern-tank-summary-card,
-.modern-tank-toolbar,
-.modern-tank-card,
-.modern-tank-empty,
-.modern-tank-loading {
-  border: 1px solid var(--ct-border);
-  background:
-    radial-gradient(circle at top right, rgba(0, 217, 199, 0.11), transparent 22rem),
-    var(--ct-surface);
-  box-shadow: var(--ct-shadow-soft);
-  backdrop-filter: blur(18px);
-}
+/* =========================================================
+   TANKS PAGE — HERO
+========================================================= */
 
 .modern-tanks-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 260px;
+  grid-template-columns: minmax(0, 1fr) 190px;
   align-items: center;
-  gap: 20px;
-  padding: 28px;
-  border-radius: 30px;
+  gap: 24px;
+
+  padding: 26px;
+
+  border: 1px solid var(--ct-border, rgba(0, 217, 199, 0.14));
+  border-radius: 26px;
+
+  background:
+    radial-gradient(
+      circle at top right,
+      rgba(0, 217, 199, 0.1),
+      transparent 22rem
+    ),
+    var(--ct-surface, rgba(8, 42, 51, 0.72));
+
+  box-shadow: var(--ct-shadow-soft, 0 18px 50px rgba(0, 0, 0, 0.13));
 }
 
 .modern-tanks-hero h2 {
-  max-width: 760px;
+  max-width: 700px;
   margin: 0;
-  color: var(--ct-text);
-  font-size: clamp(2rem, 4vw, 3.6rem);
-  line-height: 0.98;
-  letter-spacing: -0.07em;
+
+  color: var(--ct-text, #eefcff);
+
+  font-family: "Poppins", Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(1.8rem, 3vw, 2.7rem);
+  line-height: 1.08;
+  letter-spacing: -0.05em;
 }
 
-.modern-tanks-hero p {
-  max-width: 760px;
-  margin: 18px 0 0;
-  color: var(--ct-muted);
-  line-height: 1.75;
+.modern-tanks-hero > div:first-child > p:not(.dashboard-eyebrow) {
+  max-width: 650px;
+  margin: 12px 0 0;
+
+  color: var(--ct-muted, #8faab1);
+
+  font-size: 0.9rem;
+  line-height: 1.65;
 }
 
 .modern-tanks-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 14px;
-  margin-top: 24px;
+  gap: 13px;
+
+  margin-top: 20px;
 }
 
 .modern-tanks-actions > span {
-  color: var(--ct-muted);
-  font-size: 0.84rem;
-  font-weight: 800;
+  color: var(--ct-muted, #8faab1);
+  font-size: 0.76rem;
+  font-weight: 700;
 }
 
 .modern-tanks-hero-card {
-  min-height: 220px;
-  display: grid;
-  place-items: center;
-  align-content: center;
-  gap: 10px;
+  min-height: 150px;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  padding: 18px;
+
   text-align: center;
-  border: 1px solid var(--ct-border);
-  border-radius: 26px;
-  background:
-    radial-gradient(circle at center, rgba(0, 217, 199, 0.14), transparent 11rem),
-    var(--ct-surface-soft);
+
+  border: 1px solid var(--ct-border, rgba(0, 217, 199, 0.14));
+  border-radius: 22px;
+
+  background: var(--ct-surface-soft, rgba(0, 217, 199, 0.04));
 }
 
 .modern-tanks-hero-card svg {
-  color: var(--ct-brand);
+  color: var(--ct-brand, #00d9c7);
 }
 
 .modern-tanks-hero-card strong {
-  color: var(--ct-text);
-  font-size: 3rem;
+  display: block;
+
+  margin-top: 10px;
+
+  color: var(--ct-text, #eefcff);
+
+  font-family: "Poppins", Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 2rem;
   line-height: 1;
-  letter-spacing: -0.07em;
 }
 
 .modern-tanks-hero-card span {
-  color: var(--ct-muted);
-  font-weight: 900;
+  display: block;
+
+  margin-top: 6px;
+
+  color: var(--ct-muted, #8faab1);
+
+  font-size: 0.72rem;
+  font-weight: 700;
 }
+
+/* =========================================================
+   TANK SUMMARY
+========================================================= */
 
 .modern-tank-summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  gap: 13px;
 }
 
 .modern-tank-summary-card {
-  min-height: 150px;
+  min-width: 0;
+
   display: flex;
-  align-items: flex-start;
-  gap: 15px;
-  padding: 20px;
-  border-radius: 24px;
+  align-items: center;
+  gap: 13px;
+
+  min-height: 108px;
+
+  padding: 16px;
+
+  border: 1px solid var(--ct-border, rgba(0, 217, 199, 0.14));
+  border-radius: 18px;
+
+  background: var(--ct-surface, rgba(8, 42, 51, 0.7));
+
+  transition:
+    transform 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.modern-tank-summary-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--ct-border-strong, rgba(0, 217, 199, 0.3));
 }
 
 .modern-tank-summary-card > span {
-  width: 52px;
-  height: 52px;
+  width: 44px;
+  height: 44px;
+
   display: grid;
   place-items: center;
-  color: var(--ct-brand);
+
   flex: 0 0 auto;
-  border: 1px solid var(--ct-border);
-  border-radius: 18px;
-  background: var(--ct-brand-soft);
+
+  color: var(--ct-brand, #00d9c7);
+
+  border-radius: 14px;
+
+  background: var(--ct-brand-soft, rgba(0, 217, 199, 0.08));
+}
+
+.modern-tank-summary-card > div {
+  min-width: 0;
 }
 
 .modern-tank-summary-card strong {
   display: block;
-  color: var(--ct-text);
-  font-size: 2rem;
+
+  color: var(--ct-text, #eefcff);
+
+  font-size: 1.35rem;
   line-height: 1;
-  letter-spacing: -0.06em;
 }
 
 .modern-tank-summary-card p {
-  margin: 10px 0 0;
-  color: var(--ct-text);
-  font-weight: 950;
+  margin: 5px 0 0;
+
+  color: var(--ct-text, #eefcff);
+
+  font-size: 0.78rem;
+  font-weight: 850;
 }
 
 .modern-tank-summary-card small {
   display: block;
-  margin-top: 6px;
-  color: var(--ct-muted);
+
+  margin-top: 4px;
+
+  color: var(--ct-muted, #8faab1);
+
+  font-size: 0.65rem;
+  line-height: 1.4;
 }
+
+.modern-tank-summary-card.success > span {
+  color: var(--ct-success, #12b981);
+  background: rgba(18, 185, 129, 0.1);
+}
+
+.modern-tank-summary-card.warning > span {
+  color: #d9a719;
+  background: rgba(255, 196, 74, 0.11);
+}
+
+.modern-tank-summary-card.danger > span {
+  color: var(--ct-danger, #ff5c7a);
+  background: rgba(255, 92, 122, 0.1);
+}
+
+/* =========================================================
+   SEARCH / FILTER
+========================================================= */
 
 .modern-tank-toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 210px 210px;
-  gap: 14px;
-  padding: 16px;
-  border-radius: 24px;
+  grid-template-columns: minmax(260px, 1fr) 210px 210px;
+  gap: 12px;
+
+  padding: 14px;
+
+  border: 1px solid var(--ct-border, rgba(0, 217, 199, 0.14));
+  border-radius: 20px;
+
+  background: var(--ct-surface, rgba(8, 42, 51, 0.7));
 }
 
 .modern-tank-search,
 .modern-tank-filter {
-  min-height: 52px;
+  min-height: 48px;
+
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 14px;
-  border: 1px solid var(--ct-border);
-  border-radius: 17px;
-  background: var(--ct-surface-soft);
+
+  padding: 0 13px;
+
+  border: 1px solid var(--ct-border, rgba(0, 217, 199, 0.14));
+  border-radius: 14px;
+
+  background: var(--ct-surface-soft, rgba(0, 217, 199, 0.035));
+
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.modern-tank-search:focus-within,
+.modern-tank-filter:focus-within {
+  border-color: var(--ct-brand, #00d9c7);
+  box-shadow: 0 0 0 3px rgba(0, 217, 199, 0.08);
 }
 
 .modern-tank-search svg,
 .modern-tank-filter svg {
-  color: var(--ct-brand);
   flex: 0 0 auto;
+  color: var(--ct-brand, #00d9c7);
 }
 
 .modern-tank-search input,
 .modern-tank-filter select {
   width: 100%;
   min-width: 0;
+
   border: 0;
   outline: 0;
-  color: var(--ct-text);
+
+  color: var(--ct-text, #eefcff);
+
   background: transparent;
+
+  font: inherit;
+  font-size: 0.8rem;
 }
 
 .modern-tank-search input::placeholder {
-  color: var(--ct-soft-muted);
+  color: var(--ct-muted, #8faab1);
 }
 
 .modern-tank-filter select {
@@ -773,8 +340,13 @@
 }
 
 .modern-tank-filter option {
-  color: #08232b;
+  color: #10252c;
+  background: white;
 }
+
+/* =========================================================
+   TANK CARDS
+========================================================= */
 
 .modern-tank-grid {
   display: grid;
@@ -783,1622 +355,1576 @@
 }
 
 .modern-tank-card {
-  display: grid;
-  gap: 16px;
+  min-width: 0;
+
+  display: flex;
+  flex-direction: column;
+
   padding: 22px;
-  border-radius: 28px;
+
+  border: 1px solid var(--ct-border, rgba(0, 217, 199, 0.14));
+  border-radius: 24px;
+
+  background:
+    radial-gradient(
+      circle at top right,
+      rgba(0, 217, 199, 0.065),
+      transparent 18rem
+    ),
+    var(--ct-surface, rgba(8, 42, 51, 0.7));
+
+  box-shadow: var(--ct-shadow-soft, 0 16px 44px rgba(0, 0, 0, 0.1));
 }
 
 .modern-tank-card-top {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
+  gap: 15px;
+
+  margin-bottom: 10px;
+}
+
+.modern-tank-card-top > div {
+  min-width: 0;
+}
+
+.modern-tank-card-top h3 {
+  margin: 10px 0 0;
+
+  overflow: hidden;
+
+  color: var(--ct-text, #eefcff);
+
+  font-family: "Poppins", Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 1.2rem;
+  letter-spacing: -0.035em;
+
+  text-overflow: ellipsis;
 }
 
 .modern-tank-type {
-  width: fit-content;
+  min-height: 28px;
+
   display: inline-flex;
   align-items: center;
-  min-height: 28px;
+
   padding: 0 11px;
-  color: var(--ct-brand);
-  border: 1px solid var(--ct-border);
+
+  color: var(--ct-brand, #00d9c7);
+
+  border: 1px solid var(--ct-border, rgba(0, 217, 199, 0.18));
   border-radius: 999px;
-  background: var(--ct-brand-soft);
-  font-size: 0.72rem;
-  font-weight: 950;
-  text-transform: capitalize;
+
+  background: var(--ct-brand-soft, rgba(0, 217, 199, 0.07));
+
+  font-size: 0.66rem;
+  font-weight: 900;
 }
 
-.modern-tank-card h3 {
-  margin: 10px 0 0;
-  color: var(--ct-text);
-  font-size: 1.35rem;
-  letter-spacing: -0.04em;
-}
+/* =========================================================
+   TANK STATUS
+========================================================= */
 
 .modern-tank-status {
-  min-height: 30px;
+  min-height: 28px;
+
   display: inline-flex;
   align-items: center;
-  padding: 0 12px;
+  justify-content: center;
+
+  width: fit-content;
+
+  padding: 0 10px;
+
   color: #04191d;
+
   border-radius: 999px;
-  background: var(--ct-brand);
-  font-size: 0.72rem;
+
+  background: var(--ct-brand, #00d9c7);
+
+  font-size: 0.65rem;
   font-style: normal;
-  font-weight: 950;
-  text-transform: capitalize;
+  font-weight: 900;
+  line-height: 1;
+
+  white-space: nowrap;
+}
+
+.modern-tank-status.normal,
+.modern-tank-status.success {
+  color: #04191d;
+  background: var(--ct-brand, #00d9c7);
 }
 
 .modern-tank-status.warning {
-  background: var(--ct-warning);
+  color: #322300;
+  background: var(--ct-warning, #ffd166);
 }
 
 .modern-tank-status.critical,
 .modern-tank-status.danger {
   color: white;
-  background: var(--ct-danger);
+  background: var(--ct-danger, #ff5c7a);
 }
 
-.modern-tank-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 9px;
+.modern-tank-status.no-data {
+  color: var(--ct-muted, #8faab1);
+
+  border: 1px solid var(--ct-border, rgba(255, 255, 255, 0.1));
+
+  background: var(--ct-surface-soft, rgba(255, 255, 255, 0.04));
 }
 
-.modern-tank-meta span {
-  padding: 8px 10px;
-  color: var(--ct-muted);
-  border: 1px solid var(--ct-border);
-  border-radius: 999px;
-  background: var(--ct-surface-soft);
-  font-size: 0.76rem;
-  font-weight: 850;
+/* =========================================================
+   FRIENDLY SYNC
+========================================================= */
+
+.modern-tank-friendly-sync {
+  margin: 0 0 15px;
+
+  color: var(--ct-muted, #8faab1);
+
+  font-size: 0.72rem;
 }
+
+.modern-tank-friendly-sync strong {
+  color: var(--ct-text, #eefcff);
+}
+
+/* =========================================================
+   SENSOR CARDS
+========================================================= */
 
 .modern-tank-reading-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
-.modern-tank-reading-grid div {
-  min-height: 112px;
-  display: grid;
-  align-content: center;
-  gap: 6px;
-  padding: 13px;
-  border: 1px solid var(--ct-border);
-  border-radius: 18px;
-  background: var(--ct-surface-soft);
+.modern-tank-sensor-card {
+  min-width: 0;
+  min-height: 124px;
+
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+
+  padding: 14px;
+
+  border: 1px solid var(--ct-border, rgba(0, 217, 199, 0.12));
+  border-radius: 17px;
+
+  background: var(--ct-surface-soft, rgba(0, 217, 199, 0.03));
 }
 
-.modern-tank-reading-grid svg {
-  color: var(--ct-brand);
+.modern-tank-sensor-card > svg {
+  margin-bottom: 10px;
+
+  color: var(--ct-brand, #00d9c7);
 }
 
-.modern-tank-reading-grid strong {
-  color: var(--ct-text);
+.modern-tank-sensor-card > span {
+  color: var(--ct-muted, #8faab1);
+
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+
+.modern-tank-sensor-card > strong {
+  display: block;
+
+  max-width: 100%;
+
+  margin: 3px 0 9px;
+
+  overflow: hidden;
+
+  color: var(--ct-text, #eefcff);
+
+  font-size: 0.92rem;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modern-tank-sensor-card .modern-tank-status {
+  margin-top: auto;
+}
+
+/* =========================================================
+   NO READING
+========================================================= */
+
+.modern-tank-no-reading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+
+  margin-top: 12px;
+  padding: 11px 13px;
+
+  color: #d9a719;
+
+  border: 1px solid rgba(255, 196, 74, 0.2);
+  border-radius: 13px;
+
+  background: rgba(255, 196, 74, 0.06);
+
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+/* =========================================================
+   TANK MORE INFORMATION
+========================================================= */
+
+.modern-tank-more-info {
+  margin-top: 12px;
+
+  overflow: hidden;
+
+  border: 1px solid var(--ct-border, rgba(0, 217, 199, 0.12));
+  border-radius: 14px;
+
+  background: var(--ct-surface-soft, rgba(255, 255, 255, 0.02));
+}
+
+.modern-tank-more-info summary {
+  min-height: 44px;
+
+  display: flex;
+  align-items: center;
+
+  padding: 0 13px;
+
+  color: var(--ct-muted, #8faab1);
+
+  cursor: pointer;
+
+  font-size: 0.72rem;
+  font-weight: 850;
+
+  list-style: none;
+}
+
+.modern-tank-more-info summary::-webkit-details-marker {
+  display: none;
+}
+
+.modern-tank-more-info summary::after {
+  content: "+";
+
+  margin-left: auto;
+
+  color: var(--ct-brand, #00d9c7);
+
   font-size: 1rem;
+  font-weight: 900;
 }
 
-.modern-tank-reading-grid span {
-  color: var(--ct-muted);
-  font-size: 0.74rem;
-  font-weight: 850;
+.modern-tank-more-info[open] summary::after {
+  content: "−";
 }
 
-.modern-tank-link {
-  min-height: 48px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 9px;
-  width: 100%;
-  color: #04191d;
-  border-radius: 16px;
-  background: var(--ct-brand);
-  font-weight: 950;
-}
-
-.modern-tank-empty,
-.modern-tank-loading {
-  min-height: 300px;
+.modern-tank-more-content {
   display: grid;
-  place-items: center;
+  gap: 8px;
+
+  padding: 12px 13px;
+
+  border-top: 1px solid var(--ct-border, rgba(0, 217, 199, 0.1));
+}
+
+.modern-tank-more-content > div {
+  min-width: 0;
+
+  display: flex;
+  align-items: center;
   gap: 10px;
-  padding: 34px;
-  text-align: center;
-  border-radius: 30px;
+
+  padding: 10px;
+
+  border-radius: 11px;
+
+  background: var(--ct-surface-soft, rgba(255, 255, 255, 0.02));
 }
 
-.modern-tank-empty svg,
-.modern-tank-loading svg {
-  color: var(--ct-brand);
+.modern-tank-more-content svg {
+  flex: 0 0 auto;
+  color: var(--ct-brand, #00d9c7);
 }
 
-.modern-tank-empty h3,
-.modern-tank-loading h3 {
-  margin: 0;
-  color: var(--ct-text);
-  font-size: 1.5rem;
+.modern-tank-more-content span {
+  min-width: 0;
 }
 
-.modern-tank-empty p,
-.modern-tank-loading p {
-  max-width: 500px;
-  margin: 0;
-  color: var(--ct-muted);
-  line-height: 1.7;
+.modern-tank-more-content small,
+.modern-tank-more-content strong {
+  display: block;
 }
 
-@media (max-width: 1160px) {
-  .modern-tanks-hero,
-  .modern-tank-grid,
-  .modern-tank-toolbar {
-    grid-template-columns: 1fr;
-  }
-
-  .modern-tank-summary-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .modern-tank-reading-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.modern-tank-more-content small {
+  color: var(--ct-muted, #8faab1);
+  font-size: 0.62rem;
 }
 
-@media (max-width: 620px) {
-  .modern-tanks-hero,
-  .modern-tank-card,
-  .modern-tank-empty,
-  .modern-tank-loading {
-    padding: 22px;
-    border-radius: 24px;
-  }
-
-  .modern-tank-summary-grid,
-  .modern-tank-reading-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .modern-tank-card-top {
-    flex-direction: column;
-  }
-
-  .modern-tanks-actions {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .modern-tanks-actions .dashboard-primary-button,
-  .modern-tanks-actions .modern-secondary-link {
-    justify-content: center;
-    width: 100%;
-  }
-}
-.modern-tank-summary-card.warning > span {
-  color: var(--ct-warning);
-  background: rgba(244, 183, 64, 0.12);
-}
-
-.modern-tank-summary-card.danger > span {
-  color: var(--ct-danger);
-  background: rgba(255, 92, 122, 0.1);
-}
-
-.modern-tank-no-reading {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 12px 14px;
-  color: var(--ct-warning);
-  border: 1px solid rgba(244, 183, 64, 0.22);
-  border-radius: 16px;
-  background: rgba(244, 183, 64, 0.08);
-  font-size: 0.82rem;
-  font-weight: 850;
-}
-
-.modern-tank-meta span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.modern-tank-reading-grid b.modern-tank-status {
-  width: fit-content;
+.modern-tank-more-content strong {
   margin-top: 3px;
-}
-.modern-tank-summary-card.warning > span {
-  color: var(--ct-warning);
-  background: rgba(244, 183, 64, 0.12);
+
+  overflow: hidden;
+
+  color: var(--ct-text, #eefcff);
+
+  font-size: 0.72rem;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.modern-tank-summary-card.danger > span {
-  color: var(--ct-danger);
-  background: rgba(255, 92, 122, 0.1);
-}
-
-.modern-tank-no-reading {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 12px 14px;
-  color: var(--ct-warning);
-  border: 1px solid rgba(244, 183, 64, 0.22);
-  border-radius: 16px;
-  background: rgba(244, 183, 64, 0.08);
-  font-size: 0.82rem;
-  font-weight: 850;
-}
-
-.modern-tank-meta span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.modern-tank-reading-grid b.modern-tank-status {
-  width: fit-content;
-  margin-top: 3px;
-}
+/* =========================================================
+   VIEW TANK BUTTON
+========================================================= */
 
 .modern-tank-link {
-  min-height: 48px;
+  min-height: 46px;
+
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 9px;
+  gap: 8px;
+
   width: 100%;
+
+  margin-top: 14px;
+  padding: 0 16px;
+
   color: #04191d;
-  border-radius: 16px;
-  background: var(--ct-brand);
-  font-weight: 950;
+
+  border: 0;
+  border-radius: 14px;
+
+  background:
+    linear-gradient(
+      135deg,
+      var(--ct-brand, #00d9c7),
+      var(--ct-brand-strong, #5fc7b4)
+    );
+
   text-decoration: none;
+
+  font-size: 0.8rem;
+  font-weight: 950;
+
   transition:
     transform 0.2s ease,
-    filter 0.2s ease;
+    box-shadow 0.2s ease;
 }
 
 .modern-tank-link:hover {
-  filter: brightness(1.04);
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+  box-shadow: 0 13px 26px rgba(0, 217, 199, 0.18);
 }
 
-/* TANK DETAILS PAGE */
+/* =========================================================
+   EMPTY TANKS
+========================================================= */
 
-.modern-tank-detail-page {
-  display: grid;
-  gap: 20px;
-}
-
-.modern-tank-detail-hero,
-.modern-tank-detail-info-card,
-.modern-tank-detail-panel,
+.modern-tank-empty,
 .modern-tank-detail-empty-page {
-  border: 1px solid var(--ct-border);
-  background:
-    radial-gradient(circle at top right, rgba(0, 217, 199, 0.11), transparent 22rem),
-    var(--ct-surface);
-  box-shadow: var(--ct-shadow-soft);
-  backdrop-filter: blur(18px);
+  min-height: 320px;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  padding: 30px;
+
+  text-align: center;
+
+  border: 1px dashed var(--ct-border-strong, rgba(0, 217, 199, 0.26));
+  border-radius: 24px;
+
+  background: var(--ct-surface-soft, rgba(0, 217, 199, 0.025));
 }
+
+.modern-tank-empty > svg,
+.modern-tank-detail-empty-page > svg {
+  color: var(--ct-brand, #00d9c7);
+}
+
+.modern-tank-empty h3,
+.modern-tank-detail-empty-page h3 {
+  margin: 12px 0 0;
+
+  color: var(--ct-text, #eefcff);
+
+  font-size: 1.25rem;
+}
+
+.modern-tank-empty p,
+.modern-tank-detail-empty-page p {
+  max-width: 440px;
+
+  margin: 7px 0 0;
+
+  color: var(--ct-muted, #8faab1);
+
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.modern-tank-detail-empty-page .modern-tank-link {
+  width: auto;
+  margin-top: 18px;
+}
+
+/* =========================================================
+   =========================================================
+   TANK DETAILS PAGE
+   =========================================================
+========================================================= */
+
+/* =========================================================
+   DETAILS HERO
+========================================================= */
 
 .modern-tank-detail-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 260px;
+  grid-template-columns: minmax(0, 1fr) 210px;
   align-items: center;
-  gap: 20px;
-  padding: 28px;
-  border-radius: 30px;
+  gap: 24px;
+
+  padding: 26px;
+
+  border: 1px solid var(--ct-border, rgba(0, 217, 199, 0.14));
+  border-radius: 26px;
+
+  background:
+    radial-gradient(
+      circle at top right,
+      rgba(0, 217, 199, 0.1),
+      transparent 24rem
+    ),
+    var(--ct-surface, rgba(8, 42, 51, 0.72));
+
+  box-shadow: var(--ct-shadow-soft, 0 18px 50px rgba(0, 0, 0, 0.13));
 }
 
 .modern-back-link {
   width: fit-content;
-  min-height: 42px;
+
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 18px;
-  padding: 0 14px;
-  color: var(--ct-text);
-  border: 1px solid var(--ct-border);
-  border-radius: 14px;
-  background: var(--ct-surface-soft);
+  gap: 7px;
+
+  margin-bottom: 16px;
+
+  color: var(--ct-brand, #00d9c7);
+
   text-decoration: none;
-  font-weight: 900;
+
+  font-size: 0.75rem;
+  font-weight: 850;
+}
+
+.modern-back-link:hover {
+  text-decoration: underline;
 }
 
 .modern-tank-detail-hero h2 {
-  max-width: 780px;
   margin: 0;
-  color: var(--ct-text);
-  font-size: clamp(2rem, 4vw, 3.6rem);
-  line-height: 0.98;
-  letter-spacing: -0.07em;
+
+  color: var(--ct-text, #eefcff);
+
+  font-family: "Poppins", Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(1.8rem, 3vw, 2.7rem);
+  letter-spacing: -0.05em;
 }
 
-.modern-tank-detail-hero p {
-  max-width: 760px;
-  margin: 18px 0 0;
-  color: var(--ct-muted);
-  line-height: 1.75;
+.modern-tank-detail-hero > div:first-child > p:not(.dashboard-eyebrow) {
+  max-width: 660px;
+
+  margin: 11px 0 0;
+
+  color: var(--ct-muted, #8faab1);
+
+  font-size: 0.88rem;
+  line-height: 1.6;
 }
 
 .modern-tank-detail-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 14px;
-  margin-top: 24px;
+  gap: 13px;
+
+  margin-top: 19px;
 }
 
 .modern-tank-detail-actions > span {
-  color: var(--ct-muted);
-  font-size: 0.84rem;
-  font-weight: 800;
+  color: var(--ct-muted, #8faab1);
+
+  font-size: 0.72rem;
+}
+
+.modern-tank-detail-actions > span strong {
+  color: var(--ct-text, #eefcff);
 }
 
 .modern-tank-detail-hero-card {
-  min-height: 220px;
-  display: grid;
-  place-items: center;
-  align-content: center;
-  gap: 10px;
+  min-height: 155px;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
   text-align: center;
-  border: 1px solid var(--ct-border);
-  border-radius: 26px;
-  background:
-    radial-gradient(circle at center, rgba(0, 217, 199, 0.14), transparent 11rem),
-    var(--ct-surface-soft);
+
+  border: 1px solid var(--ct-border, rgba(0, 217, 199, 0.14));
+  border-radius: 22px;
+
+  background: var(--ct-surface-soft, rgba(0, 217, 199, 0.035));
 }
 
 .modern-tank-detail-hero-card svg {
-  color: var(--ct-brand);
+  color: var(--ct-brand, #00d9c7);
 }
 
 .modern-tank-detail-hero-card strong {
-  color: var(--ct-text);
-  font-size: 2.5rem;
-  line-height: 1;
-  letter-spacing: -0.07em;
-  text-transform: capitalize;
+  margin-top: 10px;
+
+  color: var(--ct-text, #eefcff);
+
+  font-size: 1.15rem;
+  font-weight: 950;
+}
+
+.modern-tank-detail-hero-card strong.normal {
+  color: var(--ct-brand, #00d9c7);
 }
 
 .modern-tank-detail-hero-card strong.warning {
-  color: var(--ct-warning);
+  color: var(--ct-warning, #ffd166);
 }
 
 .modern-tank-detail-hero-card strong.critical {
-  color: var(--ct-danger);
+  color: var(--ct-danger, #ff5c7a);
+}
+
+.modern-tank-detail-hero-card strong.no-data {
+  color: var(--ct-muted, #8faab1);
 }
 
 .modern-tank-detail-hero-card span {
-  color: var(--ct-muted);
-  font-weight: 900;
+  display: block;
+
+  margin-top: 5px;
+
+  color: var(--ct-muted, #8faab1);
+
+  font-size: 0.68rem;
 }
+
+/* =========================================================
+   BASIC TANK INFORMATION
+========================================================= */
 
 .modern-tank-detail-info-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  gap: 12px;
 }
 
 .modern-tank-detail-info-card {
+  min-width: 0;
+  min-height: 115px;
+
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 7px;
+
+  padding: 16px;
+
+  border: 1px solid var(--ct-border, rgba(0, 217, 199, 0.14));
+  border-radius: 18px;
+
+  background: var(--ct-surface, rgba(8, 42, 51, 0.7));
+}
+
+.modern-tank-detail-info-card > svg {
+  color: var(--ct-brand, #00d9c7);
+}
+
+.modern-tank-detail-info-card > strong {
+  max-width: 100%;
+
+  overflow: hidden;
+
+  color: var(--ct-text, #eefcff);
+
+  font-size: 0.86rem;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modern-tank-detail-info-card > span {
+  color: var(--ct-muted, #8faab1);
+
+  font-size: 0.67rem;
+  font-weight: 700;
+}
+
+/* =========================================================
+   TECHNICAL DETAILS
+========================================================= */
+
+.modern-tank-technical-details,
+.modern-tank-advanced-controls {
+  overflow: hidden;
+
+  border: 1px solid var(--ct-border, rgba(0, 217, 199, 0.12));
+  border-radius: 17px;
+
+  background: var(--ct-surface, rgba(8, 42, 51, 0.64));
+}
+
+.modern-tank-technical-details summary,
+.modern-tank-advanced-controls summary {
+  min-height: 52px;
+
+  display: flex;
+  align-items: center;
+
+  padding: 0 16px;
+
+  color: var(--ct-muted, #8faab1);
+
+  cursor: pointer;
+
+  list-style: none;
+
+  font-size: 0.74rem;
+  font-weight: 900;
+}
+
+.modern-tank-technical-details summary::-webkit-details-marker,
+.modern-tank-advanced-controls summary::-webkit-details-marker {
+  display: none;
+}
+
+.modern-tank-technical-details summary::after,
+.modern-tank-advanced-controls summary::after {
+  content: "+";
+
+  margin-left: auto;
+
+  color: var(--ct-brand, #00d9c7);
+
+  font-size: 1.1rem;
+}
+
+.modern-tank-technical-details[open] summary::after,
+.modern-tank-advanced-controls[open] summary::after {
+  content: "−";
+}
+
+.modern-tank-technical-grid {
   display: grid;
-  gap: 8px;
-  padding: 18px;
-  border-radius: 22px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+
+  padding: 14px 16px 16px;
+
+  border-top: 1px solid var(--ct-border, rgba(0, 217, 199, 0.08));
 }
 
-.modern-tank-detail-info-card svg {
-  color: var(--ct-brand);
+.modern-tank-technical-grid > div {
+  min-width: 0;
+
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+
+  padding: 12px;
+
+  border-radius: 13px;
+
+  background: var(--ct-surface-soft, rgba(255, 255, 255, 0.02));
 }
 
-.modern-tank-detail-info-card strong {
-  color: var(--ct-text);
-  font-size: 1rem;
+.modern-tank-technical-grid svg {
+  flex: 0 0 auto;
+
+  color: var(--ct-brand, #00d9c7);
 }
 
-.modern-tank-detail-info-card span {
-  color: var(--ct-muted);
-  font-size: 0.82rem;
+.modern-tank-technical-grid span {
+  min-width: 0;
+}
+
+.modern-tank-technical-grid small,
+.modern-tank-technical-grid strong {
+  display: block;
+}
+
+.modern-tank-technical-grid small {
+  color: var(--ct-muted, #8faab1);
+  font-size: 0.61rem;
+}
+
+.modern-tank-technical-grid strong {
+  margin-top: 4px;
+
+  overflow: hidden;
+
+  color: var(--ct-text, #eefcff);
+
+  font-size: 0.7rem;
+  line-height: 1.4;
+
+  text-overflow: ellipsis;
+}
+
+/* =========================================================
+   TABS
+========================================================= */
+
+.tank-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  padding: 6px;
+
+  overflow-x: auto;
+
+  border: 1px solid var(--ct-border, rgba(0, 217, 199, 0.14));
+  border-radius: 16px;
+
+  background: var(--ct-surface, rgba(8, 42, 51, 0.66));
+
+  scrollbar-width: none;
+}
+
+.tank-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tank-tabs button {
+  min-height: 40px;
+
+  flex: 1 0 auto;
+
+  padding: 0 16px;
+
+  color: var(--ct-muted, #8faab1);
+
+  border: 0;
+  border-radius: 11px;
+
+  background: transparent;
+
+  cursor: pointer;
+
+  font: inherit;
+  font-size: 0.73rem;
   font-weight: 850;
+
+  transition:
+    color 0.2s ease,
+    background 0.2s ease;
 }
+
+.tank-tabs button:hover {
+  color: var(--ct-text, #eefcff);
+
+  background: var(--ct-surface-soft, rgba(0, 217, 199, 0.04));
+}
+
+.tank-tabs button.active {
+  color: #04191d;
+
+  background:
+    linear-gradient(
+      135deg,
+      var(--ct-brand, #00d9c7),
+      var(--ct-brand-strong, #5fc7b4)
+    );
+}
+
+/* =========================================================
+   DETAIL PANELS
+========================================================= */
 
 .modern-tank-detail-panel {
-  padding: 24px;
-  border-radius: 28px;
+  min-width: 0;
+
+  padding: 22px;
+
+  border: 1px solid var(--ct-border, rgba(0, 217, 199, 0.14));
+  border-radius: 22px;
+
+  background:
+    radial-gradient(
+      circle at top right,
+      rgba(0, 217, 199, 0.055),
+      transparent 17rem
+    ),
+    var(--ct-surface, rgba(8, 42, 51, 0.7));
 }
+
+.modern-panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+
+  margin-bottom: 18px;
+}
+
+.modern-panel-heading h3 {
+  margin: 0;
+
+  color: var(--ct-text, #eefcff);
+
+  font-size: 1.08rem;
+  letter-spacing: -0.025em;
+}
+
+.modern-panel-heading > svg {
+  color: var(--ct-brand, #00d9c7);
+}
+
+/* =========================================================
+   METRIC CARDS
+========================================================= */
 
 .modern-tank-detail-metric-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
+  gap: 11px;
 }
 
 .modern-tank-detail-metric {
+  min-width: 0;
+  min-height: 135px;
+
   display: flex;
   align-items: flex-start;
-  gap: 14px;
-  padding: 18px;
-  border: 1px solid var(--ct-border);
-  border-radius: 22px;
-  background: var(--ct-surface-soft);
+  gap: 12px;
+
+  padding: 14px;
+
+  border: 1px solid var(--ct-border, rgba(0, 217, 199, 0.12));
+  border-radius: 17px;
+
+  background: var(--ct-surface-soft, rgba(0, 217, 199, 0.025));
 }
 
 .modern-tank-detail-metric > span {
-  width: 48px;
-  height: 48px;
+  width: 39px;
+  height: 39px;
+
   display: grid;
   place-items: center;
-  color: var(--ct-brand);
+
   flex: 0 0 auto;
-  border-radius: 16px;
-  background: var(--ct-brand-soft);
+
+  color: var(--ct-brand, #00d9c7);
+
+  border-radius: 12px;
+
+  background: var(--ct-brand-soft, rgba(0, 217, 199, 0.08));
+}
+
+.modern-tank-detail-metric > div {
+  min-width: 0;
 }
 
 .modern-tank-detail-metric strong {
-  color: var(--ct-text);
-  font-size: 1.1rem;
+  display: block;
+
+  overflow: hidden;
+
+  color: var(--ct-text, #eefcff);
+
+  font-size: 0.93rem;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .modern-tank-detail-metric p {
-  margin: 5px 0 8px;
-  color: var(--ct-muted);
-  font-size: 0.82rem;
-  font-weight: 850;
+  margin: 4px 0 9px;
+
+  color: var(--ct-muted, #8faab1);
+
+  font-size: 0.67rem;
+  font-weight: 750;
 }
 
-.modern-tank-detail-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
+/* =========================================================
+   EMPTY DETAIL BLOCK
+========================================================= */
 
-.modern-tank-detail-table {
-  overflow-x: auto;
-  border: 1px solid var(--ct-border);
-  border-radius: 20px;
-}
+.modern-tank-detail-empty {
+  min-height: 180px;
 
-.modern-tank-detail-table-head,
-.modern-tank-detail-table-row {
-  min-width: 760px;
-  display: grid;
-  grid-template-columns: 1.2fr 0.8fr 0.9fr 1fr 0.9fr 0.8fr;
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  padding: 14px;
+  justify-content: center;
+
+  padding: 24px;
+
+  text-align: center;
+
+  border: 1px dashed var(--ct-border, rgba(0, 217, 199, 0.14));
+  border-radius: 18px;
+
+  background: var(--ct-surface-soft, rgba(0, 217, 199, 0.02));
 }
 
-.modern-tank-detail-table-head {
-  color: var(--ct-muted);
-  background: var(--ct-surface-soft);
-  font-size: 0.74rem;
-  font-weight: 950;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.modern-tank-detail-empty svg {
+  color: var(--ct-brand, #00d9c7);
 }
 
-.modern-tank-detail-table-row {
-  border-top: 1px solid var(--ct-border);
+.modern-tank-detail-empty strong {
+  margin-top: 10px;
+
+  color: var(--ct-text, #eefcff);
+
+  font-size: 0.87rem;
 }
 
-.modern-tank-detail-table-row span {
-  color: var(--ct-text);
-  font-size: 0.84rem;
-  font-weight: 850;
+.modern-tank-detail-empty span {
+  max-width: 390px;
+
+  margin-top: 5px;
+
+  color: var(--ct-muted, #8faab1);
+
+  font-size: 0.71rem;
+  line-height: 1.5;
 }
 
-.modern-tank-detail-list {
-  display: grid;
-  gap: 10px;
-}
+/* =========================================================
+   COMMAND STATUS
+========================================================= */
 
-.modern-tank-detail-list-row {
+.command-status-card {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 14px;
-  border: 1px solid var(--ct-border);
-  border-radius: 18px;
-  background: var(--ct-surface-soft);
+  gap: 15px;
+
+  padding: 15px;
+
+  border: 1px solid var(--ct-border, rgba(0, 217, 199, 0.12));
+  border-radius: 16px;
+
+  background: var(--ct-surface-soft, rgba(255, 255, 255, 0.025));
 }
 
-.modern-tank-detail-list-row strong,
-.modern-tank-detail-list-row span {
-  display: block;
+.command-status-card > div {
+  min-width: 0;
 }
 
-.modern-tank-detail-list-row strong {
-  color: var(--ct-text);
-}
+.command-status-card strong {
+  color: var(--ct-text, #eefcff);
 
-.modern-tank-detail-list-row span {
-  margin-top: 5px;
-  color: var(--ct-muted);
   font-size: 0.8rem;
 }
 
-.modern-tank-detail-list-row > b {
-  color: var(--ct-text);
+.command-status-card p {
+  margin: 5px 0 0;
+
+  color: var(--ct-muted, #8faab1);
+
+  font-size: 0.7rem;
+  line-height: 1.5;
 }
 
-.modern-tank-detail-empty,
-.modern-tank-detail-empty-page {
-  min-height: 220px;
-  display: grid;
-  place-items: center;
-  gap: 10px;
-  padding: 28px;
-  text-align: center;
-  border: 1px dashed var(--ct-border-strong);
-  border-radius: 24px;
-  background: var(--ct-surface-soft);
+.command-status-card small {
+  display: block;
+
+  margin-top: 5px;
+
+  color: var(--ct-muted, #8faab1);
+
+  font-size: 0.64rem;
 }
 
-.modern-tank-detail-empty-page {
-  min-height: 420px;
-  border-style: solid;
-}
+.command-status-card > button {
+  min-height: 37px;
 
-.modern-tank-detail-empty svg,
-.modern-tank-detail-empty-page svg {
-  color: var(--ct-brand);
-}
+  flex: 0 0 auto;
 
-.modern-tank-detail-empty strong,
-.modern-tank-detail-empty-page h3 {
-  margin: 0;
-  color: var(--ct-text);
-}
+  padding: 0 13px;
 
-.modern-tank-detail-empty span,
-.modern-tank-detail-empty-page p {
-  max-width: 520px;
-  margin: 0;
-  color: var(--ct-muted);
-  line-height: 1.65;
-}
-
-@media (max-width: 1180px) {
-  .modern-tank-detail-hero,
-  .modern-tank-detail-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .modern-tank-detail-info-grid,
-  .modern-tank-detail-metric-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 620px) {
-  .modern-tank-detail-hero,
-  .modern-tank-detail-panel,
-  .modern-tank-detail-empty-page {
-    padding: 22px;
-    border-radius: 24px;
-  }
-
-  .modern-tank-detail-info-grid,
-  .modern-tank-detail-metric-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .modern-tank-detail-actions {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .modern-tank-detail-actions .dashboard-primary-button {
-    justify-content: center;
-    width: 100%;
-  }
-
-  .modern-tank-detail-list-row {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-}
-.modern-tank-detail-pagination {
-  min-width: 760px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px;
-  border-top: 1px solid var(--ct-border);
-  background: var(--ct-surface-soft);
-}
-
-.modern-tank-detail-pagination button {
-  min-height: 38px;
-  padding: 0 14px;
   color: #04191d;
+
   border: 0;
-  border-radius: 12px;
-  background: var(--ct-brand);
+  border-radius: 11px;
+
+  background: var(--ct-brand, #00d9c7);
+
   cursor: pointer;
-  font-weight: 950;
-}
 
-.modern-tank-detail-pagination button:disabled {
-  color: var(--ct-muted);
-  background: var(--ct-border);
-  cursor: not-allowed;
-}
-
-.modern-tank-detail-pagination span {
-  color: var(--ct-muted);
-  font-size: 0.84rem;
+  font: inherit;
+  font-size: 0.68rem;
   font-weight: 900;
 }
+
+.command-status-card.waiting,
+.command-status-card.sensor-wait {
+  border-color: rgba(255, 196, 74, 0.22);
+  background: rgba(255, 196, 74, 0.055);
+}
+
+.command-status-card button.danger {
+  color: white;
+  background: var(--ct-danger, #ff5c7a);
+}
+
+/* =========================================================
+   DEVICE NOTES
+========================================================= */
+
+.modern-device-command-note {
+  min-height: 48px;
+
+  display: flex;
+  align-items: center;
+  gap: 9px;
+
+  margin-bottom: 10px;
+  padding: 11px 13px;
+
+  color: var(--ct-muted, #8faab1);
+
+  border: 1px solid var(--ct-border, rgba(0, 217, 199, 0.12));
+  border-radius: 13px;
+
+  background: var(--ct-surface-soft, rgba(0, 217, 199, 0.025));
+
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.modern-device-command-note > svg {
+  flex: 0 0 auto;
+  color: var(--ct-brand, #00d9c7);
+}
+
+.modern-device-command-note input {
+  width: 60px;
+  min-height: 31px;
+
+  margin: 0 7px;
+  padding: 0 8px;
+
+  color: var(--ct-text, #eefcff);
+
+  border: 1px solid var(--ct-border, rgba(0, 217, 199, 0.18));
+  border-radius: 8px;
+  outline: 0;
+
+  background: var(--ct-surface, rgba(8, 42, 51, 0.65));
+
+  text-align: center;
+  font: inherit;
+  font-weight: 800;
+}
+
+/* =========================================================
+   DEVICE MESSAGE
+========================================================= */
+
+.modern-device-command-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+
+  margin-top: 11px;
+  padding: 12px 13px;
+
+  color: var(--ct-text, #eefcff);
+
+  border: 1px solid rgba(0, 217, 199, 0.16);
+  border-radius: 13px;
+
+  background: rgba(0, 217, 199, 0.055);
+
+  font-size: 0.71rem;
+  line-height: 1.5;
+}
+
+.modern-device-command-message svg {
+  flex: 0 0 auto;
+
+  margin-top: 1px;
+
+  color: var(--ct-brand, #00d9c7);
+}
+
+.modern-device-command-message.warning {
+  border-color: rgba(255, 196, 74, 0.24);
+  background: rgba(255, 196, 74, 0.06);
+}
+
+.modern-device-command-message.warning svg {
+  color: var(--ct-warning, #ffd166);
+}
+
+/* =========================================================
+   CONTROL BUTTONS
+========================================================= */
+
 .modern-device-command-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
+  gap: 11px;
+
+  margin-top: 16px;
 }
 
 .modern-device-command-grid button {
-  min-height: 150px;
-  display: grid;
-  align-content: center;
-  gap: 8px;
-  padding: 18px;
-  text-align: left;
-  color: var(--ct-text);
-  border: 1px solid var(--ct-border);
-  border-radius: 22px;
-  background:
-    radial-gradient(circle at top right, rgba(0, 217, 199, 0.12), transparent 10rem),
-    var(--ct-surface-soft);
+  min-height: 145px;
+
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+
+  padding: 16px;
+
+  color: var(--ct-text, #eefcff);
+
+  border: 1px solid var(--ct-border, rgba(0, 217, 199, 0.14));
+  border-radius: 17px;
+
+  background: var(--ct-surface-soft, rgba(0, 217, 199, 0.025));
+
   cursor: pointer;
+
+  font: inherit;
+  text-align: left;
+
   transition:
     transform 0.2s ease,
     border-color 0.2s ease,
     background 0.2s ease;
 }
 
-.modern-device-command-grid button:hover {
-  border-color: rgba(0, 217, 199, 0.34);
-  background:
-    radial-gradient(circle at top right, rgba(0, 217, 199, 0.18), transparent 10rem),
-    var(--ct-surface-soft);
+.modern-device-command-grid button:hover:not(:disabled) {
   transform: translateY(-2px);
+
+  border-color: var(--ct-border-strong, rgba(0, 217, 199, 0.3));
+
+  background: var(--ct-brand-soft, rgba(0, 217, 199, 0.06));
 }
 
-.modern-device-command-grid button:disabled {
-  cursor: wait;
-  opacity: 0.65;
-  transform: none;
-}
+.modern-device-command-grid button > svg {
+  margin-bottom: 12px;
 
-.modern-device-command-grid button svg {
-  color: var(--ct-brand);
+  color: var(--ct-brand, #00d9c7);
 }
 
 .modern-device-command-grid button strong {
-  color: var(--ct-text);
-  font-size: 1rem;
-  font-weight: 950;
-}
+  color: var(--ct-text, #eefcff);
 
-.modern-device-command-grid button span {
-  color: var(--ct-muted);
-  line-height: 1.45;
-  font-size: 0.82rem;
-  font-weight: 800;
-}
-
-.modern-device-command-grid button.danger svg {
-  color: var(--ct-danger);
-}
-
-.modern-device-command-grid button.danger:hover {
-  border-color: rgba(255, 92, 122, 0.35);
-  background:
-    radial-gradient(circle at top right, rgba(255, 92, 122, 0.12), transparent 10rem),
-    var(--ct-surface-soft);
-}
-
-.modern-device-command-note,
-.modern-device-command-message {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin-top: 14px;
-  padding: 13px 14px;
-  border: 1px solid var(--ct-border);
-  border-radius: 16px;
-  background: var(--ct-surface-soft);
-  color: var(--ct-muted);
-  font-size: 0.84rem;
-  font-weight: 850;
-  line-height: 1.5;
-}
-
-.modern-device-command-note svg {
-  color: var(--ct-warning);
-  flex: 0 0 auto;
-  margin-top: 2px;
-}
-
-.modern-device-command-message {
-  color: var(--ct-text);
-  border-color: rgba(0, 217, 199, 0.25);
-  background: var(--ct-brand-soft);
-}
-
-.modern-device-command-message svg {
-  color: var(--ct-brand);
-  flex: 0 0 auto;
-  margin-top: 2px;
-}
-
-@media (max-width: 1180px) {
-  .modern-device-command-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 620px) {
-  .modern-device-command-grid {
-    grid-template-columns: 1fr;
-  }
-}
-/* =========================================
-   ACTUATOR CONTROLS ADD-ON FOR TANK DETAILS
-   Paste at the bottom of tanks.css
-========================================= */
-
-/* Actuator status card polish */
-.modern-tank-detail-info-card .modern-tank-status {
-  width: fit-content;
-  margin-top: 2px;
-}
-
-/* Normal connected badge */
-.modern-tank-status.normal {
-  color: #04191d;
-  background: var(--ct-brand);
-}
-
-/* Warning actuator state */
-.modern-tank-status.warning {
-  color: #04191d;
-  background: var(--ct-warning);
-}
-
-/* Critical/offline actuator state */
-.modern-tank-status.critical {
-  color: white;
-  background: var(--ct-danger);
-}
-
-/* Device command notes spacing */
-.modern-device-command-note + .modern-device-command-note {
-  margin-top: 10px;
-}
-
-.modern-device-command-note b.modern-tank-status {
-  margin: 0 4px;
-}
-
-/* Pump duration input inside note */
-.modern-device-command-note input {
-  width: 82px;
-  min-height: 34px;
-  margin: 0 6px 0 10px;
-  padding: 6px 9px;
-  color: var(--ct-text);
-  border: 1px solid var(--ct-border);
-  border-radius: 10px;
-  outline: none;
-  background: var(--ct-surface);
-  font-weight: 900;
-}
-
-.modern-device-command-note input:focus {
-  border-color: rgba(0, 217, 199, 0.42);
-  box-shadow: 0 0 0 3px rgba(0, 217, 199, 0.12);
-}
-
-/* Space between notes and command buttons */
-.modern-device-command-grid {
-  margin-top: 16px;
-}
-
-/* Better disabled style */
-.modern-device-command-grid button:disabled {
-  cursor: not-allowed;
-  opacity: 0.52;
-  transform: none;
-  filter: grayscale(0.2);
-}
-
-/* Stop all button always visually urgent */
-.modern-device-command-grid button.danger {
-  border-color: rgba(255, 92, 122, 0.24);
-}
-
-.modern-device-command-grid button.danger strong {
-  color: var(--ct-text);
-}
-
-.modern-device-command-grid button.danger span {
-  color: var(--ct-muted);
-}
-
-/* Active command / message style */
-.modern-device-command-message {
-  margin-top: 14px;
-}
-
-.modern-device-command-message .modern-tank-status {
-  margin: 0 4px;
-}
-
-/* Make command history result text readable */
-.modern-tank-detail-list-row .modern-tank-status {
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-
-/* More readable long command result messages */
-.modern-tank-detail-list-row span {
-  word-break: break-word;
-}
-
-/* Actuator icon cards should not overflow long device UID */
-.modern-tank-detail-info-card strong,
-.modern-tank-detail-info-card span {
-  overflow-wrap: anywhere;
-}
-
-/* Responsive polish for 6 info cards */
-@media (max-width: 1180px) {
-  .modern-tank-detail-info-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 620px) {
-  .modern-device-command-note {
-    align-items: flex-start;
-    flex-wrap: wrap;
-  }
-
-  .modern-device-command-note input {
-    margin-left: 0;
-  }
-
-  .modern-tank-detail-info-grid {
-    grid-template-columns: 1fr;
-  }
-}
-.modern-device-command-message.warning {
-  color: var(--ct-warning);
-  border-color: rgba(244, 183, 64, 0.35);
-  background: rgba(244, 183, 64, 0.09);
-}
-
-.modern-device-command-message.warning svg {
-  color: var(--ct-warning);
-}
-
-
-/* =========================================
-   TANK DETAILS TABS + AUTO COMMAND UI UPDATE
-   Added for cleaner CrayThrive actuator workflow
-========================================= */
-
-.modern-tank-detail-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 8px;
-  border: 1px solid var(--ct-border);
-  border-radius: 22px;
-  background: var(--ct-surface);
-  box-shadow: var(--ct-shadow-soft);
-}
-
-.modern-tank-detail-tabs button {
-  min-height: 42px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 1 1 130px;
-  padding: 0 16px;
-  color: var(--ct-muted);
-  border: 1px solid transparent;
-  border-radius: 999px;
-  background: transparent;
-  cursor: pointer;
-  font-size: 0.86rem;
-  font-weight: 950;
-  transition:
-    background 0.2s ease,
-    border-color 0.2s ease,
-    color 0.2s ease,
-    transform 0.2s ease;
-}
-
-.modern-tank-detail-tabs button:hover {
-  color: var(--ct-text);
-  border-color: var(--ct-border);
-  background: var(--ct-surface-soft);
-  transform: translateY(-1px);
-}
-
-.modern-tank-detail-tabs button.active {
-  color: #04191d;
-  border-color: rgba(0, 217, 199, 0.4);
-  background: var(--ct-brand);
-}
-
-.modern-overview-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.modern-overview-card {
-  min-height: 150px;
-  display: grid;
-  align-content: start;
-  gap: 10px;
-  padding: 18px;
-  border: 1px solid var(--ct-border);
-  border-radius: 22px;
-  background:
-    radial-gradient(circle at top right, rgba(0, 217, 199, 0.12), transparent 10rem),
-    var(--ct-surface-soft);
-}
-
-.modern-overview-card svg {
-  color: var(--ct-brand);
-}
-
-.modern-overview-card span {
-  color: var(--ct-muted);
-  font-size: 0.78rem;
-  font-weight: 900;
-}
-
-.modern-overview-card strong {
-  overflow-wrap: anywhere;
-  color: var(--ct-text);
-  font-size: 1.15rem;
-  font-weight: 950;
-}
-
-.modern-overview-card .modern-tank-status {
-  width: fit-content;
-}
-
-.modern-overview-split {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
-  gap: 16px;
-  margin-top: 18px;
-}
-
-.modern-panel-heading.compact {
-  margin-bottom: 12px;
-}
-
-.modern-panel-heading.compact h3 {
-  font-size: 1rem;
-}
-
-.modern-command-result-card {
-  min-height: 150px;
-  display: grid;
-  align-content: start;
-  gap: 10px;
-  padding: 18px;
-  border: 1px solid var(--ct-border);
-  border-radius: 22px;
-  background: var(--ct-surface-soft);
-}
-
-.modern-command-result-card strong {
-  color: var(--ct-text);
-  font-size: 1.1rem;
-}
-
-.modern-command-result-card span {
-  color: var(--ct-muted);
-  line-height: 1.55;
-  font-size: 0.86rem;
-  font-weight: 850;
-}
-
-.modern-command-result-card .modern-tank-status {
-  width: fit-content;
-}
-
-.modern-command-layout {
-  display: grid;
-  grid-template-columns: minmax(280px, 0.82fr) minmax(0, 1.18fr);
-  gap: 16px;
-  margin-top: 16px;
-}
-
-.modern-command-side {
-  display: grid;
-  align-content: start;
-  gap: 12px;
-}
-
-.modern-command-main {
-  display: grid;
-  align-content: start;
-  gap: 12px;
-}
-
-.modern-command-status-card,
-.modern-duration-card,
-.modern-command-wait-card {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 16px;
-  border: 1px solid var(--ct-border);
-  border-radius: 20px;
-  background: var(--ct-surface-soft);
-}
-
-.modern-command-status-card svg,
-.modern-command-status-card .spin-icon {
-  color: var(--ct-brand);
-  flex: 0 0 auto;
-  margin-top: 2px;
-}
-
-.modern-command-status-card.waiting {
-  border-color: rgba(244, 183, 64, 0.38);
-  background: rgba(244, 183, 64, 0.08);
-}
-
-.modern-command-status-card.waiting svg,
-.modern-command-status-card.waiting .spin-icon {
-  color: var(--ct-warning);
-}
-
-.modern-command-status-card span,
-.modern-duration-card span {
-  display: block;
-  color: var(--ct-muted);
-  font-size: 0.76rem;
-  font-weight: 950;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.modern-command-status-card strong {
-  display: block;
-  margin-top: 5px;
-  color: var(--ct-text);
-  font-size: 1.05rem;
-  font-weight: 950;
-}
-
-.modern-command-status-card small,
-.modern-duration-card small {
-  display: block;
-  margin-top: 5px;
-  color: var(--ct-muted);
-  line-height: 1.45;
-  font-size: 0.78rem;
-  font-weight: 800;
-}
-
-.modern-duration-card {
-  display: grid;
-  gap: 12px;
-}
-
-.modern-duration-picker {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.modern-duration-picker button,
-.modern-command-action-row button {
-  min-height: 38px;
-  padding: 0 14px;
-  color: #04191d;
-  border: 0;
-  border-radius: 999px;
-  background: var(--ct-brand);
-  cursor: pointer;
-  font-weight: 950;
-  transition:
-    transform 0.2s ease,
-    filter 0.2s ease,
-    opacity 0.2s ease;
-}
-
-.modern-duration-picker button:hover,
-.modern-command-action-row button:hover {
-  filter: brightness(1.05);
-  transform: translateY(-1px);
-}
-
-.modern-duration-picker button.active {
-  background: var(--ct-warning);
-}
-
-.modern-duration-card label {
-  display: grid;
-  gap: 7px;
-  color: var(--ct-muted);
-  font-size: 0.78rem;
-  font-weight: 900;
-}
-
-.modern-duration-card input {
-  min-height: 40px;
-  width: 100%;
-  padding: 0 12px;
-  color: var(--ct-text);
-  border: 1px solid var(--ct-border);
-  border-radius: 14px;
-  outline: none;
-  background: var(--ct-surface);
-  font-weight: 900;
-}
-
-.modern-duration-card input:focus {
-  border-color: rgba(0, 217, 199, 0.42);
-  box-shadow: 0 0 0 3px rgba(0, 217, 199, 0.12);
-}
-
-.modern-device-command-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-top: 0;
-}
-
-.modern-device-command-grid button {
-  min-height: 132px;
-}
-
-.modern-device-command-grid button:disabled {
-  cursor: not-allowed;
-  opacity: 0.52;
-  transform: none;
-}
-
-.modern-command-wait-card {
-  align-items: center;
-  border-color: rgba(244, 183, 64, 0.35);
-  background: rgba(244, 183, 64, 0.08);
-}
-
-.modern-command-wait-card.slow {
-  border-color: rgba(255, 92, 122, 0.35);
-  background: rgba(255, 92, 122, 0.08);
-}
-
-.modern-command-wait-card strong,
-.modern-command-wait-card span {
-  display: block;
-}
-
-.modern-command-wait-card strong {
-  color: var(--ct-text);
-  font-size: 0.98rem;
-}
-
-.modern-command-wait-card span {
-  margin-top: 5px;
-  color: var(--ct-muted);
-  line-height: 1.5;
-  font-size: 0.82rem;
-  font-weight: 850;
-}
-
-.modern-command-action-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
-.modern-command-action-row.bottom {
-  justify-content: flex-start;
-}
-
-.modern-command-action-row button.danger {
-  color: white;
-  background: var(--ct-danger);
-}
-
-.modern-command-action-row button.warning {
-  background: var(--ct-warning);
-}
-
-.modern-command-action-row button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-  transform: none;
-}
-
-.modern-device-command-message.compact {
-  margin-top: 0;
   font-size: 0.8rem;
 }
 
-.modern-device-command-message.warning {
-  color: var(--ct-warning);
-  border-color: rgba(244, 183, 64, 0.35);
-  background: rgba(244, 183, 64, 0.09);
-}
-
-.modern-device-command-message.warning svg {
-  color: var(--ct-warning);
-}
-
-.modern-tank-detail-info-card .modern-tank-status,
-.modern-tank-detail-list-row .modern-tank-status,
-.modern-command-status-card .modern-tank-status {
-  width: fit-content;
-  white-space: nowrap;
-}
-
-.modern-tank-detail-info-card strong,
-.modern-tank-detail-info-card span,
-.modern-tank-detail-list-row span {
-  overflow-wrap: anywhere;
-}
-
-@media (max-width: 1180px) {
-  .modern-overview-grid,
-  .modern-overview-split,
-  .modern-command-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .modern-overview-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 720px) {
-  .modern-tank-detail-tabs {
-    gap: 6px;
-  }
-
-  .modern-tank-detail-tabs button {
-    flex-basis: calc(50% - 6px);
-  }
-
-  .modern-overview-grid,
-  .modern-device-command-grid,
-  .modern-duration-picker {
-    grid-template-columns: 1fr;
-  }
-
-  .modern-command-status-card,
-  .modern-command-wait-card {
-    flex-direction: column;
-  }
-
-  .modern-command-action-row {
-    justify-content: flex-start;
-  }
-}
-/* =========================================
-   CRAYTHRIVE TANK DETAILS UI FIX
-   Tabs + Controls + Waiting State
-========================================= */
-
-.tank-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  padding: 8px;
-  margin: 4px 0 18px;
-  border: 1px solid var(--ct-border);
-  border-radius: 20px;
-  background: var(--ct-surface);
-  box-shadow: var(--ct-shadow-soft);
-}
-
-.tank-tabs button {
-  min-height: 40px;
-  padding: 0 18px;
-  color: var(--ct-muted);
-  border: 1px solid transparent;
-  border-radius: 999px;
-  background: transparent;
-  cursor: pointer;
-  font-size: 0.84rem;
-  font-weight: 950;
-  transition:
-    transform 0.18s ease,
-    background 0.18s ease,
-    color 0.18s ease,
-    border-color 0.18s ease;
-}
-
-.tank-tabs button:hover {
-  color: var(--ct-text);
-  border-color: var(--ct-border);
-  background: var(--ct-surface-soft);
-}
-
-.tank-tabs button.active {
-  color: #04191d;
-  border-color: rgba(0, 217, 199, 0.55);
-  background: var(--ct-brand);
-  box-shadow: 0 10px 24px rgba(0, 217, 199, 0.14);
-}
-
-.modern-tank-detail-panel {
-  overflow: hidden;
-}
-
-.modern-device-command-note {
-  align-items: center;
-  margin-top: 12px;
-  padding: 13px 16px;
-  border-radius: 18px;
-}
-
-.modern-device-command-note span {
-  min-width: 0;
-}
-
-.modern-device-command-note input {
-  width: 82px;
-  min-height: 34px;
-  margin: 0 8px;
-  padding: 6px 10px;
-  color: var(--ct-text);
-  border: 1px solid var(--ct-border);
-  border-radius: 12px;
-  outline: none;
-  background: var(--ct-surface);
-  font-weight: 950;
-}
-
-.modern-device-command-note input:focus {
-  border-color: rgba(0, 217, 199, 0.48);
-  box-shadow: 0 0 0 3px rgba(0, 217, 199, 0.1);
-}
-
-.modern-device-command-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-  margin-top: 16px;
-}
-
-.modern-device-command-grid button {
-  min-height: 132px;
-  display: grid;
-  align-content: center;
-  gap: 8px;
-  padding: 18px 20px;
-  text-align: left;
-  color: var(--ct-text);
-  border: 1px solid var(--ct-border);
-  border-radius: 24px;
-  background:
-    radial-gradient(circle at top right, rgba(0, 217, 199, 0.11), transparent 10rem),
-    var(--ct-surface-soft);
-  cursor: pointer;
-  transition:
-    transform 0.18s ease,
-    border-color 0.18s ease,
-    background 0.18s ease,
-    opacity 0.18s ease;
-}
-
-.modern-device-command-grid button:hover:not(:disabled) {
-  border-color: rgba(0, 217, 199, 0.42);
-  background:
-    radial-gradient(circle at top right, rgba(0, 217, 199, 0.18), transparent 10rem),
-    var(--ct-surface-soft);
-  transform: translateY(-2px);
-}
-
-.modern-device-command-grid button:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-  transform: none;
-}
-
-.modern-device-command-grid button svg {
-  color: var(--ct-brand);
-}
-
-.modern-device-command-grid button strong {
-  color: var(--ct-text);
-  font-size: 1.05rem;
-  font-weight: 950;
-}
-
 .modern-device-command-grid button span {
-  max-width: 420px;
-  color: var(--ct-muted);
+  display: block;
+
+  margin-top: 5px;
+
+  color: var(--ct-muted, #8faab1);
+
+  font-size: 0.66rem;
   line-height: 1.45;
-  font-size: 0.82rem;
-  font-weight: 850;
 }
 
 .modern-device-command-grid button.danger {
-  border-color: rgba(255, 92, 122, 0.28);
+  border-color: rgba(255, 92, 122, 0.2);
+  background: rgba(255, 92, 122, 0.045);
 }
 
-.modern-device-command-grid button.danger svg {
-  color: var(--ct-danger);
+.modern-device-command-grid button.danger > svg {
+  color: var(--ct-danger, #ff5c7a);
 }
 
-.modern-device-command-grid button.danger:hover:not(:disabled) {
-  border-color: rgba(255, 92, 122, 0.48);
-  background:
-    radial-gradient(circle at top right, rgba(255, 92, 122, 0.14), transparent 10rem),
-    var(--ct-surface-soft);
+.modern-device-command-grid button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
-.command-status-card {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-top: 14px;
-  padding: 15px 16px;
-  border: 1px solid var(--ct-border);
-  border-radius: 20px;
-  background: var(--ct-surface-soft);
+/* =========================================================
+   ADVANCED CONTROLS
+========================================================= */
+
+.modern-tank-advanced-controls {
+  margin-top: 15px;
 }
 
-.command-status-card strong {
-  display: block;
-  color: var(--ct-text);
-  font-size: 0.96rem;
-  font-weight: 950;
-}
+.modern-tank-advanced-controls > p {
+  margin: 0;
+  padding: 13px 16px 0;
 
-.command-status-card p {
-  margin: 5px 0 0;
-  color: var(--ct-muted);
+  color: var(--ct-muted, #8faab1);
+
+  font-size: 0.7rem;
   line-height: 1.5;
-  font-size: 0.84rem;
-  font-weight: 850;
-}
-
-.command-status-card button,
-.modern-device-command-actions button {
-  min-height: 36px;
-  padding: 0 14px;
-  color: #04191d;
-  border: 0;
-  border-radius: 999px;
-  background: var(--ct-brand);
-  cursor: pointer;
-  font-size: 0.78rem;
-  font-weight: 950;
-  white-space: nowrap;
-}
-
-.command-status-card button.danger,
-.modern-device-command-actions button.danger {
-  color: white;
-  background: var(--ct-danger);
-}
-
-.command-status-card.waiting {
-  border-color: rgba(244, 183, 64, 0.42);
-  background:
-    linear-gradient(90deg, rgba(244, 183, 64, 0.08), rgba(0, 217, 199, 0.06)),
-    var(--ct-surface-soft);
-}
-
-.command-status-card.waiting::after {
-  content: "";
-  position: absolute;
-  left: 16px;
-  right: 16px;
-  bottom: 0;
-  height: 3px;
-  border-radius: 999px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    var(--ct-warning),
-    var(--ct-brand),
-    transparent
-  );
-  background-size: 220% 100%;
-  animation: command-loading-line 1.2s linear infinite;
-  opacity: 0.9;
-}
-
-@keyframes command-loading-line {
-  from {
-    background-position: 220% 0;
-  }
-
-  to {
-    background-position: -220% 0;
-  }
-}
-
-.modern-device-command-message {
-  align-items: flex-start;
-  gap: 10px;
-  margin-top: 14px;
-  padding: 13px 16px;
-  color: var(--ct-text);
-  border-color: rgba(0, 217, 199, 0.28);
-  border-radius: 18px;
-  background: rgba(0, 217, 199, 0.08);
-  line-height: 1.55;
-}
-
-.modern-device-command-message span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.modern-device-command-message svg {
-  flex: 0 0 auto;
-}
-
-.modern-device-command-message.warning {
-  color: var(--ct-warning);
-  border-color: rgba(244, 183, 64, 0.35);
-  background: rgba(244, 183, 64, 0.09);
-}
-
-.modern-device-command-message.warning svg {
-  color: var(--ct-warning);
 }
 
 .modern-device-command-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 12px;
+  gap: 9px;
+
+  padding: 13px 16px 16px;
+}
+
+.modern-device-command-actions button {
+  min-height: 39px;
+
+  padding: 0 13px;
+
+  color: var(--ct-text, #eefcff);
+
+  border: 1px solid var(--ct-border, rgba(0, 217, 199, 0.14));
+  border-radius: 11px;
+
+  background: var(--ct-surface-soft, rgba(255, 255, 255, 0.03));
+
+  cursor: pointer;
+
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 850;
 }
 
 .modern-device-command-actions button.warning {
-  background: var(--ct-warning);
+  color: #d9a719;
+  border-color: rgba(255, 196, 74, 0.2);
 }
 
-.modern-device-command-actions button:disabled,
-.command-status-card button:disabled {
-  opacity: 0.45;
+.modern-device-command-actions button:disabled {
+  opacity: 0.38;
   cursor: not-allowed;
 }
 
+/* =========================================================
+   READINGS GRID
+========================================================= */
+
+.modern-tank-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(310px, 0.55fr);
+  gap: 15px;
+}
+
+/* =========================================================
+   READINGS TABLE
+========================================================= */
+
+.modern-tank-detail-table {
+  width: 100%;
+  min-width: 0;
+
+  overflow-x: auto;
+}
+
+.modern-tank-detail-table-head,
+.modern-tank-detail-table-row {
+  min-width: 760px;
+
+  display: grid;
+  grid-template-columns:
+    minmax(155px, 1.4fr)
+    repeat(4, minmax(90px, 1fr))
+    minmax(100px, 0.8fr);
+
+  align-items: center;
+  gap: 8px;
+}
+
+.modern-tank-detail-table-head {
+  padding: 10px 12px;
+
+  color: var(--ct-muted, #8faab1);
+
+  border-radius: 11px;
+
+  background: var(--ct-surface-soft, rgba(255, 255, 255, 0.025));
+
+  font-size: 0.65rem;
+  font-weight: 850;
+}
+
+.modern-tank-detail-table-row {
+  padding: 12px;
+
+  border-bottom: 1px solid var(--ct-border, rgba(0, 217, 199, 0.08));
+
+  color: var(--ct-text, #eefcff);
+
+  font-size: 0.7rem;
+}
+
+.modern-tank-detail-table-row:last-of-type {
+  border-bottom: 0;
+}
+
+/* =========================================================
+   LISTS
+========================================================= */
+
+.modern-tank-detail-list {
+  display: grid;
+  gap: 9px;
+}
+
+.modern-tank-detail-list-row {
+  min-width: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+
+  padding: 13px;
+
+  border: 1px solid var(--ct-border, rgba(0, 217, 199, 0.1));
+  border-radius: 14px;
+
+  background: var(--ct-surface-soft, rgba(255, 255, 255, 0.022));
+}
+
+.modern-tank-detail-list-row > div {
+  min-width: 0;
+}
+
+.modern-tank-detail-list-row strong {
+  display: block;
+
+  color: var(--ct-text, #eefcff);
+
+  font-size: 0.77rem;
+}
+
 .modern-tank-detail-list-row span {
-  overflow-wrap: anywhere;
+  display: block;
+
+  margin-top: 4px;
+
+  color: var(--ct-muted, #8faab1);
+
+  font-size: 0.65rem;
+  line-height: 1.45;
 }
 
-.modern-tank-detail-list-row .modern-tank-status {
+.modern-tank-detail-list-row > b:not(.modern-tank-status) {
   flex: 0 0 auto;
-  white-space: nowrap;
+
+  color: var(--ct-brand, #00d9c7);
+
+  font-size: 0.78rem;
 }
 
-@media (max-width: 760px) {
+/* =========================================================
+   PAGINATION
+========================================================= */
+
+.modern-tank-detail-pagination,
+.modern-list-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+
+  margin-top: 15px;
+  padding-top: 14px;
+
+  border-top: 1px solid var(--ct-border, rgba(0, 217, 199, 0.08));
+}
+
+.modern-tank-detail-pagination button,
+.modern-list-pagination button {
+  min-height: 36px;
+
+  padding: 0 13px;
+
+  color: var(--ct-text, #eefcff);
+
+  border: 1px solid var(--ct-border, rgba(0, 217, 199, 0.15));
+  border-radius: 10px;
+
+  background: var(--ct-surface-soft, rgba(255, 255, 255, 0.025));
+
+  cursor: pointer;
+
+  font: inherit;
+  font-size: 0.66rem;
+  font-weight: 850;
+}
+
+.modern-tank-detail-pagination button:hover:not(:disabled),
+.modern-list-pagination button:hover:not(:disabled) {
+  color: #04191d;
+
+  background: var(--ct-brand, #00d9c7);
+}
+
+.modern-tank-detail-pagination button:disabled,
+.modern-list-pagination button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.modern-tank-detail-pagination span,
+.modern-list-pagination span {
+  color: var(--ct-muted, #8faab1);
+
+  font-size: 0.67rem;
+  font-weight: 750;
+}
+
+/* =========================================================
+   SHARED FOCUS
+========================================================= */
+
+.modern-tank-link:focus-visible,
+.modern-back-link:focus-visible,
+.tank-tabs button:focus-visible,
+.modern-device-command-grid button:focus-visible,
+.modern-device-command-actions button:focus-visible,
+.command-status-card button:focus-visible,
+.modern-tank-detail-pagination button:focus-visible,
+.modern-list-pagination button:focus-visible {
+  outline: 3px solid rgba(0, 217, 199, 0.2);
+  outline-offset: 2px;
+}
+
+/* =========================================================
+   RESPONSIVE — LARGE TABLET
+========================================================= */
+
+@media (max-width: 1180px) {
+  .modern-tank-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .modern-tank-detail-info-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .modern-tank-detail-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .modern-device-command-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .modern-tank-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* =========================================================
+   RESPONSIVE — TABLET
+========================================================= */
+
+@media (max-width: 920px) {
+  .modern-tanks-hero,
+  .modern-tank-detail-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .modern-tanks-hero-card,
+  .modern-tank-detail-hero-card {
+    min-height: 120px;
+  }
+
+  .modern-tank-toolbar {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .modern-tank-search {
+    grid-column: 1 / -1;
+  }
+
+  .modern-tank-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .modern-tank-technical-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* =========================================================
+   RESPONSIVE — MOBILE
+========================================================= */
+
+@media (max-width: 680px) {
+  .modern-tanks-page,
+  .modern-tank-detail-page {
+    gap: 16px;
+  }
+
+  .modern-tanks-hero,
+  .modern-tank-detail-hero {
+    padding: 19px;
+    border-radius: 20px;
+  }
+
+  .modern-tank-summary-grid,
+  .modern-tank-detail-info-grid,
+  .modern-tank-detail-metric-grid,
   .modern-device-command-grid {
     grid-template-columns: 1fr;
+  }
+
+  .modern-tank-toolbar {
+    grid-template-columns: 1fr;
+    padding: 11px;
+  }
+
+  .modern-tank-search {
+    grid-column: auto;
+  }
+
+  .modern-tank-card,
+  .modern-tank-detail-panel {
+    padding: 17px;
+    border-radius: 19px;
+  }
+
+  .modern-tank-reading-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .modern-tank-sensor-card {
+    min-height: 110px;
+  }
+
+  .modern-tank-card-top {
+    align-items: flex-start;
+  }
+
+  .modern-tank-detail-list-row {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .command-status-card {
@@ -2406,145 +1932,76 @@
     flex-direction: column;
   }
 
-  .command-status-card button {
+  .command-status-card > button {
     width: 100%;
+  }
+
+  .modern-device-command-actions {
+    flex-direction: column;
+  }
+
+  .modern-device-command-actions button {
+    width: 100%;
+  }
+
+  .modern-tank-detail-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .modern-tank-detail-actions .dashboard-primary-button {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* =========================================================
+   RESPONSIVE — SMALL PHONE
+========================================================= */
+
+@media (max-width: 480px) {
+  .modern-tanks-hero h2,
+  .modern-tank-detail-hero h2 {
+    font-size: 1.65rem;
+  }
+
+  .modern-tanks-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .modern-tanks-actions .dashboard-primary-button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .modern-tank-summary-card {
+    min-height: 95px;
+  }
+
+  .modern-tank-card-top {
+    flex-direction: column;
+  }
+
+  .modern-tank-card-top .modern-tank-status {
+    align-self: flex-start;
   }
 
   .tank-tabs {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-content: flex-start;
   }
 
   .tank-tabs button {
-    width: 100%;
-  }
-}
-.modern-list-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-top: 14px;
-  padding: 14px;
-  border: 1px solid var(--ct-border);
-  border-radius: 18px;
-  background: var(--ct-surface-soft);
-}
-
-.modern-list-pagination button {
-  min-height: 38px;
-  padding: 0 14px;
-  color: #04191d;
-  border: 0;
-  border-radius: 999px;
-  background: var(--ct-brand);
-  cursor: pointer;
-  font-weight: 950;
-}
-
-.modern-list-pagination button:disabled {
-  color: var(--ct-muted);
-  background: var(--ct-border);
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.modern-list-pagination span {
-  color: var(--ct-muted);
-  font-size: 0.84rem;
-  font-weight: 900;
-}
-.command-status-card.sensor-wait {
-  border-color: rgba(0, 217, 199, 0.42);
-  background:
-    linear-gradient(90deg, rgba(0, 217, 199, 0.09), rgba(244, 183, 64, 0.06)),
-    var(--ct-surface-soft);
-}
-
-.command-status-card.sensor-wait::after {
-  content: "";
-  position: absolute;
-  left: 16px;
-  right: 16px;
-  bottom: 0;
-  height: 3px;
-  border-radius: 999px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    var(--ct-brand),
-    var(--ct-warning),
-    transparent
-  );
-  background-size: 220% 100%;
-  animation: command-loading-line 1.2s linear infinite;
-  opacity: 0.9;
-}
-
-.command-status-card small {
-  display: block;
-  margin-top: 6px;
-  color: var(--ct-soft-muted);
-  font-size: 0.78rem;
-  font-weight: 850;
-}
-
-.modern-list-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-top: 14px;
-  padding: 14px;
-  border: 1px solid var(--ct-border);
-  border-radius: 18px;
-  background: var(--ct-surface-soft);
-}
-
-.modern-list-pagination button {
-  min-height: 38px;
-  padding: 0 14px;
-  color: #04191d;
-  border: 0;
-  border-radius: 999px;
-  background: var(--ct-brand);
-  cursor: pointer;
-  font-weight: 950;
-}
-
-.modern-list-pagination button:disabled {
-  color: var(--ct-muted);
-  background: var(--ct-border);
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.modern-list-pagination span {
-  color: var(--ct-muted);
-  font-size: 0.84rem;
-  font-weight: 900;
-}
-
-@keyframes command-loading-line {
-  from {
-    background-position: 220% 0;
+    flex: 0 0 auto;
+    min-width: 96px;
   }
 
-  to {
-    background-position: -220% 0;
+  .modern-tank-detail-info-card {
+    min-height: 100px;
   }
-}
-.command-status-card.sensor-wait {
-  border-color: rgba(251, 191, 36, 0.42);
-  background:
-    linear-gradient(90deg, rgba(251, 191, 36, 0.08), rgba(0, 217, 199, 0.05)),
-    var(--ct-surface-soft);
-}
 
-.command-status-card.sensor-wait small {
-  display: block;
-  margin-top: 6px;
-  color: var(--ct-soft-muted);
-  font-size: 0.78rem;
-  font-weight: 850;
+  .modern-tank-detail-pagination,
+  .modern-list-pagination {
+    flex-wrap: wrap;
+  }
 }

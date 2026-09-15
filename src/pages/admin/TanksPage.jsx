@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+
 import {
   AlertTriangle,
   ArrowRight,
@@ -15,14 +16,29 @@ import {
   UserRound,
   Waves,
 } from "lucide-react";
+
 import { isSupabaseConfigured, supabase } from "../../lib/supabase";
+
 import {
   formatReadingTime,
   normalizeSensorReading,
 } from "../../utils/sensorReadingUtils";
 
-const tankTables = ["tanks", "user_tanks", "tank_profiles"];
-const readingTables = ["sensor_readings", "tank_readings", "readings"];
+/* =========================================================
+   TABLES
+========================================================= */
+
+const tankTables = [
+  "tanks",
+  "user_tanks",
+  "tank_profiles",
+];
+
+const readingTables = [
+  "sensor_readings",
+  "tank_readings",
+  "readings",
+];
 
 const userFilterColumns = [
   "user_id",
@@ -31,6 +47,10 @@ const userFilterColumns = [
   "created_by",
   "farmer_id",
 ];
+
+/* =========================================================
+   GENERAL HELPERS
+========================================================= */
 
 function clean(value) {
   return String(value || "").trim();
@@ -41,11 +61,35 @@ function lower(value) {
 }
 
 function normalizeStatusText(value) {
-  return lower(value).replaceAll("_", " ").replaceAll("-", " ");
+  return lower(value)
+    .replaceAll("_", " ")
+    .replaceAll("-", " ");
 }
 
+function formatFriendlyText(value) {
+  const text = clean(value);
+
+  if (!text) {
+    return "No Reading";
+  }
+
+  return text
+    .replaceAll("_", " ")
+    .replaceAll("-", " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (character) =>
+      character.toUpperCase()
+    );
+}
+
+/* =========================================================
+   STATUS
+========================================================= */
+
 function getStatusSeverity(statuses) {
-  const joined = statuses.map(normalizeStatusText).join(" ");
+  const joined = statuses
+    .map(normalizeStatusText)
+    .join(" ");
 
   if (
     joined.includes("critical") ||
@@ -69,16 +113,6 @@ function getStatusSeverity(statuses) {
     return "warning";
   }
 
-  if (
-    joined.includes("ideal") ||
-    joined.includes("safe") ||
-    joined.includes("normal") ||
-    joined.includes("clear") ||
-    joined.includes("measured")
-  ) {
-    return "normal";
-  }
-
   return "normal";
 }
 
@@ -91,8 +125,33 @@ function getOverallReadingStatus(normalizedReading) {
   ]);
 }
 
+function getFriendlyTankStatus(status) {
+  switch (status) {
+    case "critical":
+      return "Urgent";
+
+    case "warning":
+      return "Check";
+
+    case "no-data":
+      return "No Data";
+
+    default:
+      return "Good";
+  }
+}
+
+/* =========================================================
+   TANK HELPERS
+========================================================= */
+
 function getTankId(tank, index) {
-  return tank?.id || tank?.tank_id || tank?.uuid || `tank-${index}`;
+  return (
+    tank?.id ||
+    tank?.tank_id ||
+    tank?.uuid ||
+    `tank-${index}`
+  );
 }
 
 function getTankName(tank, index) {
@@ -106,7 +165,12 @@ function getTankName(tank, index) {
 }
 
 function getTankType(tank) {
-  return tank?.type || tank?.tank_type || tank?.category || "Crayfish Tank";
+  return (
+    tank?.type ||
+    tank?.tank_type ||
+    tank?.category ||
+    "Crayfish Tank"
+  );
 }
 
 function getTankOwnerId(tank) {
@@ -124,11 +188,17 @@ function getProfileName(profile) {
   return (
     profile?.username ||
     profile?.full_name ||
-    [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
+    [profile?.first_name, profile?.last_name]
+      .filter(Boolean)
+      .join(" ") ||
     profile?.email ||
     "Unknown owner"
   );
 }
+
+/* =========================================================
+   MATCH TANK TO SENSOR READINGS
+========================================================= */
 
 function getTankMatchKeys(tank) {
   return [
@@ -140,7 +210,12 @@ function getTankMatchKeys(tank) {
     tank?.device_uid,
     tank?.tank_code,
   ]
-    .filter((value) => value !== null && value !== undefined && value !== "")
+    .filter(
+      (value) =>
+        value !== null &&
+        value !== undefined &&
+        value !== ""
+    )
     .map((value) => String(value));
 }
 
@@ -154,7 +229,12 @@ function getReadingMatchKeys(reading) {
     reading?.device_id,
     reading?.device_uid,
   ]
-    .filter((value) => value !== null && value !== undefined && value !== "")
+    .filter(
+      (value) =>
+        value !== null &&
+        value !== undefined &&
+        value !== ""
+    )
     .map((value) => String(value));
 }
 
@@ -168,20 +248,36 @@ function getReadingDate(reading) {
   );
 }
 
+/* =========================================================
+   pH SPIKE PROTECTION
+========================================================= */
+
 function toNumberOrNull(value) {
-  if (value === null || value === undefined || value === "") return null;
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
+    return null;
+  }
 
   const numberValue = Number(value);
 
-  return Number.isFinite(numberValue) ? numberValue : null;
+  return Number.isFinite(numberValue)
+    ? numberValue
+    : null;
 }
 
 function getReadingPhValue(reading) {
-  return toNumberOrNull(reading?.ph_value ?? reading?.ph);
+  return toNumberOrNull(
+    reading?.ph_value ??
+      reading?.ph
+  );
 }
 
 function isSafePhStatus(status) {
-  const value = normalizeStatusText(status);
+  const value =
+    normalizeStatusText(status);
 
   return (
     value.includes("ideal") ||
@@ -191,7 +287,8 @@ function isSafePhStatus(status) {
 }
 
 function isUnsafePhStatus(status) {
-  const value = normalizeStatusText(status);
+  const value =
+    normalizeStatusText(status);
 
   return (
     value.includes("unsafe") ||
@@ -206,68 +303,109 @@ function isUnsafePhStatus(status) {
 }
 
 function isUnsafePhReading(reading) {
-  if (!reading) return false;
+  if (!reading) {
+    return false;
+  }
 
-  const phValue = getReadingPhValue(reading);
-  const phStatus = reading?.ph_status || "";
+  const phValue =
+    getReadingPhValue(reading);
 
-  if (isSafePhStatus(phStatus)) return false;
+  const phStatus =
+    reading?.ph_status || "";
 
-  if (phValue !== null && (phValue < 6.5 || phValue > 8.5)) {
+  if (isSafePhStatus(phStatus)) {
+    return false;
+  }
+
+  if (
+    phValue !== null &&
+    (phValue < 6.5 || phValue > 8.5)
+  ) {
     return true;
   }
 
   return isUnsafePhStatus(phStatus);
 }
 
-function sortReadingsNewestFirst(readings = []) {
-  return [...readings].sort((a, b) => {
-    return new Date(getReadingDate(b)) - new Date(getReadingDate(a));
-  });
+function sortReadingsNewestFirst(
+  readings = []
+) {
+  return [...readings].sort(
+    (a, b) =>
+      new Date(getReadingDate(b)) -
+      new Date(getReadingDate(a))
+  );
 }
 
-function pickStableLatestReading(readings = []) {
-  const sorted = sortReadingsNewestFirst(readings);
+function pickStableLatestReading(
+  readings = []
+) {
+  const sorted =
+    sortReadingsNewestFirst(readings);
 
-  if (sorted.length === 0) return null;
+  if (sorted.length === 0) {
+    return null;
+  }
 
   const latest = sorted[0];
 
-  // If latest pH is safe or not pH-danger, use it normally.
   if (!isUnsafePhReading(latest)) {
     return latest;
   }
 
-  // If latest pH is unsafe, require 3 consecutive unsafe pH readings.
-  // Example:
-  // 10.16, 7.50, 7.49 = spike only, use newest safe reading
-  // 10.16, 10.12, 10.15 = confirmed unsafe, use latest unsafe reading
-  const latestThree = sorted.slice(0, 3);
+  /*
+   * Require three consecutive unsafe pH
+   * readings before treating the newest
+   * unsafe reading as confirmed.
+   */
+  const latestThree =
+    sorted.slice(0, 3);
 
   const confirmedUnsafePh =
-    latestThree.length >= 3 && latestThree.every(isUnsafePhReading);
+    latestThree.length >= 3 &&
+    latestThree.every(
+      isUnsafePhReading
+    );
 
   if (confirmedUnsafePh) {
     return latest;
   }
 
-  const newestSafeReading = sorted.find((reading) => {
-    return !isUnsafePhReading(reading);
-  });
+  const newestSafeReading =
+    sorted.find(
+      (reading) =>
+        !isUnsafePhReading(reading)
+    );
 
   return newestSafeReading || latest;
 }
 
-function getLatestReadingForTank(tank, readings) {
-  const tankKeys = getTankMatchKeys(tank);
+function getLatestReadingForTank(
+  tank,
+  readings
+) {
+  const tankKeys =
+    getTankMatchKeys(tank);
 
-  const matched = readings.filter((reading) => {
-    const readingKeys = getReadingMatchKeys(reading);
-    return readingKeys.some((key) => tankKeys.includes(key));
-  });
+  const matched =
+    readings.filter((reading) => {
+      const readingKeys =
+        getReadingMatchKeys(reading);
 
-  return pickStableLatestReading(matched);
+      return readingKeys.some(
+        (key) =>
+          tankKeys.includes(key)
+      );
+    });
+
+  return pickStableLatestReading(
+    matched
+  );
 }
+
+/* =========================================================
+   UNIQUE RECORDS
+========================================================= */
 
 function uniqueRows(rows) {
   const map = new Map();
@@ -285,12 +423,21 @@ function uniqueRows(rows) {
     map.set(String(id), row);
   });
 
-  return Array.from(map.values());
+  return Array.from(
+    map.values()
+  );
 }
 
+/* =========================================================
+   CURRENT USER
+========================================================= */
+
 async function getCurrentUserWithRole() {
-  const { data } = await supabase.auth.getSession();
-  const user = data?.session?.user;
+  const { data } =
+    await supabase.auth.getSession();
+
+  const user =
+    data?.session?.user;
 
   if (!user) {
     return {
@@ -309,197 +456,408 @@ async function getCurrentUserWithRole() {
     .eq("id", user.id)
     .maybeSingle();
 
-  if (!byId.error && byId.data) {
+  if (
+    !byId.error &&
+    byId.data
+  ) {
     profile = byId.data;
   }
 
-  if (!profile && user.email) {
-    const byEmail = await supabase
-      .from("profiles")
-      .select("id,email,role")
-      .ilike("email", user.email)
-      .maybeSingle();
+  if (
+    !profile &&
+    user.email
+  ) {
+    const byEmail =
+      await supabase
+        .from("profiles")
+        .select("id,email,role")
+        .ilike(
+          "email",
+          user.email
+        )
+        .maybeSingle();
 
-    if (!byEmail.error && byEmail.data) {
-      profile = byEmail.data;
+    if (
+      !byEmail.error &&
+      byEmail.data
+    ) {
+      profile =
+        byEmail.data;
     }
   }
 
-  const role = lower(profile?.role);
+  const role =
+    lower(profile?.role);
 
   return {
     id: user.id || "",
     email: user.email || "",
     role,
-    isAdmin: role === "admin",
+    isAdmin:
+      role === "admin",
   };
 }
 
-async function fetchAdminRows(tableNames, limit = 300) {
-  for (const tableName of tableNames) {
-    const ordered = await supabase
-      .from(tableName)
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(limit);
+/* =========================================================
+   DATABASE FETCH
+========================================================= */
 
-    if (!ordered.error && Array.isArray(ordered.data)) {
+async function fetchAdminRows(
+  tableNames,
+  limit = 300
+) {
+  for (const tableName of tableNames) {
+    const ordered =
+      await supabase
+        .from(tableName)
+        .select("*")
+        .order(
+          "created_at",
+          {
+            ascending: false,
+          }
+        )
+        .limit(limit);
+
+    if (
+      !ordered.error &&
+      Array.isArray(
+        ordered.data
+      )
+    ) {
       return {
-        rows: uniqueRows(ordered.data),
-        tableUsed: tableName,
+        rows: uniqueRows(
+          ordered.data
+        ),
+        tableUsed:
+          tableName,
       };
     }
 
-    const plain = await supabase.from(tableName).select("*").limit(limit);
+    const plain =
+      await supabase
+        .from(tableName)
+        .select("*")
+        .limit(limit);
 
-    if (!plain.error && Array.isArray(plain.data)) {
+    if (
+      !plain.error &&
+      Array.isArray(
+        plain.data
+      )
+    ) {
       return {
-        rows: uniqueRows(plain.data),
-        tableUsed: tableName,
+        rows: uniqueRows(
+          plain.data
+        ),
+        tableUsed:
+          tableName,
       };
     }
   }
 
   return {
     rows: [],
-    tableUsed: tableNames[0],
+    tableUsed:
+      tableNames[0],
   };
 }
 
-async function fetchUserRows(tableNames, userId, limit = 220) {
+async function fetchUserRows(
+  tableNames,
+  userId,
+  limit = 220
+) {
   for (const tableName of tableNames) {
     const mergedRows = [];
+
     let successful = false;
 
-    for (const column of userFilterColumns) {
-      const ordered = await supabase
-        .from(tableName)
-        .select("*")
-        .eq(column, userId)
-        .order("created_at", { ascending: false })
-        .limit(limit);
+    for (
+      const column
+      of userFilterColumns
+    ) {
+      const ordered =
+        await supabase
+          .from(tableName)
+          .select("*")
+          .eq(
+            column,
+            userId
+          )
+          .order(
+            "created_at",
+            {
+              ascending:
+                false,
+            }
+          )
+          .limit(limit);
 
-      if (!ordered.error && Array.isArray(ordered.data)) {
+      if (
+        !ordered.error &&
+        Array.isArray(
+          ordered.data
+        )
+      ) {
         successful = true;
-        mergedRows.push(...ordered.data);
+
+        mergedRows.push(
+          ...ordered.data
+        );
+
         continue;
       }
 
-      const plain = await supabase
-        .from(tableName)
-        .select("*")
-        .eq(column, userId)
-        .limit(limit);
+      const plain =
+        await supabase
+          .from(tableName)
+          .select("*")
+          .eq(
+            column,
+            userId
+          )
+          .limit(limit);
 
-      if (!plain.error && Array.isArray(plain.data)) {
+      if (
+        !plain.error &&
+        Array.isArray(
+          plain.data
+        )
+      ) {
         successful = true;
-        mergedRows.push(...plain.data);
+
+        mergedRows.push(
+          ...plain.data
+        );
       }
     }
 
     if (successful) {
       return {
-        rows: uniqueRows(mergedRows),
-        tableUsed: tableName,
+        rows:
+          uniqueRows(
+            mergedRows
+          ),
+
+        tableUsed:
+          tableName,
       };
     }
   }
 
   return {
     rows: [],
-    tableUsed: tableNames[0],
+    tableUsed:
+      tableNames[0],
   };
 }
 
-async function fetchProfiles(currentUser) {
+async function fetchProfiles(
+  currentUser
+) {
   if (currentUser.isAdmin) {
-    return fetchAdminRows(["profiles"], 400);
+    return fetchAdminRows(
+      ["profiles"],
+      400
+    );
   }
 
-  const byId = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", currentUser.id)
-    .maybeSingle();
+  const byId =
+    await supabase
+      .from("profiles")
+      .select("*")
+      .eq(
+        "id",
+        currentUser.id
+      )
+      .maybeSingle();
 
-  if (!byId.error && byId.data) {
+  if (
+    !byId.error &&
+    byId.data
+  ) {
     return {
       rows: [byId.data],
-      tableUsed: "profiles",
+      tableUsed:
+        "profiles",
     };
   }
 
   if (currentUser.email) {
-    const byEmail = await supabase
-      .from("profiles")
-      .select("*")
-      .ilike("email", currentUser.email)
-      .maybeSingle();
+    const byEmail =
+      await supabase
+        .from("profiles")
+        .select("*")
+        .ilike(
+          "email",
+          currentUser.email
+        )
+        .maybeSingle();
 
-    if (!byEmail.error && byEmail.data) {
+    if (
+      !byEmail.error &&
+      byEmail.data
+    ) {
       return {
-        rows: [byEmail.data],
-        tableUsed: "profiles",
+        rows: [
+          byEmail.data,
+        ],
+        tableUsed:
+          "profiles",
       };
     }
   }
 
   return {
     rows: [],
-    tableUsed: "profiles",
+    tableUsed:
+      "profiles",
   };
 }
 
-async function fetchRowsByScope(tableNames, currentUser, limit = 250) {
+async function fetchRowsByScope(
+  tableNames,
+  currentUser,
+  limit = 250
+) {
   if (currentUser.isAdmin) {
-    return fetchAdminRows(tableNames, limit);
+    return fetchAdminRows(
+      tableNames,
+      limit
+    );
   }
 
-  return fetchUserRows(tableNames, currentUser.id, limit);
+  return fetchUserRows(
+    tableNames,
+    currentUser.id,
+    limit
+  );
 }
 
-function SummaryCard({ icon: Icon, label, value, helper, tone = "default" }) {
+/* =========================================================
+   SMALL UI COMPONENTS
+========================================================= */
+
+function SummaryCard({
+  icon: Icon,
+  label,
+  value,
+  helper,
+  tone = "default",
+}) {
   return (
-    <article className={`modern-tank-summary-card ${tone}`}>
+    <article
+      className={`modern-tank-summary-card ${tone}`}
+    >
       <span>
-        <Icon size={22} />
+        <Icon size={21} />
       </span>
 
       <div>
-        <strong>{value}</strong>
-        <p>{label}</p>
-        <small>{helper}</small>
+        <strong>
+          {value}
+        </strong>
+
+        <p>
+          {label}
+        </p>
+
+        <small>
+          {helper}
+        </small>
       </div>
     </article>
   );
 }
 
-function SensorMiniCard({ icon: Icon, label, value, status }) {
-  const severity = getStatusSeverity([status]);
+function SensorMiniCard({
+  icon: Icon,
+  label,
+  value,
+  status,
+}) {
+  const hasStatus =
+    clean(status) &&
+    lower(status) !== "no reading";
+
+  const severity =
+    hasStatus
+      ? getStatusSeverity(
+          [status]
+        )
+      : "no-data";
 
   return (
-    <div>
+    <div className="modern-tank-sensor-card">
       <Icon size={19} />
-      <strong>{value}</strong>
-      <span>{label}</span>
-      <b className={`modern-tank-status ${severity}`}>{status}</b>
+
+      <span>
+        {label}
+      </span>
+
+      <strong>
+        {formatFriendlyText(
+          value
+        )}
+      </strong>
+
+      <b
+        className={`modern-tank-status ${severity}`}
+      >
+        {hasStatus
+          ? formatFriendlyText(
+              status
+            )
+          : "No Reading"}
+      </b>
     </div>
   );
 }
 
+/* =========================================================
+   PAGE
+========================================================= */
+
 export default function TanksPage() {
-  const [tanks, setTanks] = useState([]);
-  const [readings, setReadings] = useState([]);
-  const [profiles, setProfiles] = useState([]);
-  const [sources, setSources] = useState({});
-  const [scopeLabel, setScopeLabel] = useState("User view");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [typeFilter, setTypeFilter] = useState("all");
-  const [isLoading, setIsLoading] = useState(true);
+  const [tanks, setTanks] =
+    useState([]);
+
+  const [readings, setReadings] =
+    useState([]);
+
+  const [profiles, setProfiles] =
+    useState([]);
+
+  const [
+    searchTerm,
+    setSearchTerm,
+  ] = useState("");
+
+  const [
+    statusFilter,
+    setStatusFilter,
+  ] = useState("all");
+
+  const [
+    typeFilter,
+    setTypeFilter,
+  ] = useState("all");
+
+  const [
+    isLoading,
+    setIsLoading,
+  ] = useState(true);
+
+  /* =======================================================
+     LOAD
+  ======================================================= */
 
   const loadTanks = async () => {
-    if (!isSupabaseConfigured || !supabase) {
+    if (
+      !isSupabaseConfigured ||
+      !supabase
+    ) {
       setIsLoading(false);
       return;
     }
@@ -507,35 +865,55 @@ export default function TanksPage() {
     try {
       setIsLoading(true);
 
-      const currentUser = await getCurrentUserWithRole();
+      const currentUser =
+        await getCurrentUserWithRole();
 
       if (!currentUser.id) {
         setTanks([]);
         setReadings([]);
         setProfiles([]);
-        setScopeLabel("No session");
+
         return;
       }
 
-      const [tankResult, readingResult, profileResult] = await Promise.all([
-        fetchRowsByScope(tankTables, currentUser, 300),
-        fetchRowsByScope(readingTables, currentUser, 300),
-        fetchProfiles(currentUser),
+      const [
+        tankResult,
+        readingResult,
+        profileResult,
+      ] = await Promise.all([
+        fetchRowsByScope(
+          tankTables,
+          currentUser,
+          300
+        ),
+
+        fetchRowsByScope(
+          readingTables,
+          currentUser,
+          300
+        ),
+
+        fetchProfiles(
+          currentUser
+        ),
       ]);
 
-      setTanks(tankResult.rows);
-      setReadings(readingResult.rows);
-      setProfiles(profileResult.rows);
-      setSources({
-        tanks: tankResult.tableUsed,
-        readings: readingResult.tableUsed,
-        profiles: profileResult.tableUsed,
-      });
-      setScopeLabel(
-        currentUser.isAdmin ? "Admin all-records view" : "User account view"
+      setTanks(
+        tankResult.rows
+      );
+
+      setReadings(
+        readingResult.rows
+      );
+
+      setProfiles(
+        profileResult.rows
       );
     } catch (error) {
-      console.error("Tanks loading error:", error);
+      console.error(
+        "Tanks loading error:",
+        error
+      );
     } finally {
       setIsLoading(false);
     }
@@ -545,306 +923,733 @@ export default function TanksPage() {
     loadTanks();
   }, []);
 
-  const profileMap = useMemo(() => {
-    const map = new Map();
+  /* =======================================================
+     PROFILE LOOKUP
+  ======================================================= */
 
-    profiles.forEach((profile) => {
-      if (profile?.id) map.set(String(profile.id), profile);
-      if (profile?.user_id) map.set(String(profile.user_id), profile);
-      if (profile?.email) {
-        map.set(String(profile.email).toLowerCase(), profile);
-      }
-    });
+  const profileMap =
+    useMemo(() => {
+      const map =
+        new Map();
 
-    return map;
-  }, [profiles]);
+      profiles.forEach(
+        (profile) => {
+          if (profile?.id) {
+            map.set(
+              String(
+                profile.id
+              ),
+              profile
+            );
+          }
 
-  const enrichedTanks = useMemo(() => {
-    return tanks.map((tank, index) => {
-      const latestReading = getLatestReadingForTank(tank, readings);
-      const normalized = normalizeSensorReading(latestReading);
+          if (
+            profile?.user_id
+          ) {
+            map.set(
+              String(
+                profile.user_id
+              ),
+              profile
+            );
+          }
 
-      const readingStatus = latestReading
-        ? getOverallReadingStatus(normalized)
-        : "normal";
+          if (
+            profile?.email
+          ) {
+            map.set(
+              String(
+                profile.email
+              ).toLowerCase(),
+              profile
+            );
+          }
+        }
+      );
 
-      const ownerId = getTankOwnerId(tank);
-      const owner =
-        profileMap.get(String(ownerId)) ||
-        profileMap.get(String(tank?.email || "").toLowerCase()) ||
-        null;
+      return map;
+    }, [profiles]);
+
+  /* =======================================================
+     ENRICH TANKS
+  ======================================================= */
+
+  const enrichedTanks =
+    useMemo(() => {
+      return tanks.map(
+        (tank, index) => {
+          const latestReading =
+            getLatestReadingForTank(
+              tank,
+              readings
+            );
+
+          const normalized =
+            normalizeSensorReading(
+              latestReading
+            );
+
+          /*
+           * A tank with no reading should
+           * NOT be shown as "normal".
+           */
+          const readingStatus =
+            latestReading
+              ? getOverallReadingStatus(
+                  normalized
+                )
+              : "no-data";
+
+          const ownerId =
+            getTankOwnerId(
+              tank
+            );
+
+          const owner =
+            profileMap.get(
+              String(
+                ownerId
+              )
+            ) ||
+            profileMap.get(
+              String(
+                tank?.email ||
+                  ""
+              ).toLowerCase()
+            ) ||
+            null;
+
+          return {
+            tank,
+
+            index,
+
+            latestReading,
+
+            normalized,
+
+            id:
+              getTankId(
+                tank,
+                index
+              ),
+
+            name:
+              getTankName(
+                tank,
+                index
+              ),
+
+            type:
+              getTankType(
+                tank
+              ),
+
+            ownerName:
+              owner
+                ? getProfileName(
+                    owner
+                  )
+                : "Unknown owner",
+
+            ownerEmail:
+              owner?.email ||
+              tank?.email ||
+              "",
+
+            status:
+              readingStatus,
+
+            lastSync:
+              normalized.createdAt ||
+              latestReading
+                ?.created_at ||
+              tank?.updated_at ||
+              tank?.created_at ||
+              null,
+          };
+        }
+      );
+    }, [
+      tanks,
+      readings,
+      profileMap,
+    ]);
+
+  /* =======================================================
+     TYPES
+  ======================================================= */
+
+  const tankTypes =
+    useMemo(() => {
+      return Array.from(
+        new Set(
+          enrichedTanks.map(
+            (item) =>
+              item.type
+          )
+        )
+      ).filter(Boolean);
+    }, [enrichedTanks]);
+
+  /* =======================================================
+     FILTERING
+  ======================================================= */
+
+  const filteredTanks =
+    useMemo(() => {
+      return enrichedTanks.filter(
+        (item) => {
+          const search =
+            searchTerm
+              .trim()
+              .toLowerCase();
+
+          const searchableText =
+            [
+              item.name,
+              item.type,
+              item.ownerName,
+              item.ownerEmail,
+              item.status,
+
+              item.normalized
+                .temperatureLabel,
+
+              item.normalized
+                .temperatureStatus,
+
+              item.normalized
+                .phStatus,
+
+              item.normalized
+                .turbidityStatus,
+
+              item.normalized
+                .waterStatus,
+
+              item.normalized
+                .deviceUid,
+            ]
+              .join(" ")
+              .toLowerCase();
+
+          const matchesSearch =
+            !search ||
+            searchableText.includes(
+              search
+            );
+
+          const matchesStatus =
+            statusFilter ===
+              "all" ||
+            item.status ===
+              statusFilter;
+
+          const matchesType =
+            typeFilter ===
+              "all" ||
+            item.type ===
+              typeFilter;
+
+          return (
+            matchesSearch &&
+            matchesStatus &&
+            matchesType
+          );
+        }
+      );
+    }, [
+      enrichedTanks,
+      searchTerm,
+      statusFilter,
+      typeFilter,
+    ]);
+
+  /* =======================================================
+     SUMMARY
+  ======================================================= */
+
+  const summary =
+    useMemo(() => {
+      const normal =
+        enrichedTanks.filter(
+          (item) =>
+            item.status ===
+            "normal"
+        ).length;
+
+      const warning =
+        enrichedTanks.filter(
+          (item) =>
+            item.status ===
+            "warning"
+        ).length;
+
+      const critical =
+        enrichedTanks.filter(
+          (item) =>
+            item.status ===
+            "critical"
+        ).length;
+
+      const noData =
+        enrichedTanks.filter(
+          (item) =>
+            item.status ===
+            "no-data"
+        ).length;
 
       return {
-        tank,
-        index,
-        latestReading,
-        normalized,
-        id: getTankId(tank, index),
-        name: getTankName(tank, index),
-        type: getTankType(tank),
-        ownerName: owner ? getProfileName(owner) : "Unknown owner",
-        ownerEmail: owner?.email || tank?.email || "",
-        status: readingStatus,
-        lastSync:
-          normalized.createdAt ||
-          latestReading?.created_at ||
-          tank?.updated_at ||
-          tank?.created_at ||
-          null,
+        total:
+          enrichedTanks.length,
+
+        normal,
+
+        warning,
+
+        critical,
+
+        noData,
       };
-    });
-  }, [tanks, readings, profileMap]);
+    }, [enrichedTanks]);
 
-  const tankTypes = useMemo(() => {
-    return Array.from(new Set(enrichedTanks.map((item) => item.type))).filter(
-      Boolean
-    );
-  }, [enrichedTanks]);
-
-  const filteredTanks = useMemo(() => {
-    return enrichedTanks.filter((item) => {
-      const search = searchTerm.trim().toLowerCase();
-
-      const searchableText = [
-        item.name,
-        item.type,
-        item.ownerName,
-        item.ownerEmail,
-        item.status,
-        item.normalized.temperatureLabel,
-        item.normalized.temperatureStatus,
-        item.normalized.phStatus,
-        item.normalized.turbidityStatus,
-        item.normalized.waterStatus,
-        item.normalized.deviceUid,
-      ]
-        .join(" ")
-        .toLowerCase();
-
-      const matchesSearch = !search || searchableText.includes(search);
-      const matchesStatus =
-        statusFilter === "all" || item.status === statusFilter;
-      const matchesType = typeFilter === "all" || item.type === typeFilter;
-
-      return matchesSearch && matchesStatus && matchesType;
-    });
-  }, [enrichedTanks, searchTerm, statusFilter, typeFilter]);
-
-  const summary = useMemo(() => {
-    const normal = enrichedTanks.filter((item) => item.status === "normal").length;
-    const warning = enrichedTanks.filter((item) => item.status === "warning").length;
-    const critical = enrichedTanks.filter((item) => item.status === "critical").length;
-    const withReadings = enrichedTanks.filter((item) => item.latestReading).length;
-
-    return {
-      total: enrichedTanks.length,
-      normal,
-      warning,
-      critical,
-      withReadings,
-    };
-  }, [enrichedTanks]);
+  /* =======================================================
+     LOADING
+  ======================================================= */
 
   if (isLoading) {
     return (
       <section className="modern-tank-loading">
-        <Loader2 className="spin-icon" size={34} />
-        <h3>Loading tanks...</h3>
-        <p>CrayThrive is syncing tank and latest sensor records.</p>
+        <Loader2
+          className="spin-icon"
+          size={34}
+        />
+
+        <h3>
+          Loading your tanks...
+        </h3>
+
+        <p>
+          Getting the latest
+          tank information.
+        </p>
       </section>
     );
   }
 
+  /* =======================================================
+     UI
+  ======================================================= */
+
   return (
     <div className="modern-tanks-page">
+
+      {/* ===============================================
+          HEADER
+      ================================================ */}
+
       <section className="modern-tanks-hero">
+
         <div>
-          <p className="dashboard-eyebrow">Tank Monitoring</p>
-          <h2>Monitor every crayfish tank clearly.</h2>
+          <p className="dashboard-eyebrow">
+            My Tanks
+          </p>
+
+          <h2>
+            Check your tanks at a glance.
+          </h2>
+
           <p>
-            View tank records, owner details, latest IoT readings, and readable
-            status strings for temperature, pH, turbidity, and water depth.
+            Quickly see which tanks are doing
+            well and which ones may need your
+            attention.
           </p>
 
           <div className="modern-tanks-actions">
-            <button className="dashboard-primary-button" onClick={loadTanks}>
-              <RefreshCw size={18} />
-              Refresh Tanks
+
+            <button
+              type="button"
+              className="dashboard-primary-button"
+              onClick={loadTanks}
+            >
+              <RefreshCw
+                size={18}
+              />
+
+              Refresh
             </button>
 
             <span>
-              Source: {sources.tanks || "tanks"} /{" "}
-              {sources.readings || "sensor_readings"} • {scopeLabel}
+              {summary.total === 1
+                ? "1 tank registered"
+                : `${summary.total} tanks registered`}
             </span>
           </div>
         </div>
 
         <div className="modern-tanks-hero-card">
-          <Droplets size={38} />
-          <strong>{summary.total}</strong>
-          <span>Total synced tanks</span>
+
+          <Droplets
+            size={34}
+          />
+
+          <strong>
+            {summary.total}
+          </strong>
+
+          <span>
+            Total Tanks
+          </span>
         </div>
       </section>
 
-      <section className="modern-tank-summary-grid">
-        <SummaryCard
-          icon={Droplets}
-          label="Total Tanks"
-          value={summary.total}
-          helper="All tank records"
-        />
+      {/* ===============================================
+          SIMPLE SUMMARY
+      ================================================ */}
 
-        <SummaryCard
-          icon={Database}
-          label="With Readings"
-          value={summary.withReadings}
-          helper="Tanks with latest IoT data"
-        />
+      <section className="modern-tank-summary-grid">
 
         <SummaryCard
           icon={CheckCircle2}
-          label="Normal"
+          label="Doing Well"
           value={summary.normal}
-          helper="Healthy tank status"
+          helper="No current issues"
           tone="success"
         />
 
         <SummaryCard
           icon={AlertTriangle}
-          label="Warning"
+          label="Needs Checking"
           value={summary.warning}
-          helper="Needs monitoring"
+          helper="Keep an eye on these tanks"
           tone="warning"
         />
 
         <SummaryCard
           icon={AlertTriangle}
-          label="Critical"
+          label="Urgent"
           value={summary.critical}
-          helper="Needs immediate review"
+          helper="Check these tanks soon"
           tone="danger"
+        />
+
+        <SummaryCard
+          icon={Database}
+          label="No Recent Data"
+          value={summary.noData}
+          helper="Waiting for sensor readings"
         />
       </section>
 
+      {/* ===============================================
+          SEARCH / FILTER
+      ================================================ */}
+
       <section className="modern-tank-toolbar">
+
         <div className="modern-tank-search">
+
           <Search size={18} />
+
           <input
-            placeholder="Search tank, owner, device, or status..."
+            type="search"
+            placeholder="Search tank name or type..."
             value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
+            onChange={(event) =>
+              setSearchTerm(
+                event.target.value
+              )
+            }
           />
         </div>
 
         <label className="modern-tank-filter">
+
           <Filter size={18} />
+
           <select
             value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
+            onChange={(event) =>
+              setStatusFilter(
+                event.target.value
+              )
+            }
           >
-            <option value="all">All Status</option>
-            <option value="normal">Normal</option>
-            <option value="warning">Warning</option>
-            <option value="critical">Critical</option>
+            <option value="all">
+              All Conditions
+            </option>
+
+            <option value="normal">
+              Doing Well
+            </option>
+
+            <option value="warning">
+              Needs Checking
+            </option>
+
+            <option value="critical">
+              Urgent
+            </option>
+
+            <option value="no-data">
+              No Recent Data
+            </option>
           </select>
         </label>
 
         <label className="modern-tank-filter">
-          <Database size={18} />
+
+          <Droplets size={18} />
+
           <select
             value={typeFilter}
-            onChange={(event) => setTypeFilter(event.target.value)}
+            onChange={(event) =>
+              setTypeFilter(
+                event.target.value
+              )
+            }
           >
-            <option value="all">All Types</option>
-            {tankTypes.map((type) => (
-              <option key={type} value={type}>
-                {type}
-              </option>
-            ))}
+            <option value="all">
+              All Tank Types
+            </option>
+
+            {tankTypes.map(
+              (type) => (
+                <option
+                  key={type}
+                  value={type}
+                >
+                  {type}
+                </option>
+              )
+            )}
           </select>
         </label>
       </section>
 
+      {/* ===============================================
+          EMPTY
+      ================================================ */}
+
       {filteredTanks.length === 0 ? (
         <section className="modern-tank-empty">
-          <Droplets size={34} />
-          <h3>No tanks found</h3>
+
+          <Droplets
+            size={34}
+          />
+
+          <h3>
+            No tanks found
+          </h3>
+
           <p>
-            No tank records matched your current filters. Add tanks or sync IoT
-            data first.
+            Try changing your search or filter
+            to find another tank.
           </p>
         </section>
       ) : (
+
+        /* =============================================
+            TANK LIST
+        ============================================== */
+
         <section className="modern-tank-grid">
-          {filteredTanks.map((item) => (
-            <article className="modern-tank-card" key={item.id}>
-              <div className="modern-tank-card-top">
-                <div>
-                  <span className="modern-tank-type">{item.type}</span>
-                  <h3>{item.name}</h3>
+
+          {filteredTanks.map(
+            (item) => (
+              <article
+                className="modern-tank-card"
+                key={item.id}
+              >
+
+                {/* HEADER */}
+
+                <div className="modern-tank-card-top">
+
+                  <div>
+                    <span className="modern-tank-type">
+                      {formatFriendlyText(
+                        item.type
+                      )}
+                    </span>
+
+                    <h3>
+                      {item.name}
+                    </h3>
+                  </div>
+
+                  <b
+                    className={`modern-tank-status ${item.status}`}
+                  >
+                    {getFriendlyTankStatus(
+                      item.status
+                    )}
+                  </b>
                 </div>
 
-                <b className={`modern-tank-status ${item.status}`}>
-                  {item.status}
-                </b>
-              </div>
+                {/* LAST UPDATE */}
 
-              <div className="modern-tank-meta">
-                <span>
-                  <UserRound size={14} />
-                  {item.ownerName}
-                </span>
+                <div className="modern-tank-friendly-sync">
 
-                <span>
-                  Device: {item.normalized.deviceUid || item.tank?.device_uid || "N/A"}
-                </span>
-
-                <span>Last sync: {formatReadingTime(item.lastSync)}</span>
-              </div>
-
-              <div className="modern-tank-reading-grid">
-                <SensorMiniCard
-                  icon={Thermometer}
-                  label="Temperature"
-                  value={item.normalized.temperatureLabel}
-                  status={item.normalized.temperatureStatus}
-                />
-
-                <SensorMiniCard
-                  icon={Droplets}
-                  label="pH Status"
-                  value={item.normalized.phStatus}
-                  status={item.normalized.phStatus}
-                />
-
-                <SensorMiniCard
-                  icon={Waves}
-                  label="Turbidity Status"
-                  value={item.normalized.turbidityStatus}
-                  status={item.normalized.turbidityStatus}
-                />
-
-                <SensorMiniCard
-                  icon={Gauge}
-                  label="Water Depth"
-                  value={item.normalized.waterLabel}
-                  status={item.normalized.waterStatus}
-                />
-              </div>
-
-              {!item.latestReading && (
-                <div className="modern-tank-no-reading">
-                  <AlertTriangle size={17} />
-                  <span>No matching sensor reading found for this tank yet.</span>
+                  {item.latestReading ? (
+                    <>
+                      Latest update:{" "}
+                      <strong>
+                        {formatReadingTime(
+                          item.lastSync
+                        )}
+                      </strong>
+                    </>
+                  ) : (
+                    "Waiting for sensor data"
+                  )}
                 </div>
-              )}
 
-              <Link to={`/admin/tanks/${item.id}`} className="modern-tank-link">
-                View Tank Details
-                <ArrowRight size={18} />
-              </Link>
-            </article>
-          ))}
+                {/* SENSOR CARDS */}
+
+                <div className="modern-tank-reading-grid">
+
+                  <SensorMiniCard
+                    icon={
+                      Thermometer
+                    }
+                    label="Temperature"
+                    value={
+                      item.normalized
+                        .temperatureLabel
+                    }
+                    status={
+                      item.normalized
+                        .temperatureStatus
+                    }
+                  />
+
+                  <SensorMiniCard
+                    icon={
+                      Droplets
+                    }
+                    label="pH Level"
+                    value={
+                      item.normalized
+                        .phStatus
+                    }
+                    status={
+                      item.normalized
+                        .phStatus
+                    }
+                  />
+
+                  <SensorMiniCard
+                    icon={
+                      Waves
+                    }
+                    label="Water Clarity"
+                    value={
+                      item.normalized
+                        .turbidityStatus
+                    }
+                    status={
+                      item.normalized
+                        .turbidityStatus
+                    }
+                  />
+
+                  <SensorMiniCard
+                    icon={
+                      Gauge
+                    }
+                    label="Water Level"
+                    value={
+                      item.normalized
+                        .waterLabel
+                    }
+                    status={
+                      item.normalized
+                        .waterStatus
+                    }
+                  />
+                </div>
+
+                {/* NO DATA WARNING */}
+
+                {!item.latestReading && (
+                  <div className="modern-tank-no-reading">
+
+                    <AlertTriangle
+                      size={17}
+                    />
+
+                    <span>
+                      No recent sensor reading
+                      is available for this tank.
+                    </span>
+                  </div>
+                )}
+
+                {/* OPTIONAL TECHNICAL INFO */}
+
+                <details className="modern-tank-more-info">
+
+                  <summary>
+                    More information
+                  </summary>
+
+                  <div className="modern-tank-more-content">
+
+                    <div>
+                      <UserRound
+                        size={16}
+                      />
+
+                      <span>
+                        <small>
+                          Owner
+                        </small>
+
+                        <strong>
+                          {item.ownerName}
+                        </strong>
+                      </span>
+                    </div>
+
+                    <div>
+                      <Database
+                        size={16}
+                      />
+
+                      <span>
+                        <small>
+                          Connected Device
+                        </small>
+
+                        <strong>
+                          {item.normalized
+                            .deviceUid ||
+                            item.tank
+                              ?.device_uid ||
+                            "Not connected"}
+                        </strong>
+                      </span>
+                    </div>
+                  </div>
+                </details>
+
+                {/* DETAILS */}
+
+                <Link
+                  to={`/admin/tanks/${item.id}`}
+                  className="modern-tank-link"
+                >
+                  View Tank
+
+                  <ArrowRight
+                    size={18}
+                  />
+                </Link>
+              </article>
+            )
+          )}
         </section>
       )}
     </div>
