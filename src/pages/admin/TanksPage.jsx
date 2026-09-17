@@ -83,6 +83,19 @@ function formatFriendlyText(value) {
 }
 
 /* =========================================================
+   pH NUMERIC VALUE
+========================================================= */
+
+function getPhNumericLabel(reading) {
+  const raw = reading?.ph_value ?? reading?.ph;
+  const numberValue = Number(raw);
+
+  return Number.isFinite(numberValue)
+    ? numberValue.toFixed(1)
+    : null;
+}
+
+/* =========================================================
    STATUS
 ========================================================= */
 
@@ -1531,6 +1544,9 @@ export default function TanksPage() {
                     }
                     label="pH Level"
                     value={
+                      getPhNumericLabel(
+                        item.latestReading
+                      ) ||
                       item.normalized
                         .phStatus
                     }

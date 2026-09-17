@@ -101,6 +101,19 @@ function formatFriendlyText(value) {
 }
 
 /* =========================================================
+   pH NUMERIC VALUE
+========================================================= */
+
+function getPhNumericLabel(reading) {
+  const raw = reading?.ph_value ?? reading?.ph;
+  const numberValue = Number(raw);
+
+  return Number.isFinite(numberValue)
+    ? numberValue.toFixed(1)
+    : null;
+}
+
+/* =========================================================
    STATUS
 ========================================================= */
 
@@ -3329,6 +3342,9 @@ export default function TankDetailsPage() {
                   }
                   label="pH Level"
                   value={
+                    getPhNumericLabel(
+                      latestReading.reading
+                    ) ||
                     latestReading
                       .normalized
                       .phStatus
@@ -4039,11 +4055,14 @@ export default function TankDetailsPage() {
                       </span>
 
                       <span>
-                        {formatFriendlyText(
-                          item
-                            .normalized
-                            .phStatus
-                        )}
+                        {getPhNumericLabel(
+                          item.reading
+                        ) ||
+                          formatFriendlyText(
+                            item
+                              .normalized
+                              .phStatus
+                          )}
                       </span>
 
                       <span>
