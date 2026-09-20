@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { APP_INFO } from "../constants/theme";
 
-const APK_DOWNLOAD_URL = "https://abtzkqfrwzcocyrwcrfc.supabase.co/storage/v1/object/public/app-downloads/craythrive.apk";
+const APK_DOWNLOAD_URL = "https://github.com/Julian-Dev-Web/craythrive-web/releases/download/apk-v1/craythrive.apk";
 
 // >>> EDIT THESE TWO VALUES WITH YOUR REAL CONTACT INFO <<<
 const CONTACT_EMAIL = "Craythrivesupport@gmail.com";
