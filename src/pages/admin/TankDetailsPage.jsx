@@ -1761,7 +1761,12 @@ export default function TankDetailsPage() {
   const [
     durationSeconds,
     setDurationSeconds,
-  ] = useState("10");
+    // Lowered default from 10 -> 5 seconds. The drain pump's flow issue was
+    // fixed (was air-locked/mechanically restricted before), so it now
+    // moves water much faster than the old default assumed. 3-5 seconds is
+    // enough for DRAIN with the fixed flow. REFILL can still take longer if
+    // needed -- just increase the field manually up to the 15s max below.
+  ] = useState("5");
 
   const [
     activeTankTab,
@@ -2509,7 +2514,9 @@ export default function TankDetailsPage() {
       ) ||
       seconds <= 0
     ) {
-      return 10000;
+      // Fallback lowered from 10000 -> 5000ms to match the new safer
+      // default now that the drain pump flow issue is fixed.
+      return 5000;
     }
 
     return (
