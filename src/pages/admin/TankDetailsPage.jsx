@@ -2527,6 +2527,32 @@ export default function TankDetailsPage() {
     );
   }
 
+  // AUTOMATIC drain duration based on current water level, so the "Drain
+  // Water" button no longer depends on the manual "Pump run time" field.
+  // The drain pump's flow issue is fixed and it is now strong, so short
+  // pulses are enough: 5s for the more extreme high readings, 3s otherwise.
+  // The actuator ESP32's own live safety abort (added separately) still
+  // protects against over-draining regardless of this value.
+  function getDrainDurationMs() {
+    const waterStatus = (
+      latestReading
+        ?.normalized
+        ?.waterStatus ||
+      ""
+    )
+      .toString()
+      .toUpperCase();
+
+    const moreExtremeHigh =
+      waterStatus === "CRITICAL_HIGH" ||
+      waterStatus === "TOO_HIGH" ||
+      waterStatus === "OVERFILLED";
+
+    return moreExtremeHigh
+      ? 5000
+      : 3000;
+  }
+
   async function clearStuckActiveCommands() {
     if (
       !activeCommands.length
@@ -3588,7 +3614,7 @@ export default function TankDetailsPage() {
             </span>
           </div>
 
-          {/* PUMP TIME */}
+          {/* PUMP TIME (Refill only -- Drain duration is now automatic) */}
 
           <div className="modern-device-command-note">
 
@@ -3597,7 +3623,7 @@ export default function TankDetailsPage() {
             />
 
             <span>
-              Pump run time:
+              Refill run time:
 
               <input
                 type="number"
@@ -3862,7 +3888,7 @@ export default function TankDetailsPage() {
               onClick={() =>
                 sendDeviceCommand(
                   "DRAIN_FOR",
-                  getCommandDurationMs()
+                  getDrainDurationMs()
                 )
               }
             >
@@ -3875,7 +3901,7 @@ export default function TankDetailsPage() {
               </strong>
 
               <span>
-                Remove water safely
+                Remove water safely (auto 3-5s)
               </span>
             </button>
 
