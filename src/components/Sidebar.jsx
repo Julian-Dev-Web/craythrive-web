@@ -95,11 +95,13 @@ export default function Sidebar({
 
       {!isCollapsed && (
         <div className="modern-sidebar-profile">
-          {avatarUrl && (
-            <div className="modern-profile-avatar">
+          <div className="modern-profile-avatar">
+            {avatarUrl ? (
               <img src={avatarUrl} alt={displayName} />
-            </div>
-          )}
+            ) : (
+              <span>{(displayName || "?").charAt(0).toUpperCase()}</span>
+            )}
+          </div>
 
           <div className="modern-profile-text">
             <strong>{displayName}</strong>
