@@ -576,6 +576,36 @@
 }
 
 /* =========================================================
+   SAFE RANGE CHIP
+========================================================= */
+
+.modern-tank-safety-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  margin-top: 12px;
+  padding: 9px 13px;
+
+  border-radius: 13px;
+
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.modern-tank-safety-chip.is-safe {
+  color: var(--ct-success, #12b981);
+  border: 1px solid rgba(18, 185, 129, 0.22);
+  background: rgba(18, 185, 129, 0.08);
+}
+
+.modern-tank-safety-chip.is-unsafe {
+  color: var(--ct-danger, #ff5c7a);
+  border: 1px solid rgba(255, 92, 122, 0.22);
+  background: rgba(255, 92, 122, 0.08);
+}
+
+/* =========================================================
    TANK MORE INFORMATION
 ========================================================= */
 
@@ -1176,6 +1206,91 @@
       transparent 17rem
     ),
     var(--ct-surface, rgba(8, 42, 51, 0.7));
+}
+
+/* =========================================================
+   SAFE RANGE BANNER (TANK DETAILS)
+========================================================= */
+
+.modern-tank-safety-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px 22px;
+  border-radius: 22px;
+  border: 1px solid var(--ct-border, rgba(0, 217, 199, 0.14));
+  background: var(--ct-surface, rgba(8, 42, 51, 0.7));
+}
+
+.modern-tank-safety-banner.is-safe {
+  border-color: rgba(18, 185, 129, 0.28);
+  background:
+    linear-gradient(135deg, rgba(18, 185, 129, 0.1), rgba(18, 185, 129, 0.02)),
+    var(--ct-surface, rgba(8, 42, 51, 0.7));
+}
+
+.modern-tank-safety-banner.is-unsafe {
+  border-color: rgba(255, 92, 122, 0.32);
+  background:
+    linear-gradient(135deg, rgba(255, 92, 122, 0.12), rgba(255, 92, 122, 0.02)),
+    var(--ct-surface, rgba(8, 42, 51, 0.7));
+}
+
+.modern-tank-safety-banner-icon {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+}
+
+.modern-tank-safety-banner.is-safe .modern-tank-safety-banner-icon {
+  color: var(--ct-success, #12b981);
+  background: rgba(18, 185, 129, 0.14);
+}
+
+.modern-tank-safety-banner.is-unsafe .modern-tank-safety-banner-icon {
+  color: var(--ct-danger, #ff5c7a);
+  background: rgba(255, 92, 122, 0.14);
+}
+
+.modern-tank-safety-banner-text {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.modern-tank-safety-banner-text strong {
+  font-size: 1rem;
+  font-weight: 900;
+  color: var(--ct-text, #eafffb);
+}
+
+.modern-tank-safety-banner-text > span {
+  color: var(--ct-muted, rgba(234, 255, 251, 0.6));
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.modern-tank-safety-issue-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.modern-tank-safety-issue-list li {
+  font-size: 0.84rem;
+  color: var(--ct-text, #eafffb);
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(255, 92, 122, 0.08);
+}
+
+.modern-tank-safety-issue-list li b {
+  font-weight: 850;
 }
 
 .modern-panel-heading {

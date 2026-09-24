@@ -20,6 +20,11 @@ import {
 import { isSupabaseConfigured, supabase } from "../../lib/supabase";
 
 import {
+  evaluateReadingSafety,
+  loadActiveThresholds,
+} from "../../utils/thresholdEvaluation";
+
+import {
   formatReadingTime,
   normalizeSensorReading,
 } from "../../utils/sensorReadingUtils";
@@ -862,6 +867,25 @@ export default function TanksPage() {
     setIsLoading,
   ] = useState(true);
 
+  const [
+    thresholds,
+    setThresholds,
+  ] = useState(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    loadActiveThresholds().then((loaded) => {
+      if (isMounted) {
+        setThresholds(loaded);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   /* =======================================================
      LOAD
   ======================================================= */
@@ -1013,6 +1037,25 @@ export default function TanksPage() {
                 )
               : "no-data";
 
+          const safety = thresholds
+            ? evaluateReadingSafety(
+                {
+                  temperature:
+                    latestReading?.temperature_c ??
+                    latestReading?.temperature,
+                  ph:
+                    latestReading?.ph ??
+                    latestReading?.ph_value,
+                  turbidityStatus:
+                    normalized.turbidityStatus,
+                  waterDepth:
+                    latestReading?.water_depth_cm ??
+                    latestReading?.water_level,
+                },
+                thresholds
+              )
+            : null;
+
           const ownerId =
             getTankOwnerId(
               tank
@@ -1072,6 +1115,8 @@ export default function TanksPage() {
 
             status:
               readingStatus,
+
+            safety,
 
             lastSync:
               normalized.createdAt ||
@@ -1586,6 +1631,32 @@ export default function TanksPage() {
                     }
                   />
                 </div>
+
+                {/* SAFE RANGE STATUS */}
+
+                {item.safety && (
+                  <div
+                    className={`modern-tank-safety-chip ${
+                      item.safety.isSafe ? "is-safe" : "is-unsafe"
+                    }`}
+                  >
+                    {item.safety.isSafe ? (
+                      <CheckCircle2 size={15} />
+                    ) : (
+                      <AlertTriangle size={15} />
+                    )}
+
+                    <span>
+                      {item.safety.isSafe
+                        ? "Within safe range"
+                        : `${item.safety.issues.length} ${
+                            item.safety.issues.length === 1
+                              ? "parameter"
+                              : "parameters"
+                          } outside safe range`}
+                    </span>
+                  </div>
+                )}
 
                 {/* NO DATA WARNING */}
 

@@ -3,12 +3,12 @@ import { ChevronLeft, ChevronRight, LogOut, X } from "lucide-react";
 import { APP_INFO } from "../constants/theme";
 
 /**
- * Sidebar navigation, extracted from AdminLayout.jsx.
+ * Sidebar navigation.
  *
- * This is a pure, behavior-preserving extraction — the JSX, class names, and
- * props map exactly to what AdminLayout used to render inline. AdminLayout
- * keeps owning the actual state (collapsed/mobile-open/profile/sign-out);
- * this component just renders it.
+ * Renders navItems grouped by their `group` field (falls back to a single
+ * ungrouped section if an item has no group), with a small uppercase label
+ * above each section. AdminLayout keeps owning the actual state
+ * (collapsed/mobile-open/profile/sign-out); this component just renders it.
  */
 export default function Sidebar({
   navItems,
@@ -20,6 +20,20 @@ export default function Sidebar({
   avatarUrl,
   onSignOut,
 }) {
+  const groups = [];
+  const groupIndexByName = new Map();
+
+  navItems.forEach((item) => {
+    const groupName = item.group || "";
+
+    if (!groupIndexByName.has(groupName)) {
+      groupIndexByName.set(groupName, groups.length);
+      groups.push({ name: groupName, items: [] });
+    }
+
+    groups[groupIndexByName.get(groupName)].items.push(item);
+  });
+
   return (
     <aside
       className={`modern-admin-sidebar ${isCollapsed ? "is-collapsed" : ""} ${
@@ -49,24 +63,34 @@ export default function Sidebar({
       </button>
 
       <nav className="modern-sidebar-nav">
-        {navItems.map((item) => {
-          const Icon = item.icon;
+        {groups.map((group) => (
+          <div className="modern-nav-group" key={group.name || "default"}>
+            {group.name && (
+              <span className="modern-nav-group-label">{group.name}</span>
+            )}
 
-          return (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              end={item.end}
-              className={({ isActive }) =>
-                `modern-nav-link ${isActive ? "is-active" : ""}`
-              }
-              title={item.label}
-            >
-              <Icon size={20} />
-              <span>{item.label}</span>
-            </NavLink>
-          );
-        })}
+            {group.items.map((item) => {
+              const Icon = item.icon;
+
+              return (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  end={item.end}
+                  className={({ isActive }) =>
+                    `modern-nav-link ${isActive ? "is-active" : ""}`
+                  }
+                  title={item.label}
+                >
+                  <span className="modern-nav-link-icon">
+                    <Icon size={19} />
+                  </span>
+                  <span className="modern-nav-link-label">{item.label}</span>
+                </NavLink>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
       {!isCollapsed && (
@@ -81,6 +105,8 @@ export default function Sidebar({
             <strong>{displayName}</strong>
             <span>Admin</span>
           </div>
+
+          <span className="modern-profile-status-dot" aria-hidden="true" />
         </div>
       )}
 

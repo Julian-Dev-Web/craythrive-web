@@ -31,6 +31,11 @@ import {
   normalizeSensorReading,
 } from "../../utils/sensorReadingUtils";
 
+import {
+  evaluateReadingSafety,
+  loadActiveThresholds,
+} from "../../utils/thresholdEvaluation";
+
 /* =========================================================
    TABLES
 ========================================================= */
@@ -830,8 +835,7 @@ function getWaterStabilityState(
       );
 
   if (
-    validWaterValues.length <
-    WATER_STABLE_REQUIRED_COUNT
+    validWaterValues.length < WATER_STABLE_REQUIRED_COUNT
   ) {
     return {
       canPump: false,
@@ -843,6 +847,7 @@ function getWaterStabilityState(
     };
   }
 
+  
   const minValue =
     Math.min(
       ...validWaterValues
@@ -1761,12 +1766,7 @@ export default function TankDetailsPage() {
   const [
     durationSeconds,
     setDurationSeconds,
-    // Lowered default from 10 -> 5 seconds. The drain pump's flow issue was
-    // fixed (was air-locked/mechanically restricted before), so it now
-    // moves water much faster than the old default assumed. 3-5 seconds is
-    // enough for DRAIN with the fixed flow. REFILL can still take longer if
-    // needed -- just increase the field manually up to the 15s max below.
-  ] = useState("5");
+  ] = useState("10");
 
   const [
     activeTankTab,
@@ -1784,6 +1784,25 @@ export default function TankDetailsPage() {
   ] = useState(
     Date.now()
   );
+
+  const [
+    thresholds,
+    setThresholds,
+  ] = useState(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    loadActiveThresholds().then((loaded) => {
+      if (isMounted) {
+        setThresholds(loaded);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   /* =======================================================
      LOAD
@@ -2263,6 +2282,28 @@ export default function TankDetailsPage() {
     enrichedReadings[0] ||
     null;
 
+  const latestSafety =
+    useMemo(() => {
+      if (!latestReading || !thresholds) {
+        return null;
+      }
+
+      const row = latestReading.reading;
+
+      return evaluateReadingSafety(
+        {
+          temperature:
+            row?.temperature_c ?? row?.temperature,
+          ph: row?.ph ?? row?.ph_value,
+          turbidityStatus:
+            latestReading?.normalized?.turbidityStatus,
+          waterDepth:
+            row?.water_depth_cm ?? row?.water_level,
+        },
+        thresholds
+      );
+    }, [latestReading, thresholds]);
+
   const totalReadingPages =
     Math.max(
       1,
@@ -2514,9 +2555,7 @@ export default function TankDetailsPage() {
       ) ||
       seconds <= 0
     ) {
-      // Fallback lowered from 10000 -> 5000ms to match the new safer
-      // default now that the drain pump flow issue is fixed.
-      return 5000;
+      return 10000;
     }
 
     return (
@@ -2525,32 +2564,6 @@ export default function TankDetailsPage() {
         15
       ) * 1000
     );
-  }
-
-  // AUTOMATIC drain duration based on current water level, so the "Drain
-  // Water" button no longer depends on the manual "Pump run time" field.
-  // The drain pump's flow issue is fixed and it is now strong, so short
-  // pulses are enough: 5s for the more extreme high readings, 3s otherwise.
-  // The actuator ESP32's own live safety abort (added separately) still
-  // protects against over-draining regardless of this value.
-  function getDrainDurationMs() {
-    const waterStatus = (
-      latestReading
-        ?.normalized
-        ?.waterStatus ||
-      ""
-    )
-      .toString()
-      .toUpperCase();
-
-    const moreExtremeHigh =
-      waterStatus === "CRITICAL_HIGH" ||
-      waterStatus === "TOO_HIGH" ||
-      waterStatus === "OVERFILLED";
-
-    return moreExtremeHigh
-      ? 5000
-      : 3000;
   }
 
   async function clearStuckActiveCommands() {
@@ -3330,6 +3343,48 @@ export default function TankDetailsPage() {
         "overview" && (
         <>
 
+          {/* SAFE RANGE STATUS */}
+
+          {latestSafety && (
+            <section
+              className={`modern-tank-safety-banner ${
+                latestSafety.isSafe ? "is-safe" : "is-unsafe"
+              }`}
+            >
+              <div className="modern-tank-safety-banner-icon">
+                {latestSafety.isSafe ? (
+                  <CheckCircle2 size={24} />
+                ) : (
+                  <AlertTriangle size={24} />
+                )}
+              </div>
+
+              <div className="modern-tank-safety-banner-text">
+                <strong>
+                  {latestSafety.isSafe
+                    ? "This tank is within the safe range"
+                    : `This tank is outside the safe range (${latestSafety.issues.length} ${
+                        latestSafety.issues.length === 1
+                          ? "issue"
+                          : "issues"
+                      })`}
+                </strong>
+
+                <span>Checked against your saved Threshold Settings</span>
+
+                {!latestSafety.isSafe && (
+                  <ul className="modern-tank-safety-issue-list">
+                    {latestSafety.issues.map((issue) => (
+                      <li key={issue.key}>
+                        <b>{issue.label}:</b> {issue.message}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </section>
+          )}
+
           <section className="modern-tank-detail-panel">
 
             <div className="modern-panel-heading">
@@ -3614,7 +3669,7 @@ export default function TankDetailsPage() {
             </span>
           </div>
 
-          {/* PUMP TIME (Refill only -- Drain duration is now automatic) */}
+          {/* PUMP TIME */}
 
           <div className="modern-device-command-note">
 
@@ -3623,7 +3678,7 @@ export default function TankDetailsPage() {
             />
 
             <span>
-              Refill run time:
+              Pump run time:
 
               <input
                 type="number"
@@ -3888,7 +3943,7 @@ export default function TankDetailsPage() {
               onClick={() =>
                 sendDeviceCommand(
                   "DRAIN_FOR",
-                  getDrainDurationMs()
+                  getCommandDurationMs()
                 )
               }
             >
@@ -3901,7 +3956,7 @@ export default function TankDetailsPage() {
               </strong>
 
               <span>
-                Remove water safely (auto 3-5s)
+                Remove water safely
               </span>
             </button>
 

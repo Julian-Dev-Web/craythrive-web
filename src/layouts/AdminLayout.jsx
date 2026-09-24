@@ -16,14 +16,14 @@ import { getCurrentProfile, signOut } from "../services/authService";
 import { isSupabaseConfigured } from "../lib/supabase";
 
 const navItems = [
-  { label: "Overview", path: "/admin", icon: LayoutDashboard, end: true },
-  { label: "Tanks", path: "/admin/tanks", icon: Droplets },
-  { label: "Readings", path: "/admin/readings", icon: Database },
-  { label: "Marketplace", path: "/admin/marketplace", icon: ShoppingBag },
-  { label: "Orders", path: "/admin/orders", icon: PackageCheck },
-  { label: "Alerts", path: "/admin/alerts", icon: AlertTriangle },
-  { label: "Reports", path: "/admin/reports", icon: FileText },
-  { label: "Settings", path: "/admin/settings", icon: Settings },
+  { label: "Overview", path: "/admin", icon: LayoutDashboard, end: true, group: "Overview" },
+  { label: "Tanks", path: "/admin/tanks", icon: Droplets, group: "Monitoring" },
+  { label: "Readings", path: "/admin/readings", icon: Database, group: "Monitoring" },
+  { label: "Alerts", path: "/admin/alerts", icon: AlertTriangle, group: "Monitoring" },
+  { label: "Marketplace", path: "/admin/marketplace", icon: ShoppingBag, group: "Marketplace" },
+  { label: "Orders", path: "/admin/orders", icon: PackageCheck, group: "Marketplace" },
+  { label: "Reports", path: "/admin/reports", icon: FileText, group: "System" },
+  { label: "Settings", path: "/admin/settings", icon: Settings, group: "System" },
 ];
 
 function getInitialTheme() {

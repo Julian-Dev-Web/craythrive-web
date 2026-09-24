@@ -25,6 +25,11 @@ import {
   toNumberOrNull,
 } from "../../utils/sensorReadingUtils";
 
+import {
+  evaluateReadingSafety,
+  loadActiveThresholds,
+} from "../../utils/thresholdEvaluation";
+
 /* =========================================================
    TABLES
 ========================================================= */
@@ -869,6 +874,31 @@ export default function SensorReadingsPage() {
     setLastUpdated,
   ] = useState(null);
 
+  const [
+    thresholds,
+    setThresholds,
+  ] = useState(null);
+
+  /*
+    Load the user's saved safe-range thresholds once. These come from the
+    same source Threshold Settings writes to, so "safe" here always matches
+    what the user configured there.
+  */
+
+  useEffect(() => {
+    let isMounted = true;
+
+    loadActiveThresholds().then((loaded) => {
+      if (isMounted) {
+        setThresholds(loaded);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   /* =======================================================
      LOAD
   ======================================================= */
@@ -1470,6 +1500,30 @@ export default function SensorReadingsPage() {
         )
       : null;
 
+  const latestSafety =
+    useMemo(() => {
+      if (!latestReading || !thresholds) {
+        return null;
+      }
+
+      return evaluateReadingSafety(
+        {
+          temperature: latestTemperature,
+          ph: latestPH,
+          turbidityStatus:
+            latestReading?.normalized?.turbidityStatus,
+          waterDepth: latestWaterDepth,
+        },
+        thresholds
+      );
+    }, [
+      latestReading,
+      latestTemperature,
+      latestPH,
+      latestWaterDepth,
+      thresholds,
+    ]);
+
   const selectedTankName =
     tankFilter ===
       "all"
@@ -1595,6 +1649,55 @@ export default function SensorReadingsPage() {
 
         </div>
       </section>
+
+      {/* ===============================================
+          SAFE RANGE STATUS
+      ================================================ */}
+
+      {latestSafety && (
+        <section
+          className={`modern-safety-banner ${
+            latestSafety.isSafe ? "is-safe" : "is-unsafe"
+          }`}
+        >
+          <div className="modern-safety-banner-icon">
+            {latestSafety.isSafe ? (
+              <CheckCircle2 size={26} />
+            ) : (
+              <AlertTriangle size={26} />
+            )}
+          </div>
+
+          <div className="modern-safety-banner-text">
+            <strong>
+              {latestSafety.isSafe
+                ? "Latest reading is within the safe range"
+                : `Latest reading is outside the safe range (${latestSafety.issues.length} ${
+                    latestSafety.issues.length === 1
+                      ? "issue"
+                      : "issues"
+                  })`}
+            </strong>
+
+            <span>
+              Checked against your saved Threshold Settings
+              {lastUpdated
+                ? ` · as of ${formatReadingTime(lastUpdated)}`
+                : ""}
+            </span>
+
+            {!latestSafety.isSafe && (
+              <ul className="modern-safety-issue-list">
+                {latestSafety.issues.map((issue) => (
+                  <li key={issue.key}>
+                    <b>{issue.label}:</b> {issue.message}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* ===============================================
           SUMMARY
