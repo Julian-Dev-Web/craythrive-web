@@ -110,6 +110,18 @@ export async function loadActiveThresholds() {
 /**
  * Checks one reading's raw numeric values against the active thresholds.
  *
+ * Returns both:
+ *  - `issues`: a flat list, for the overall safe-range banner.
+ *  - `parameters`: a per-parameter breakdown ({ temperature, ph, turbidity,
+ *    waterLevel, ammonia }), each with { severity, label, hasValue }, so
+ *    individual metric cards can show the SAME verdict as the banner
+ *    instead of a separate hardcoded status.
+ *
+ * Ammonia is special-cased: it comes from a separate mobile test-strip scan
+ * (ammonia_readings table), not the continuous sensor stream, so a tank
+ * that simply hasn't been scanned yet is NOT an "issue" — it's a neutral
+ * "No Scan Yet" state that does not affect isSafe.
+ *
  * Note on turbidity: the sensor reports a VOLTAGE where higher = clearer
  * water (see getTurbidityStatusFromVoltage in sensorReadingUtils.js), while
  * the Threshold Settings UI describes turbidityMax as a "maximum dirty
@@ -120,51 +132,119 @@ export async function loadActiveThresholds() {
  * the same thing in both places.
  */
 export function evaluateReadingSafety(
-  { temperature, ph, turbidityStatus, waterDepth },
+  { temperature, ph, turbidityStatus, waterDepth, ammonia },
   thresholds = DEFAULT_THRESHOLDS
 ) {
   const issues = [];
+  const parameters = {};
+
+  /* ---------------- TEMPERATURE ---------------- */
 
   const temp = toNumberOrNull(temperature);
-  if (temp !== null) {
-    if (temp < thresholds.temperatureMin) {
-      issues.push({
-        key: "temperature",
-        label: "Temperature",
-        message: `${temp.toFixed(1)}°C is below the safe minimum (${thresholds.temperatureMin}°C)`,
-      });
-    } else if (temp > thresholds.temperatureMax) {
-      issues.push({
-        key: "temperature",
-        label: "Temperature",
-        message: `${temp.toFixed(1)}°C is above the safe maximum (${thresholds.temperatureMax}°C)`,
-      });
-    }
+
+  if (temp === null) {
+    parameters.temperature = {
+      severity: "no-data",
+      label: "No Reading",
+      hasValue: false,
+    };
+  } else if (temp < thresholds.temperatureMin) {
+    parameters.temperature = {
+      severity: "critical",
+      label: "Below Safe Min",
+      hasValue: true,
+    };
+
+    issues.push({
+      key: "temperature",
+      label: "Temperature",
+      message: `${temp.toFixed(1)}°C is below the safe minimum (${thresholds.temperatureMin}°C)`,
+    });
+  } else if (temp > thresholds.temperatureMax) {
+    parameters.temperature = {
+      severity: "critical",
+      label: "Above Safe Max",
+      hasValue: true,
+    };
+
+    issues.push({
+      key: "temperature",
+      label: "Temperature",
+      message: `${temp.toFixed(1)}°C is above the safe maximum (${thresholds.temperatureMax}°C)`,
+    });
+  } else {
+    parameters.temperature = {
+      severity: "normal",
+      label: "Within Range",
+      hasValue: true,
+    };
   }
+
+  /* ---------------- PH ---------------- */
 
   const phValue = toNumberOrNull(ph);
-  if (phValue !== null) {
-    if (phValue < thresholds.phMin) {
-      issues.push({
-        key: "ph",
-        label: "pH Level",
-        message: `${phValue.toFixed(2)} is below the safe minimum (${thresholds.phMin})`,
-      });
-    } else if (phValue > thresholds.phMax) {
-      issues.push({
-        key: "ph",
-        label: "pH Level",
-        message: `${phValue.toFixed(2)} is above the safe maximum (${thresholds.phMax})`,
-      });
-    }
+
+  if (phValue === null) {
+    parameters.ph = {
+      severity: "no-data",
+      label: "No Reading",
+      hasValue: false,
+    };
+  } else if (phValue < thresholds.phMin) {
+    parameters.ph = {
+      severity: "critical",
+      label: "Below Safe Min",
+      hasValue: true,
+    };
+
+    issues.push({
+      key: "ph",
+      label: "pH Level",
+      message: `${phValue.toFixed(2)} is below the safe minimum (${thresholds.phMin})`,
+    });
+  } else if (phValue > thresholds.phMax) {
+    parameters.ph = {
+      severity: "critical",
+      label: "Above Safe Max",
+      hasValue: true,
+    };
+
+    issues.push({
+      key: "ph",
+      label: "pH Level",
+      message: `${phValue.toFixed(2)} is above the safe maximum (${thresholds.phMax})`,
+    });
+  } else {
+    parameters.ph = {
+      severity: "normal",
+      label: "Within Range",
+      hasValue: true,
+    };
   }
 
+  /* ---------------- TURBIDITY ---------------- */
+
   const cleanTurbidityStatus = String(turbidityStatus || "").toLowerCase();
-  if (
-    cleanTurbidityStatus &&
-    cleanTurbidityStatus !== "clear" &&
-    cleanTurbidityStatus !== "no reading"
-  ) {
+
+  if (!cleanTurbidityStatus || cleanTurbidityStatus === "no reading") {
+    parameters.turbidity = {
+      severity: "no-data",
+      label: "No Reading",
+      hasValue: false,
+    };
+  } else if (cleanTurbidityStatus === "clear") {
+    parameters.turbidity = {
+      severity: "normal",
+      label: "Within Range",
+      hasValue: true,
+    };
+  } else {
+    parameters.turbidity = {
+      severity: "critical",
+      label: "Needs Attention",
+      hasValue: true,
+    };
+
     issues.push({
       key: "turbidity",
       label: "Water Clarity",
@@ -172,13 +252,66 @@ export function evaluateReadingSafety(
     });
   }
 
+  /* ---------------- WATER LEVEL ---------------- */
+
   const waterValue = toNumberOrNull(waterDepth);
-  if (waterValue !== null && waterValue < thresholds.waterLevelMin) {
+
+  if (waterValue === null) {
+    parameters.waterLevel = {
+      severity: "no-data",
+      label: "No Reading",
+      hasValue: false,
+    };
+  } else if (waterValue < thresholds.waterLevelMin) {
+    parameters.waterLevel = {
+      severity: "critical",
+      label: "Below Safe Min",
+      hasValue: true,
+    };
+
     issues.push({
       key: "waterLevel",
       label: "Water Level",
       message: `${waterValue.toFixed(1)} cm is below the safe minimum (${thresholds.waterLevelMin} cm)`,
     });
+  } else {
+    parameters.waterLevel = {
+      severity: "normal",
+      label: "Within Range",
+      hasValue: true,
+    };
+  }
+
+  /* ---------------- AMMONIA ----------------
+     Special case: no scan yet is a NEUTRAL state, not an issue, and does
+     not count toward hasAnyData / isSafe either way. */
+
+  const ammoniaValue = toNumberOrNull(ammonia);
+
+  if (ammoniaValue === null) {
+    parameters.ammonia = {
+      severity: "neutral",
+      label: "No Scan Yet",
+      hasValue: false,
+    };
+  } else if (ammoniaValue > thresholds.ammoniaMax) {
+    parameters.ammonia = {
+      severity: "critical",
+      label: "Above Safe Max",
+      hasValue: true,
+    };
+
+    issues.push({
+      key: "ammonia",
+      label: "Ammonia",
+      message: `${ammoniaValue} mg/L is above the safe maximum (${thresholds.ammoniaMax} mg/L)`,
+    });
+  } else {
+    parameters.ammonia = {
+      severity: "normal",
+      label: "Within Range",
+      hasValue: true,
+    };
   }
 
   const hasAnyData =
@@ -191,5 +324,6 @@ export function evaluateReadingSafety(
     isSafe: hasAnyData && issues.length === 0,
     hasData: hasAnyData,
     issues,
+    parameters,
   };
 }

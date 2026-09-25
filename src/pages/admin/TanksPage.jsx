@@ -45,6 +45,10 @@ const readingTables = [
   "readings",
 ];
 
+const ammoniaTables = [
+  "ammonia_readings",
+];
+
 const userFilterColumns = [
   "user_id",
   "owner_id",
@@ -419,6 +423,49 @@ function getLatestReadingForTank(
   return pickStableLatestReading(
     matched
   );
+}
+
+function getLatestAmmoniaForTank(
+  tank,
+  ammoniaRows
+) {
+  const tankKeys =
+    getTankMatchKeys(tank);
+
+  const matched =
+    ammoniaRows.filter((row) => {
+      const rowKeys =
+        getReadingMatchKeys(row);
+
+      return rowKeys.some(
+        (key) =>
+          tankKeys.includes(key)
+      );
+    });
+
+  if (matched.length === 0) {
+    return null;
+  }
+
+  return sortReadingsNewestFirst(
+    matched
+  )[0];
+}
+
+function getAmmoniaNumericValue(row) {
+  const raw =
+    row?.ammonia_mg_l ??
+    row?.ammonia_level ??
+    row?.ammonia_ppm ??
+    row?.ammonia_value ??
+    row?.value ??
+    row?.ppm;
+
+  const numberValue = Number(raw);
+
+  return Number.isFinite(numberValue)
+    ? numberValue
+    : null;
 }
 
 /* =========================================================
@@ -844,6 +891,9 @@ export default function TanksPage() {
   const [readings, setReadings] =
     useState([]);
 
+  const [ammoniaReadings, setAmmoniaReadings] =
+    useState([]);
+
   const [profiles, setProfiles] =
     useState([]);
 
@@ -908,6 +958,7 @@ export default function TanksPage() {
       if (!currentUser.id) {
         setTanks([]);
         setReadings([]);
+        setAmmoniaReadings([]);
         setProfiles([]);
 
         return;
@@ -916,6 +967,7 @@ export default function TanksPage() {
       const [
         tankResult,
         readingResult,
+        ammoniaResult,
         profileResult,
       ] = await Promise.all([
         fetchRowsByScope(
@@ -926,6 +978,12 @@ export default function TanksPage() {
 
         fetchRowsByScope(
           readingTables,
+          currentUser,
+          300
+        ),
+
+        fetchRowsByScope(
+          ammoniaTables,
           currentUser,
           300
         ),
@@ -941,6 +999,10 @@ export default function TanksPage() {
 
       setReadings(
         readingResult.rows
+      );
+
+      setAmmoniaReadings(
+        ammoniaResult.rows
       );
 
       setProfiles(
@@ -1037,6 +1099,19 @@ export default function TanksPage() {
                 )
               : "no-data";
 
+          const latestAmmoniaRow =
+            getLatestAmmoniaForTank(
+              tank,
+              ammoniaReadings
+            );
+
+          const latestAmmoniaValue =
+            latestAmmoniaRow
+              ? getAmmoniaNumericValue(
+                  latestAmmoniaRow
+                )
+              : null;
+
           const safety = thresholds
             ? evaluateReadingSafety(
                 {
@@ -1051,6 +1126,7 @@ export default function TanksPage() {
                   waterDepth:
                     latestReading?.water_depth_cm ??
                     latestReading?.water_level,
+                  ammonia: latestAmmoniaValue,
                 },
                 thresholds
               )
@@ -1131,6 +1207,8 @@ export default function TanksPage() {
     }, [
       tanks,
       readings,
+      ammoniaReadings,
+      thresholds,
       profileMap,
     ]);
 

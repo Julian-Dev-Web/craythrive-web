@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Database,
   Droplets,
+  FlaskConical,
   Loader2,
   PackageCheck,
   RefreshCw,
@@ -23,6 +24,10 @@ import {
   normalizeSensorReading,
   toNumberOrNull,
 } from "../../utils/sensorReadingUtils";
+
+import {
+  loadActiveThresholds,
+} from "../../utils/thresholdEvaluation";
 
 /* =========================================================
    TABLE FALLBACKS
@@ -55,6 +60,8 @@ const tableGroups = {
     "reservations",
     "marketplace_reservations",
   ],
+
+  ammonia: ["ammonia_readings"],
 };
 
 const userFilterColumns = [
@@ -169,6 +176,54 @@ function getTankDisplayName(tankId, tanks = []) {
     matchedTank?.display_name ||
     "My Tank"
   );
+}
+
+/* =========================================================
+   AMMONIA HELPERS
+========================================================= */
+
+function getAmmoniaNumericValue(row) {
+  const raw =
+    row?.ammonia_mg_l ??
+    row?.ammonia_level ??
+    row?.ammonia_ppm ??
+    row?.ammonia_value ??
+    row?.value ??
+    row?.ppm;
+
+  const numberValue = Number(raw);
+
+  return Number.isFinite(numberValue)
+    ? numberValue
+    : null;
+}
+
+function getAmmoniaTankId(row) {
+  return String(
+    row?.tank_id ||
+      row?.tank_uuid ||
+      ""
+  );
+}
+
+function getAmmoniaRowDate(row) {
+  return (
+    row?.created_at ||
+    row?.timestamp ||
+    row?.date ||
+    row?.updated_at ||
+    ""
+  );
+}
+
+function getTankIdCandidates(tank) {
+  return [
+    tank?.id,
+    tank?.tank_id,
+    tank?.uuid,
+  ]
+    .filter(Boolean)
+    .map(String);
 }
 
 /* =========================================================
@@ -538,7 +593,25 @@ export default function DashboardOverview() {
     alerts: [],
     listings: [],
     orders: [],
+    ammonia: [],
   });
+
+  const [thresholds, setThresholds] =
+    useState(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    loadActiveThresholds().then((loaded) => {
+      if (isMounted) {
+        setThresholds(loaded);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const [isLoading, setIsLoading] =
     useState(true);
@@ -572,6 +645,7 @@ export default function DashboardOverview() {
           alerts: [],
           listings: [],
           orders: [],
+          ammonia: [],
         });
 
         return;
@@ -583,6 +657,7 @@ export default function DashboardOverview() {
         alerts,
         listings,
         orders,
+        ammonia,
       ] = await Promise.all([
         fetchUserRows(
           tableGroups.tanks,
@@ -613,6 +688,12 @@ export default function DashboardOverview() {
           currentUser.id,
           300
         ),
+
+        fetchUserRows(
+          tableGroups.ammonia,
+          currentUser.id,
+          300
+        ),
       ]);
 
       setDatasets({
@@ -621,6 +702,7 @@ export default function DashboardOverview() {
         alerts: alerts.rows,
         listings: listings.rows,
         orders: orders.rows,
+        ammonia: ammonia.rows,
       });
 
       setLastUpdated(new Date());
@@ -688,6 +770,53 @@ export default function DashboardOverview() {
 
   const latestReading =
     enrichedReadings[0] || null;
+
+  /* =======================================================
+     AMMONIA STATUS
+  ======================================================= */
+
+  const ammoniaStats = useMemo(() => {
+    const ammoniaMax = thresholds?.ammoniaMax;
+
+    let elevated = 0;
+    let noScan = 0;
+
+    datasets.tanks.forEach((tank) => {
+      const tankIds = getTankIdCandidates(tank);
+
+      const matchedRows = datasets.ammonia.filter(
+        (row) =>
+          tankIds.includes(getAmmoniaTankId(row))
+      );
+
+      if (matchedRows.length === 0) {
+        noScan += 1;
+        return;
+      }
+
+      const latestRow = [...matchedRows].sort(
+        (a, b) =>
+          new Date(getAmmoniaRowDate(b)) -
+          new Date(getAmmoniaRowDate(a))
+      )[0];
+
+      const value = getAmmoniaNumericValue(latestRow);
+
+      if (
+        value !== null &&
+        ammoniaMax !== undefined &&
+        value > ammoniaMax
+      ) {
+        elevated += 1;
+      }
+    });
+
+    return { elevated, noScan };
+  }, [
+    datasets.tanks,
+    datasets.ammonia,
+    thresholds,
+  ]);
 
   /* =======================================================
      STATS
@@ -770,8 +899,12 @@ export default function DashboardOverview() {
       totalSales,
 
       sensorIssues,
+
+      ammoniaElevated: ammoniaStats.elevated,
+
+      ammoniaNoScan: ammoniaStats.noScan,
     };
-  }, [datasets, enrichedReadings]);
+  }, [datasets, enrichedReadings, ammoniaStats]);
 
   /* =======================================================
      AVERAGES
@@ -1213,6 +1346,39 @@ export default function DashboardOverview() {
 
               <span>
                 Active Listings
+              </span>
+            </div>
+
+            <ArrowRight size={17} />
+          </Link>
+
+          <Link
+            to="/admin/tanks"
+            className={`farmer-summary-card ${
+              stats.ammoniaElevated > 0
+                ? "warning"
+                : ""
+            }`}
+          >
+            <div className="farmer-summary-icon">
+              <FlaskConical size={22} />
+            </div>
+
+            <div>
+              <strong>
+                {stats.ammoniaElevated > 0
+                  ? formatNumber(
+                      stats.ammoniaElevated
+                    )
+                  : formatNumber(
+                      stats.ammoniaNoScan
+                    )}
+              </strong>
+
+              <span>
+                {stats.ammoniaElevated > 0
+                  ? "Ammonia Elevated"
+                  : "Tanks Awaiting Scan"}
               </span>
             </div>
 

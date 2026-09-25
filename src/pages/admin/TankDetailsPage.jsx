@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Database,
   Droplets,
+  FlaskConical,
   Gauge,
   Loader2,
   Play,
@@ -115,6 +116,26 @@ function getPhNumericLabel(reading) {
 
   return Number.isFinite(numberValue)
     ? numberValue.toFixed(1)
+    : null;
+}
+
+/* =========================================================
+   AMMONIA NUMERIC VALUE
+========================================================= */
+
+function getAmmoniaNumericValue(row) {
+  const raw =
+    row?.ammonia_mg_l ??
+    row?.ammonia_level ??
+    row?.ammonia_ppm ??
+    row?.ammonia_value ??
+    row?.value ??
+    row?.ppm;
+
+  const numberValue = Number(raw);
+
+  return Number.isFinite(numberValue)
+    ? numberValue
     : null;
 }
 
@@ -835,7 +856,8 @@ function getWaterStabilityState(
       );
 
   if (
-    validWaterValues.length < WATER_STABLE_REQUIRED_COUNT
+    validWaterValues.length <
+    WATER_STABLE_REQUIRED_COUNT
   ) {
     return {
       canPump: false,
@@ -847,7 +869,6 @@ function getWaterStabilityState(
     };
   }
 
-  
   const minValue =
     Math.min(
       ...validWaterValues
@@ -1616,6 +1637,8 @@ function DetailMetricCard({
   label,
   value,
   status,
+  severity: severityOverride,
+  statusLabel,
 }) {
   const hasStatus =
     clean(status) &&
@@ -1623,11 +1646,20 @@ function DetailMetricCard({
       "no reading";
 
   const severity =
-    hasStatus
+    severityOverride ||
+    (hasStatus
       ? getStatusSeverity(
           [status]
         )
-      : "warning";
+      : "warning");
+
+  const displayLabel =
+    statusLabel ||
+    (hasStatus
+      ? formatFriendlyText(
+          status
+        )
+      : "No Reading");
 
   return (
     <article className="modern-tank-detail-metric">
@@ -1649,11 +1681,7 @@ function DetailMetricCard({
         <b
           className={`modern-tank-status ${severity}`}
         >
-          {hasStatus
-            ? formatFriendlyText(
-                status
-              )
-            : "No Reading"}
+          {displayLabel}
         </b>
       </div>
     </article>
@@ -2282,6 +2310,11 @@ export default function TankDetailsPage() {
     enrichedReadings[0] ||
     null;
 
+  const latestAmmoniaValue =
+    ammoniaReadings.length > 0
+      ? getAmmoniaNumericValue(ammoniaReadings[0])
+      : null;
+
   const latestSafety =
     useMemo(() => {
       if (!latestReading || !thresholds) {
@@ -2299,10 +2332,11 @@ export default function TankDetailsPage() {
             latestReading?.normalized?.turbidityStatus,
           waterDepth:
             row?.water_depth_cm ?? row?.water_level,
+          ammonia: latestAmmoniaValue,
         },
         thresholds
       );
-    }, [latestReading, thresholds]);
+    }, [latestReading, thresholds, latestAmmoniaValue]);
 
   const totalReadingPages =
     Math.max(
@@ -3417,10 +3451,17 @@ export default function TankDetailsPage() {
                       .normalized
                       .temperatureLabel
                   }
-                  status={
-                    latestReading
-                      .normalized
-                      .temperatureStatus
+                  severity={
+                    latestSafety
+                      ?.parameters
+                      ?.temperature
+                      ?.severity
+                  }
+                  statusLabel={
+                    latestSafety
+                      ?.parameters
+                      ?.temperature
+                      ?.label
                   }
                 />
 
@@ -3437,10 +3478,17 @@ export default function TankDetailsPage() {
                       .normalized
                       .phStatus
                   }
-                  status={
-                    latestReading
-                      .normalized
-                      .phStatus
+                  severity={
+                    latestSafety
+                      ?.parameters
+                      ?.ph
+                      ?.severity
+                  }
+                  statusLabel={
+                    latestSafety
+                      ?.parameters
+                      ?.ph
+                      ?.label
                   }
                 />
 
@@ -3454,10 +3502,17 @@ export default function TankDetailsPage() {
                       .normalized
                       .turbidityStatus
                   }
-                  status={
-                    latestReading
-                      .normalized
-                      .turbidityStatus
+                  severity={
+                    latestSafety
+                      ?.parameters
+                      ?.turbidity
+                      ?.severity
+                  }
+                  statusLabel={
+                    latestSafety
+                      ?.parameters
+                      ?.turbidity
+                      ?.label
                   }
                 />
 
@@ -3471,10 +3526,44 @@ export default function TankDetailsPage() {
                       .normalized
                       .waterLabel
                   }
-                  status={
-                    latestReading
-                      .normalized
-                      .waterStatus
+                  severity={
+                    latestSafety
+                      ?.parameters
+                      ?.waterLevel
+                      ?.severity
+                  }
+                  statusLabel={
+                    latestSafety
+                      ?.parameters
+                      ?.waterLevel
+                      ?.label
+                  }
+                />
+
+                <DetailMetricCard
+                  icon={
+                    FlaskConical
+                  }
+                  label="Ammonia"
+                  value={
+                    latestAmmoniaValue ===
+                      null
+                      ? "No Scan"
+                      : `${latestAmmoniaValue} mg/L`
+                  }
+                  severity={
+                    latestSafety
+                      ?.parameters
+                      ?.ammonia
+                      ?.severity ||
+                    "neutral"
+                  }
+                  statusLabel={
+                    latestSafety
+                      ?.parameters
+                      ?.ammonia
+                      ?.label ||
+                    "No Scan Yet"
                   }
                 />
               </div>

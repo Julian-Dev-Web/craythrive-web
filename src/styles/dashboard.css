@@ -1450,6 +1450,10 @@ html[data-theme="dark"] .modern-admin-sidebar {
   height: 18px;
 }
 
+/* =========================================================
+   COLLAPSED SIDEBAR
+========================================================= */
+
 .modern-admin-sidebar.is-collapsed {
   align-items: center;
   padding-inline: 12px;
@@ -1511,6 +1515,10 @@ html[data-theme="dark"] .modern-admin-sidebar {
   height: 42px;
   border-radius: 12px;
 }
+
+/* =========================================================
+   PROFILE CARD
+========================================================= */
 
 .modern-sidebar-profile {
   position: relative;
@@ -1596,6 +1604,12 @@ html[data-theme="dark"] .modern-sidebar-profile {
   box-shadow: var(--ct-shadow-soft);
   cursor: pointer;
   transform: translateY(-50%);
+}
+
+.modern-admin-main {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto 1fr;
 }
 
 /* =========================================================
@@ -2100,7 +2114,7 @@ html[data-theme="dark"] .modern-admin-topbar {
 
 .farmer-summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 14px;
 }
 
