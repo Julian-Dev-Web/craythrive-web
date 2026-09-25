@@ -771,6 +771,38 @@ export default function DashboardOverview() {
   const latestReading =
     enrichedReadings[0] || null;
 
+  const latestReadingTankId = String(
+    latestReading?.reading?.tank_id ||
+      latestReading?.reading?.tank_uuid ||
+      ""
+  );
+
+  const latestAmmoniaForReading = useMemo(() => {
+    if (!latestReadingTankId) {
+      return null;
+    }
+
+    const matchedRows = datasets.ammonia.filter(
+      (row) =>
+        getAmmoniaTankId(row) === latestReadingTankId
+    );
+
+    if (matchedRows.length === 0) {
+      return null;
+    }
+
+    const latestRow = [...matchedRows].sort(
+      (a, b) =>
+        new Date(getAmmoniaRowDate(b)) -
+        new Date(getAmmoniaRowDate(a))
+    )[0];
+
+    return getAmmoniaNumericValue(latestRow);
+  }, [
+    datasets.ammonia,
+    latestReadingTankId,
+  ]);
+
   /* =======================================================
      AMMONIA STATUS
   ======================================================= */
@@ -1559,6 +1591,35 @@ export default function DashboardOverview() {
                           .normalized
                           .waterStatus
                       }
+                    </span>
+                  </div>
+                </div>
+
+                <div className="farmer-water-item">
+
+                  <span className="farmer-water-icon">
+                    <FlaskConical
+                      size={21}
+                    />
+                  </span>
+
+                  <div>
+                    <small>
+                      Ammonia
+                    </small>
+
+                    <strong>
+                      {latestAmmoniaForReading ===
+                        null
+                        ? "No Scan"
+                        : `${latestAmmoniaForReading} mg/L`}
+                    </strong>
+
+                    <span>
+                      {latestAmmoniaForReading ===
+                        null
+                        ? "Waiting for mobile scan"
+                        : "Latest test-strip result"}
                     </span>
                   </div>
                 </div>
