@@ -1,5 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
 import { Link } from "react-router-dom";
+
 import {
   AlertTriangle,
   ArrowRight,
@@ -18,23 +25,40 @@ import {
   Waves,
 } from "lucide-react";
 
-import { isSupabaseConfigured, supabase } from "../../lib/supabase";
+import {
+  isSupabaseConfigured,
+  supabase,
+} from "../../lib/supabase";
+
 import {
   evaluateReadingSafety,
   loadActiveThresholds,
 } from "../../utils/thresholdEvaluation";
+
 import {
   formatReadingTime,
   normalizeSensorReading,
 } from "../../utils/sensorReadingUtils";
 
 /* =========================================================
-   TABLES / DATABASE CONFIG
+   TABLES
 ========================================================= */
 
-const tankTables = ["tanks", "user_tanks", "tank_profiles"];
-const readingTables = ["sensor_readings", "tank_readings", "readings"];
-const ammoniaTables = ["ammonia_readings"];
+const tankTables = [
+  "tanks",
+  "user_tanks",
+  "tank_profiles",
+];
+
+const readingTables = [
+  "sensor_readings",
+  "tank_readings",
+  "readings",
+];
+
+const ammoniaTables = [
+  "ammonia_readings",
+];
 
 const userFilterColumns = [
   "user_id",
@@ -49,21 +73,30 @@ const userFilterColumns = [
 ========================================================= */
 
 function clean(value) {
-  return String(value || "").trim();
+  return String(
+    value || ""
+  ).trim();
 }
 
 function lower(value) {
-  return clean(value).toLowerCase();
+  return clean(
+    value
+  ).toLowerCase();
 }
 
-function normalizeStatusText(value) {
+function normalizeStatusText(
+  value
+) {
   return lower(value)
     .replaceAll("_", " ")
     .replaceAll("-", " ");
 }
 
-function formatFriendlyText(value) {
-  const text = clean(value);
+function formatFriendlyText(
+  value
+) {
+  const text =
+    clean(value);
 
   if (!text) {
     return "No Reading";
@@ -73,28 +106,20 @@ function formatFriendlyText(value) {
     .replaceAll("_", " ")
     .replaceAll("-", " ")
     .toLowerCase()
-    .replace(/\b\w/g, (character) =>
-      character.toUpperCase()
+    .replace(
+      /\b\w/g,
+      (character) =>
+        character.toUpperCase()
     );
 }
 
-function toNumberOrNull(value) {
-  if (
-    value === null ||
-    value === undefined ||
-    value === ""
-  ) {
-    return null;
-  }
+/* =========================================================
+   pH NUMERIC VALUE
+========================================================= */
 
-  const numberValue = Number(value);
-
-  return Number.isFinite(numberValue)
-    ? numberValue
-    : null;
-}
-
-function getPhNumericLabel(reading) {
+function getPhNumericLabel(
+  reading
+) {
   const raw =
     reading?.ph_value ??
     reading?.ph;
@@ -102,39 +127,69 @@ function getPhNumericLabel(reading) {
   const numberValue =
     Number(raw);
 
-  return Number.isFinite(numberValue)
+  return Number.isFinite(
+    numberValue
+  )
     ? numberValue.toFixed(1)
     : null;
 }
 
 /* =========================================================
-   STATUS HELPERS
+   STATUS
 ========================================================= */
 
-function getStatusSeverity(statuses) {
+function getStatusSeverity(
+  statuses
+) {
   const joined =
     statuses
-      .map(normalizeStatusText)
+      .map(
+        normalizeStatusText
+      )
       .join(" ");
 
   if (
-    joined.includes("critical") ||
-    joined.includes("danger") ||
-    joined.includes("unsafe") ||
-    joined.includes("high ph") ||
-    joined.includes("low ph") ||
-    joined.includes("warm") ||
-    joined.includes("cold")
+    joined.includes(
+      "critical"
+    ) ||
+    joined.includes(
+      "danger"
+    ) ||
+    joined.includes(
+      "unsafe"
+    ) ||
+    joined.includes(
+      "high ph"
+    ) ||
+    joined.includes(
+      "low ph"
+    ) ||
+    joined.includes(
+      "warm"
+    ) ||
+    joined.includes(
+      "cold"
+    )
   ) {
     return "critical";
   }
 
   if (
-    joined.includes("warning") ||
-    joined.includes("dirty") ||
-    joined.includes("slightly") ||
-    joined.includes("needs") ||
-    joined.includes("moderate")
+    joined.includes(
+      "warning"
+    ) ||
+    joined.includes(
+      "dirty"
+    ) ||
+    joined.includes(
+      "slightly"
+    ) ||
+    joined.includes(
+      "needs"
+    ) ||
+    joined.includes(
+      "moderate"
+    )
   ) {
     return "warning";
   }
@@ -146,14 +201,23 @@ function getOverallReadingStatus(
   normalizedReading
 ) {
   return getStatusSeverity([
-    normalizedReading.temperatureStatus,
-    normalizedReading.phStatus,
-    normalizedReading.turbidityStatus,
-    normalizedReading.waterStatus,
+    normalizedReading
+      .temperatureStatus,
+
+    normalizedReading
+      .phStatus,
+
+    normalizedReading
+      .turbidityStatus,
+
+    normalizedReading
+      .waterStatus,
   ]);
 }
 
-function getFriendlyTankStatus(status) {
+function getFriendlyTankStatus(
+  status
+) {
   switch (status) {
     case "critical":
       return "Urgent";
@@ -170,10 +234,13 @@ function getFriendlyTankStatus(status) {
 }
 
 /* =========================================================
-   TANK / READING HELPERS
+   TANK HELPERS
 ========================================================= */
 
-function getTankId(tank, index) {
+function getTankId(
+  tank,
+  index
+) {
   return (
     tank?.id ||
     tank?.tank_id ||
@@ -182,7 +249,10 @@ function getTankId(tank, index) {
   );
 }
 
-function getTankName(tank, index) {
+function getTankName(
+  tank,
+  index
+) {
   return (
     tank?.name ||
     tank?.tank_name ||
@@ -192,7 +262,9 @@ function getTankName(tank, index) {
   );
 }
 
-function getTankType(tank) {
+function getTankType(
+  tank
+) {
   return (
     tank?.type ||
     tank?.tank_type ||
@@ -201,7 +273,9 @@ function getTankType(tank) {
   );
 }
 
-function getTankOwnerId(tank) {
+function getTankOwnerId(
+  tank
+) {
   return (
     tank?.user_id ||
     tank?.owner_id ||
@@ -212,7 +286,9 @@ function getTankOwnerId(tank) {
   );
 }
 
-function getProfileName(profile) {
+function getProfileName(
+  profile
+) {
   return (
     profile?.username ||
     profile?.full_name ||
@@ -227,7 +303,13 @@ function getProfileName(profile) {
   );
 }
 
-function getTankMatchKeys(tank) {
+/* =========================================================
+   MATCH TANK TO SENSOR READINGS
+========================================================= */
+
+function getTankMatchKeys(
+  tank
+) {
   return [
     tank?.id,
     tank?.tank_id,
@@ -243,10 +325,15 @@ function getTankMatchKeys(tank) {
         value !== undefined &&
         value !== ""
     )
-    .map(String);
+    .map(
+      (value) =>
+        String(value)
+    );
 }
 
-function getReadingMatchKeys(reading) {
+function getReadingMatchKeys(
+  reading
+) {
   return [
     reading?.tank_id,
     reading?.tankId,
@@ -262,10 +349,15 @@ function getReadingMatchKeys(reading) {
         value !== undefined &&
         value !== ""
     )
-    .map(String);
+    .map(
+      (value) =>
+        String(value)
+    );
 }
 
-function getReadingDate(reading) {
+function getReadingDate(
+  reading
+) {
   return (
     reading?.created_at ||
     reading?.timestamp ||
@@ -279,53 +371,113 @@ function getReadingDate(reading) {
    pH SPIKE PROTECTION
 ========================================================= */
 
-function getReadingPhValue(reading) {
+function toNumberOrNull(
+  value
+) {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
+    return null;
+  }
+
+  const numberValue =
+    Number(value);
+
+  return Number.isFinite(
+    numberValue
+  )
+    ? numberValue
+    : null;
+}
+
+function getReadingPhValue(
+  reading
+) {
   return toNumberOrNull(
     reading?.ph_value ??
       reading?.ph
   );
 }
 
-function isSafePhStatus(status) {
+function isSafePhStatus(
+  status
+) {
   const value =
-    normalizeStatusText(status);
+    normalizeStatusText(
+      status
+    );
 
   return (
-    value.includes("ideal") ||
-    value.includes("safe") ||
-    value.includes("normal")
+    value.includes(
+      "ideal"
+    ) ||
+    value.includes(
+      "safe"
+    ) ||
+    value.includes(
+      "normal"
+    )
   );
 }
 
-function isUnsafePhStatus(status) {
+function isUnsafePhStatus(
+  status
+) {
   const value =
-    normalizeStatusText(status);
+    normalizeStatusText(
+      status
+    );
 
   return (
-    value.includes("unsafe") ||
-    value.includes("critical") ||
-    value.includes("danger") ||
-    value.includes("high ph") ||
-    value.includes("low ph") ||
-    value.includes("high alkaline") ||
-    value.includes("low alkaline") ||
-    value.includes("acidic")
+    value.includes(
+      "unsafe"
+    ) ||
+    value.includes(
+      "critical"
+    ) ||
+    value.includes(
+      "danger"
+    ) ||
+    value.includes(
+      "high ph"
+    ) ||
+    value.includes(
+      "low ph"
+    ) ||
+    value.includes(
+      "high alkaline"
+    ) ||
+    value.includes(
+      "low alkaline"
+    ) ||
+    value.includes(
+      "acidic"
+    )
   );
 }
 
-function isUnsafePhReading(reading) {
+function isUnsafePhReading(
+  reading
+) {
   if (!reading) {
     return false;
   }
 
   const phValue =
-    getReadingPhValue(reading);
+    getReadingPhValue(
+      reading
+    );
 
   const phStatus =
-    reading?.ph_status || "";
+    reading?.ph_status ||
+    "";
 
   if (
-    isSafePhStatus(phStatus)
+    isSafePhStatus(
+      phStatus
+    )
   ) {
     return false;
   }
@@ -348,7 +500,9 @@ function isUnsafePhReading(reading) {
 function sortReadingsNewestFirst(
   readings = []
 ) {
-  return [...readings].sort(
+  return [
+    ...readings,
+  ].sort(
     (a, b) =>
       new Date(
         getReadingDate(b)
@@ -387,14 +541,18 @@ function pickStableLatestReading(
   /*
    * Require three consecutive
    * unsafe pH readings before
-   * confirming a possible spike.
+   * confirming an unsafe change.
    */
 
   const latestThree =
-    sorted.slice(0, 3);
+    sorted.slice(
+      0,
+      3
+    );
 
   const confirmedUnsafePh =
-    latestThree.length >= 3 &&
+    latestThree.length >=
+      3 &&
     latestThree.every(
       isUnsafePhReading
     );
@@ -424,7 +582,9 @@ function getLatestReadingForTank(
   readings
 ) {
   const tankKeys =
-    getTankMatchKeys(tank);
+    getTankMatchKeys(
+      tank
+    );
 
   const matched =
     readings.filter(
@@ -453,7 +613,9 @@ function getLatestAmmoniaForTank(
   ammoniaRows
 ) {
   const tankKeys =
-    getTankMatchKeys(tank);
+    getTankMatchKeys(
+      tank
+    );
 
   const matched =
     ammoniaRows.filter(
@@ -504,12 +666,21 @@ function getAmmoniaNumericValue(
     : null;
 }
 
-function uniqueRows(rows) {
+/* =========================================================
+   UNIQUE RECORDS
+========================================================= */
+
+function uniqueRows(
+  rows
+) {
   const map =
     new Map();
 
   rows.forEach(
-    (row, index) => {
+    (
+      row,
+      index
+    ) => {
       const id =
         row?.id ||
         row?.uuid ||
@@ -532,12 +703,16 @@ function uniqueRows(rows) {
 }
 
 /* =========================================================
-   CURRENT USER / DATABASE FETCH
+   CURRENT USER
 ========================================================= */
 
 async function getCurrentUserWithRole() {
-  const { data } =
-    await supabase.auth.getSession();
+  const {
+    data,
+  } =
+    await supabase
+      .auth
+      .getSession();
 
   const user =
     data?.session?.user;
@@ -556,7 +731,9 @@ async function getCurrentUserWithRole() {
 
   const byId =
     await supabase
-      .from("profiles")
+      .from(
+        "profiles"
+      )
       .select(
         "id,email,role"
       )
@@ -580,7 +757,9 @@ async function getCurrentUserWithRole() {
   ) {
     const byEmail =
       await supabase
-        .from("profiles")
+        .from(
+          "profiles"
+        )
         .select(
           "id,email,role"
         )
@@ -606,17 +785,24 @@ async function getCurrentUserWithRole() {
 
   return {
     id:
-      user.id || "",
+      user.id ||
+      "",
 
     email:
-      user.email || "",
+      user.email ||
+      "",
 
     role,
 
     isAdmin:
-      role === "admin",
+      role ===
+      "admin",
   };
 }
+
+/* =========================================================
+   DATABASE FETCH
+========================================================= */
 
 async function fetchAdminRows(
   tableNames,
@@ -639,7 +825,9 @@ async function fetchAdminRows(
               false,
           }
         )
-        .limit(limit);
+        .limit(
+          limit
+        );
 
     if (
       !ordered.error &&
@@ -664,7 +852,9 @@ async function fetchAdminRows(
           tableName
         )
         .select("*")
-        .limit(limit);
+        .limit(
+          limit
+        );
 
     if (
       !plain.error &&
@@ -686,6 +876,7 @@ async function fetchAdminRows(
 
   return {
     rows: [],
+
     tableUsed:
       tableNames[0],
   };
@@ -727,7 +918,9 @@ async function fetchUserRows(
                 false,
             }
           )
-          .limit(limit);
+          .limit(
+            limit
+          );
 
       if (
         !ordered.error &&
@@ -755,7 +948,9 @@ async function fetchUserRows(
             column,
             userId
           )
-          .limit(limit);
+          .limit(
+            limit
+          );
 
       if (
         !plain.error &&
@@ -772,7 +967,9 @@ async function fetchUserRows(
       }
     }
 
-    if (successful) {
+    if (
+      successful
+    ) {
       return {
         rows:
           uniqueRows(
@@ -787,6 +984,7 @@ async function fetchUserRows(
 
   return {
     rows: [],
+
     tableUsed:
       tableNames[0],
   };
@@ -799,14 +997,18 @@ async function fetchProfiles(
     currentUser.isAdmin
   ) {
     return fetchAdminRows(
-      ["profiles"],
+      [
+        "profiles",
+      ],
       400
     );
   }
 
   const byId =
     await supabase
-      .from("profiles")
+      .from(
+        "profiles"
+      )
       .select("*")
       .eq(
         "id",
@@ -833,7 +1035,9 @@ async function fetchProfiles(
   ) {
     const byEmail =
       await supabase
-        .from("profiles")
+        .from(
+          "profiles"
+        )
         .select("*")
         .ilike(
           "email",
@@ -858,6 +1062,7 @@ async function fetchProfiles(
 
   return {
     rows: [],
+
     tableUsed:
       "profiles",
   };
@@ -885,7 +1090,7 @@ async function fetchRowsByScope(
 }
 
 /* =========================================================
-   SMALL UI COMPONENTS
+   SUMMARY CARD
 ========================================================= */
 
 function SummaryCard({
@@ -900,7 +1105,11 @@ function SummaryCard({
       className={`modern-tank-summary-card ${tone}`}
     >
       <span>
-        <Icon size={21} />
+        <Icon
+          size={
+            21
+          }
+        />
       </span>
 
       <div>
@@ -920,6 +1129,10 @@ function SummaryCard({
   );
 }
 
+/* =========================================================
+   SENSOR CARD
+========================================================= */
+
 function SensorMiniCard({
   icon: Icon,
   label,
@@ -928,19 +1141,27 @@ function SensorMiniCard({
 }) {
   const hasStatus =
     clean(status) &&
-    lower(status) !==
+    lower(
+      status
+    ) !==
       "no reading";
 
   const severity =
     hasStatus
       ? getStatusSeverity(
-          [status]
+          [
+            status,
+          ]
         )
       : "no-data";
 
   return (
     <div className="modern-tank-sensor-card">
-      <Icon size={19} />
+      <Icon
+        size={
+          19
+        }
+      />
 
       <span>
         {label}
@@ -966,13 +1187,11 @@ function SensorMiniCard({
 }
 
 /* =========================================================
-   POLISHED FILTER DROPDOWN
+   MINIMAL MODERN DROPDOWN
 ========================================================= */
 
 function FilterDropdown({
   icon: Icon,
-  label,
-  helper,
   value,
   options,
   onChange,
@@ -986,7 +1205,7 @@ function FilterDropdown({
   const dropdownRef =
     useRef(null);
 
-  const selectedOption =
+  const selected =
     options.find(
       (option) =>
         option.value ===
@@ -1046,30 +1265,22 @@ function FilterDropdown({
     };
   }, []);
 
-  function handleSelect(
-    option
-  ) {
-    onChange(
-      option.value
-    );
-
-    setIsOpen(
-      false
-    );
-  }
-
   return (
     <div
-      ref={dropdownRef}
+      ref={
+        dropdownRef
+      }
       style={
-        filterDropdownWrapperStyle
+        dropdownWrapStyle
       }
     >
       <button
         type="button"
         onClick={() =>
           setIsOpen(
-            (current) =>
+            (
+              current
+            ) =>
               !current
           )
         }
@@ -1077,60 +1288,35 @@ function FilterDropdown({
           isOpen
         }
         style={{
-          ...filterDropdownButtonStyle,
+          ...dropdownTriggerStyle,
 
           ...(isOpen
-            ? filterDropdownButtonOpenStyle
+            ? dropdownTriggerOpenStyle
             : {}),
         }}
       >
-        <div
+        <Icon
+          size={
+            17
+          }
+        />
+
+        <span
           style={
-            filterDropdownButtonLeftStyle
+            dropdownSelectedTextStyle
           }
         >
-          <div
-            style={
-              filterDropdownIconStyle
-            }
-          >
-            <Icon
-              size={
-                18
-              }
-            />
-          </div>
-
-          <div
-            style={
-              filterDropdownTextStyle
-            }
-          >
-            <span
-              style={
-                filterDropdownLabelStyle
-              }
-            >
-              {label}
-            </span>
-
-            <strong
-              style={
-                filterDropdownSelectedStyle
-              }
-            >
-              {
-                selectedOption
-                  ?.label
-              }
-            </strong>
-          </div>
-        </div>
+          {
+            selected?.label
+          }
+        </span>
 
         <ChevronDown
-          size={18}
+          size={
+            16
+          }
           style={{
-            ...filterChevronStyle,
+            ...dropdownChevronStyle,
 
             transform:
               isOpen
@@ -1140,204 +1326,64 @@ function FilterDropdown({
         />
       </button>
 
-      <span
-        style={
-          filterDropdownHelperStyle
-        }
-      >
-        {helper}
-      </span>
-
       {isOpen && (
         <div
           style={
-            filterDropdownMenuStyle
+            dropdownMenuStyle
           }
         >
-          <div
-            style={
-              filterDropdownMenuHeaderStyle
-            }
-          >
-            <span>
-              {label}
-            </span>
+          {options.map(
+            (
+              option
+            ) => {
+              const active =
+                option.value ===
+                value;
 
-            <small>
-              Select one option
-            </small>
-          </div>
-
-          <div
-            style={
-              filterDropdownOptionsStyle
-            }
-          >
-            {options.map(
-              (option) => {
-                const isSelected =
-                  option.value ===
-                  value;
-
-                const OptionIcon =
-                  option.icon;
-
-                return (
-                  <button
-                    key={
+              return (
+                <button
+                  type="button"
+                  key={
+                    option.value
+                  }
+                  onClick={() => {
+                    onChange(
                       option.value
+                    );
+
+                    setIsOpen(
+                      false
+                    );
+                  }}
+                  style={{
+                    ...dropdownItemStyle,
+
+                    ...(active
+                      ? dropdownItemActiveStyle
+                      : {}),
+                  }}
+                >
+                  <span>
+                    {
+                      option.label
                     }
-                    type="button"
-                    onClick={() =>
-                      handleSelect(
-                        option
-                      )
-                    }
-                    style={{
-                      ...filterDropdownOptionStyle,
+                  </span>
 
-                      ...(isSelected
-                        ? filterDropdownOptionSelectedStyle
-                        : {}),
-                    }}
-                  >
-                    <div
-                      style={
-                        filterOptionMainStyle
+                  {active && (
+                    <Check
+                      size={
+                        15
                       }
-                    >
-                      <div
-                        style={{
-                          ...filterOptionIconStyle,
-
-                          ...(option.tone
-                            ? getFilterToneStyle(
-                                option.tone
-                              )
-                            : {}),
-                        }}
-                      >
-                        {OptionIcon ? (
-                          <OptionIcon
-                            size={
-                              16
-                            }
-                          />
-                        ) : (
-                          <Filter
-                            size={
-                              16
-                            }
-                          />
-                        )}
-                      </div>
-
-                      <div
-                        style={
-                          filterOptionTextStyle
-                        }
-                      >
-                        <strong>
-                          {
-                            option.label
-                          }
-                        </strong>
-
-                        {option.description && (
-                          <small>
-                            {
-                              option.description
-                            }
-                          </small>
-                        )}
-                      </div>
-                    </div>
-
-                    <div
-                      style={
-                        filterOptionCheckAreaStyle
-                      }
-                    >
-                      {option.count !==
-                        undefined &&
-                        option.count !==
-                          null && (
-                          <span
-                            style={
-                              filterCountStyle
-                            }
-                          >
-                            {
-                              option.count
-                            }
-                          </span>
-                        )}
-
-                      {isSelected && (
-                        <span
-                          style={
-                            filterCheckStyle
-                          }
-                        >
-                          <Check
-                            size={
-                              14
-                            }
-                          />
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                );
-              }
-            )}
-          </div>
+                    />
+                  )}
+                </button>
+              );
+            }
+          )}
         </div>
       )}
     </div>
   );
-}
-
-function getFilterToneStyle(
-  tone
-) {
-  switch (tone) {
-    case "success":
-      return {
-        background:
-          "rgba(34, 197, 94, 0.12)",
-      };
-
-    case "warning":
-      return {
-        background:
-          "rgba(245, 158, 11, 0.12)",
-      };
-
-    case "danger":
-      return {
-        background:
-          "rgba(239, 68, 68, 0.12)",
-      };
-
-    case "muted":
-      return {
-        background:
-          "rgba(148, 163, 184, 0.12)",
-      };
-
-    case "blue":
-      return {
-        background:
-          "rgba(59, 130, 246, 0.12)",
-      };
-
-    default:
-      return {
-        background:
-          "rgba(20, 184, 166, 0.10)",
-      };
-  }
 }
 
 /* =========================================================
@@ -1379,25 +1425,33 @@ export default function TanksPage() {
     statusFilter,
     setStatusFilter,
   ] =
-    useState("all");
+    useState(
+      "all"
+    );
 
   const [
     typeFilter,
     setTypeFilter,
   ] =
-    useState("all");
+    useState(
+      "all"
+    );
 
   const [
     isLoading,
     setIsLoading,
   ] =
-    useState(true);
+    useState(
+      true
+    );
 
   const [
     thresholds,
     setThresholds,
   ] =
-    useState(null);
+    useState(
+      null
+    );
 
   useEffect(() => {
     let isMounted =
@@ -1405,7 +1459,9 @@ export default function TanksPage() {
 
     loadActiveThresholds()
       .then(
-        (loaded) => {
+        (
+          loaded
+        ) => {
           if (
             isMounted
           ) {
@@ -1450,10 +1506,21 @@ export default function TanksPage() {
         if (
           !currentUser.id
         ) {
-          setTanks([]);
-          setReadings([]);
-          setAmmoniaReadings([]);
-          setProfiles([]);
+          setTanks(
+            []
+          );
+
+          setReadings(
+            []
+          );
+
+          setAmmoniaReadings(
+            []
+          );
+
+          setProfiles(
+            []
+          );
 
           return;
         }
@@ -1526,347 +1593,388 @@ export default function TanksPage() {
   ======================================================= */
 
   const profileMap =
-    useMemo(() => {
-      const map =
-        new Map();
+    useMemo(
+      () => {
+        const map =
+          new Map();
 
-      profiles.forEach(
-        (profile) => {
-          if (
-            profile?.id
-          ) {
-            map.set(
-              String(
-                profile.id
-              ),
-              profile
-            );
+        profiles.forEach(
+          (
+            profile
+          ) => {
+            if (
+              profile?.id
+            ) {
+              map.set(
+                String(
+                  profile.id
+                ),
+                profile
+              );
+            }
+
+            if (
+              profile?.user_id
+            ) {
+              map.set(
+                String(
+                  profile.user_id
+                ),
+                profile
+              );
+            }
+
+            if (
+              profile?.email
+            ) {
+              map.set(
+                String(
+                  profile.email
+                ).toLowerCase(),
+                profile
+              );
+            }
           }
+        );
 
-          if (
-            profile?.user_id
-          ) {
-            map.set(
-              String(
-                profile.user_id
-              ),
-              profile
-            );
-          }
-
-          if (
-            profile?.email
-          ) {
-            map.set(
-              String(
-                profile.email
-              ).toLowerCase(),
-              profile
-            );
-          }
-        }
-      );
-
-      return map;
-    }, [profiles]);
+        return map;
+      },
+      [
+        profiles,
+      ]
+    );
 
   /* =======================================================
      ENRICH TANKS
   ======================================================= */
 
   const enrichedTanks =
-    useMemo(() => {
-      return tanks.map(
-        (
-          tank,
-          index
-        ) => {
-          const latestReading =
-            getLatestReadingForTank(
-              tank,
-              readings
-            );
-
-          const normalized =
-            normalizeSensorReading(
-              latestReading
-            );
-
-          const readingStatus =
-            latestReading
-              ? getOverallReadingStatus(
-                  normalized
-                )
-              : "no-data";
-
-          const latestAmmoniaRow =
-            getLatestAmmoniaForTank(
-              tank,
-              ammoniaReadings
-            );
-
-          const latestAmmoniaValue =
-            latestAmmoniaRow
-              ? getAmmoniaNumericValue(
-                  latestAmmoniaRow
-                )
-              : null;
-
-          const safety =
-            thresholds
-              ? evaluateReadingSafety(
-                  {
-                    temperature:
-                      latestReading
-                        ?.temperature_c ??
-                      latestReading
-                        ?.temperature,
-
-                    ph:
-                      latestReading
-                        ?.ph ??
-                      latestReading
-                        ?.ph_value,
-
-                    turbidityStatus:
-                      normalized
-                        .turbidityStatus,
-
-                    waterDepth:
-                      latestReading
-                        ?.water_depth_cm ??
-                      latestReading
-                        ?.water_level,
-
-                    ammonia:
-                      latestAmmoniaValue,
-                  },
-
-                  thresholds
-                )
-              : null;
-
-          const ownerId =
-            getTankOwnerId(
-              tank
-            );
-
-          const owner =
-            profileMap.get(
-              String(
-                ownerId
-              )
-            ) ||
-            profileMap.get(
-              String(
-                tank?.email ||
-                  ""
-              ).toLowerCase()
-            ) ||
-            null;
-
-          return {
+    useMemo(
+      () => {
+        return tanks.map(
+          (
             tank,
-
-            index,
-
-            latestReading,
-
-            normalized,
-
-            id:
-              getTankId(
+            index
+          ) => {
+            const latestReading =
+              getLatestReadingForTank(
                 tank,
-                index
-              ),
+                readings
+              );
 
-            name:
-              getTankName(
-                tank,
-                index
-              ),
+            const normalized =
+              normalizeSensorReading(
+                latestReading
+              );
 
-            type:
-              getTankType(
-                tank
-              ),
-
-            ownerName:
-              owner
-                ? getProfileName(
-                    owner
-                  )
-                : "Unknown owner",
-
-            ownerEmail:
-              owner?.email ||
-              tank?.email ||
-              "",
-
-            status:
-              readingStatus,
-
-            safety,
-
-            lastSync:
-              normalized
-                .createdAt ||
+            const readingStatus =
               latestReading
-                ?.created_at ||
-              tank?.updated_at ||
-              tank?.created_at ||
-              null,
-          };
-        }
-      );
-    }, [
-      tanks,
-      readings,
-      ammoniaReadings,
-      thresholds,
-      profileMap,
-    ]);
+                ? getOverallReadingStatus(
+                    normalized
+                  )
+                : "no-data";
+
+            const latestAmmoniaRow =
+              getLatestAmmoniaForTank(
+                tank,
+                ammoniaReadings
+              );
+
+            const latestAmmoniaValue =
+              latestAmmoniaRow
+                ? getAmmoniaNumericValue(
+                    latestAmmoniaRow
+                  )
+                : null;
+
+            const safety =
+              thresholds
+                ? evaluateReadingSafety(
+                    {
+                      temperature:
+                        latestReading
+                          ?.temperature_c ??
+                        latestReading
+                          ?.temperature,
+
+                      ph:
+                        latestReading
+                          ?.ph ??
+                        latestReading
+                          ?.ph_value,
+
+                      turbidityStatus:
+                        normalized
+                          .turbidityStatus,
+
+                      waterDepth:
+                        latestReading
+                          ?.water_depth_cm ??
+                        latestReading
+                          ?.water_level,
+
+                      ammonia:
+                        latestAmmoniaValue,
+                    },
+
+                    thresholds
+                  )
+                : null;
+
+            const ownerId =
+              getTankOwnerId(
+                tank
+              );
+
+            const owner =
+              profileMap.get(
+                String(
+                  ownerId
+                )
+              ) ||
+              profileMap.get(
+                String(
+                  tank?.email ||
+                    ""
+                ).toLowerCase()
+              ) ||
+              null;
+
+            return {
+              tank,
+
+              index,
+
+              latestReading,
+
+              normalized,
+
+              id:
+                getTankId(
+                  tank,
+                  index
+                ),
+
+              name:
+                getTankName(
+                  tank,
+                  index
+                ),
+
+              type:
+                getTankType(
+                  tank
+                ),
+
+              ownerName:
+                owner
+                  ? getProfileName(
+                      owner
+                    )
+                  : "Unknown owner",
+
+              ownerEmail:
+                owner?.email ||
+                tank?.email ||
+                "",
+
+              status:
+                readingStatus,
+
+              safety,
+
+              lastSync:
+                normalized
+                  .createdAt ||
+                latestReading
+                  ?.created_at ||
+                tank
+                  ?.updated_at ||
+                tank
+                  ?.created_at ||
+                null,
+            };
+          }
+        );
+      },
+      [
+        tanks,
+        readings,
+        ammoniaReadings,
+        thresholds,
+        profileMap,
+      ]
+    );
 
   /* =======================================================
-     TANK TYPES
+     TYPES
   ======================================================= */
 
   const tankTypes =
-    useMemo(() => {
-      return Array.from(
-        new Set(
-          enrichedTanks.map(
-            (item) =>
-              item.type
+    useMemo(
+      () => {
+        return Array.from(
+          new Set(
+            enrichedTanks.map(
+              (
+                item
+              ) =>
+                item.type
+            )
           )
-        )
-      ).filter(Boolean);
-    }, [enrichedTanks]);
+        ).filter(
+          Boolean
+        );
+      },
+      [
+        enrichedTanks,
+      ]
+    );
 
   /* =======================================================
      FILTERING
   ======================================================= */
 
   const filteredTanks =
-    useMemo(() => {
-      return enrichedTanks.filter(
-        (item) => {
-          const search =
-            searchTerm
-              .trim()
-              .toLowerCase();
+    useMemo(
+      () => {
+        return enrichedTanks.filter(
+          (
+            item
+          ) => {
+            const search =
+              searchTerm
+                .trim()
+                .toLowerCase();
 
-          const searchableText =
-            [
-              item.name,
-              item.type,
-              item.ownerName,
-              item.ownerEmail,
-              item.status,
+            const searchableText =
+              [
+                item.name,
+                item.type,
+                item.ownerName,
+                item.ownerEmail,
+                item.status,
 
-              item.normalized
-                .temperatureLabel,
+                item.normalized
+                  .temperatureLabel,
 
-              item.normalized
-                .temperatureStatus,
+                item.normalized
+                  .temperatureStatus,
 
-              item.normalized
-                .phStatus,
+                item.normalized
+                  .phStatus,
 
-              item.normalized
-                .turbidityStatus,
+                item.normalized
+                  .turbidityStatus,
 
-              item.normalized
-                .waterStatus,
+                item.normalized
+                  .waterStatus,
 
-              item.normalized
-                .deviceUid,
-            ]
-              .join(" ")
-              .toLowerCase();
+                item.normalized
+                  .deviceUid,
+              ]
+                .join(
+                  " "
+                )
+                .toLowerCase();
 
-          const matchesSearch =
-            !search ||
-            searchableText.includes(
-              search
+            const matchesSearch =
+              !search ||
+              searchableText.includes(
+                search
+              );
+
+            const matchesStatus =
+              statusFilter ===
+                "all" ||
+              item.status ===
+                statusFilter;
+
+            const matchesType =
+              typeFilter ===
+                "all" ||
+              item.type ===
+                typeFilter;
+
+            return (
+              matchesSearch &&
+              matchesStatus &&
+              matchesType
             );
-
-          const matchesStatus =
-            statusFilter ===
-              "all" ||
-            item.status ===
-              statusFilter;
-
-          const matchesType =
-            typeFilter ===
-              "all" ||
-            item.type ===
-              typeFilter;
-
-          return (
-            matchesSearch &&
-            matchesStatus &&
-            matchesType
-          );
-        }
-      );
-    }, [
-      enrichedTanks,
-      searchTerm,
-      statusFilter,
-      typeFilter,
-    ]);
+          }
+        );
+      },
+      [
+        enrichedTanks,
+        searchTerm,
+        statusFilter,
+        typeFilter,
+      ]
+    );
 
   /* =======================================================
      SUMMARY
   ======================================================= */
 
   const summary =
-    useMemo(() => {
-      const normal =
-        enrichedTanks.filter(
-          (item) =>
-            item.status ===
-            "normal"
-        ).length;
+    useMemo(
+      () => {
+        const normal =
+          enrichedTanks.filter(
+            (
+              item
+            ) =>
+              item.status ===
+              "normal"
+          ).length;
 
-      const warning =
-        enrichedTanks.filter(
-          (item) =>
-            item.status ===
-            "warning"
-        ).length;
+        const warning =
+          enrichedTanks.filter(
+            (
+              item
+            ) =>
+              item.status ===
+              "warning"
+          ).length;
 
-      const critical =
-        enrichedTanks.filter(
-          (item) =>
-            item.status ===
-            "critical"
-        ).length;
+        const critical =
+          enrichedTanks.filter(
+            (
+              item
+            ) =>
+              item.status ===
+              "critical"
+          ).length;
 
-      const noData =
-        enrichedTanks.filter(
-          (item) =>
-            item.status ===
-            "no-data"
-        ).length;
+        const noData =
+          enrichedTanks.filter(
+            (
+              item
+            ) =>
+              item.status ===
+              "no-data"
+          ).length;
 
-      return {
-        total:
-          enrichedTanks.length,
+        return {
+          total:
+            enrichedTanks.length,
 
-        normal,
+          normal,
 
-        warning,
+          warning,
 
-        critical,
+          critical,
 
-        noData,
-      };
-    }, [enrichedTanks]);
+          noData,
+        };
+      },
+      [
+        enrichedTanks,
+      ]
+    );
 
   /* =======================================================
-     POLISHED FILTER OPTIONS
+     FILTER OPTIONS
   ======================================================= */
 
   const statusFilterOptions =
@@ -1878,18 +1986,6 @@ export default function TanksPage() {
 
           label:
             "All Conditions",
-
-          description:
-            "Show every registered tank.",
-
-          icon:
-            Filter,
-
-          tone:
-            "blue",
-
-          count:
-            summary.total,
         },
 
         {
@@ -1898,18 +1994,6 @@ export default function TanksPage() {
 
           label:
             "Doing Well",
-
-          description:
-            "Current readings show no detected issues.",
-
-          icon:
-            CheckCircle2,
-
-          tone:
-            "success",
-
-          count:
-            summary.normal,
         },
 
         {
@@ -1918,18 +2002,6 @@ export default function TanksPage() {
 
           label:
             "Needs Checking",
-
-          description:
-            "One or more readings may need attention.",
-
-          icon:
-            AlertTriangle,
-
-          tone:
-            "warning",
-
-          count:
-            summary.warning,
         },
 
         {
@@ -1938,18 +2010,6 @@ export default function TanksPage() {
 
           label:
             "Urgent",
-
-          description:
-            "Critical conditions that should be reviewed soon.",
-
-          icon:
-            AlertTriangle,
-
-          tone:
-            "danger",
-
-          count:
-            summary.critical,
         },
 
         {
@@ -1958,21 +2018,9 @@ export default function TanksPage() {
 
           label:
             "No Recent Data",
-
-          description:
-            "No recent sensor reading is available.",
-
-          icon:
-            Database,
-
-          tone:
-            "muted",
-
-          count:
-            summary.noData,
         },
       ],
-      [summary]
+      []
     );
 
   const tankTypeFilterOptions =
@@ -1984,22 +2032,12 @@ export default function TanksPage() {
 
           label:
             "All Tank Types",
-
-          description:
-            "Display tanks regardless of their registered type.",
-
-          icon:
-            Droplets,
-
-          tone:
-            "blue",
-
-          count:
-            enrichedTanks.length,
         },
 
         ...tankTypes.map(
-          (type) => ({
+          (
+            type
+          ) => ({
             value:
               type,
 
@@ -2007,30 +2045,11 @@ export default function TanksPage() {
               formatFriendlyText(
                 type
               ),
-
-            description:
-              `Show only ${formatFriendlyText(
-                type
-              )} tanks.`,
-
-            icon:
-              Droplets,
-
-            tone:
-              "default",
-
-            count:
-              enrichedTanks.filter(
-                (item) =>
-                  item.type ===
-                  type
-              ).length,
           })
         ),
       ],
       [
         tankTypes,
-        enrichedTanks,
       ]
     );
 
@@ -2038,12 +2057,16 @@ export default function TanksPage() {
      LOADING
   ======================================================= */
 
-  if (isLoading) {
+  if (
+    isLoading
+  ) {
     return (
       <section className="modern-tank-loading">
         <Loader2
           className="spin-icon"
-          size={34}
+          size={
+            34
+          }
         />
 
         <h3>
@@ -2063,9 +2086,9 @@ export default function TanksPage() {
 
   return (
     <div className="modern-tanks-page">
-      {/* ===================================================
+      {/* ===============================================
           HEADER
-      =================================================== */}
+      ================================================ */}
 
       <section className="modern-tanks-hero">
         <div>
@@ -2099,7 +2122,8 @@ export default function TanksPage() {
             </button>
 
             <span>
-              {summary.total === 1
+              {summary.total ===
+              1
                 ? "1 tank registered"
                 : `${summary.total} tanks registered`}
             </span>
@@ -2114,7 +2138,9 @@ export default function TanksPage() {
           />
 
           <strong>
-            {summary.total}
+            {
+              summary.total
+            }
           </strong>
 
           <span>
@@ -2123,9 +2149,9 @@ export default function TanksPage() {
         </div>
       </section>
 
-      {/* ===================================================
+      {/* ===============================================
           SUMMARY
-      =================================================== */}
+      ================================================ */}
 
       <section className="modern-tank-summary-grid">
         <SummaryCard
@@ -2176,22 +2202,20 @@ export default function TanksPage() {
         />
       </section>
 
-      {/* ===================================================
+      {/* ===============================================
           SEARCH / FILTER
-      =================================================== */}
+      ================================================ */}
 
       <section
         className="modern-tank-toolbar"
         style={
-          improvedToolbarStyle
+          compactToolbarStyle
         }
       >
-        {/* SEARCH */}
-
         <div
           className="modern-tank-search"
           style={
-            improvedSearchStyle
+            compactSearchStyle
           }
         >
           <Search
@@ -2200,108 +2224,60 @@ export default function TanksPage() {
             }
           />
 
-          <div
-            style={
-              searchInputWrapStyle
+          <input
+            type="search"
+            placeholder="Search tanks..."
+            value={
+              searchTerm
             }
-          >
-            <span
-              style={
-                searchLabelStyle
-              }
-            >
-              Search tanks
-            </span>
-
-            <input
-              type="search"
-              placeholder="Tank name, type, owner..."
-              value={
-                searchTerm
-              }
-              onChange={(
-                event
-              ) =>
-                setSearchTerm(
-                  event.target
-                    .value
-                )
-              }
-              style={
-                improvedSearchInputStyle
-              }
-            />
-          </div>
+            onChange={(
+              event
+            ) =>
+              setSearchTerm(
+                event.target
+                  .value
+              )
+            }
+            style={
+              compactSearchInputStyle
+            }
+          />
         </div>
 
-        {/* FILTER GROUP */}
-
-        <div
-          style={
-            filterGroupStyle
+        <FilterDropdown
+          icon={
+            Filter
           }
-        >
-          <div
-            style={
-              filterGroupHeadingStyle
-            }
-          >
-            <Filter
-              size={
-                16
-              }
-            />
+          value={
+            statusFilter
+          }
+          options={
+            statusFilterOptions
+          }
+          onChange={
+            setStatusFilter
+          }
+        />
 
-            <span>
-              Filter tanks
-            </span>
-          </div>
-
-          <div
-            style={
-              filterDropdownGridStyle
-            }
-          >
-            <FilterDropdown
-              icon={
-                Filter
-              }
-              label="Condition"
-              helper="Filter by current tank condition"
-              value={
-                statusFilter
-              }
-              options={
-                statusFilterOptions
-              }
-              onChange={
-                setStatusFilter
-              }
-            />
-
-            <FilterDropdown
-              icon={
-                Droplets
-              }
-              label="Tank Type"
-              helper="Filter by registered tank category"
-              value={
-                typeFilter
-              }
-              options={
-                tankTypeFilterOptions
-              }
-              onChange={
-                setTypeFilter
-              }
-            />
-          </div>
-        </div>
+        <FilterDropdown
+          icon={
+            Droplets
+          }
+          value={
+            typeFilter
+          }
+          options={
+            tankTypeFilterOptions
+          }
+          onChange={
+            setTypeFilter
+          }
+        />
       </section>
 
-      {/* ===================================================
-          EMPTY / TANK LIST
-      =================================================== */}
+      {/* ===============================================
+          EMPTY
+      ================================================ */}
 
       {filteredTanks.length ===
       0 ? (
@@ -2321,16 +2297,22 @@ export default function TanksPage() {
           </p>
         </section>
       ) : (
+        /* =============================================
+            TANK LIST
+        ============================================== */
+
         <section className="modern-tank-grid">
           {filteredTanks.map(
-            (item) => (
+            (
+              item
+            ) => (
               <article
                 className="modern-tank-card"
                 key={
                   item.id
                 }
               >
-                {/* CARD HEADER */}
+                {/* HEADER */}
 
                 <div className="modern-tank-card-top">
                   <div>
@@ -2471,8 +2453,14 @@ export default function TanksPage() {
                       {item.safety
                         .isSafe
                         ? "Within safe range"
-                        : `${item.safety.issues.length} ${
-                            item.safety.issues.length ===
+                        : `${
+                            item.safety
+                              .issues
+                              .length
+                          } ${
+                            item.safety
+                              .issues
+                              .length ===
                             1
                               ? "parameter"
                               : "parameters"
@@ -2481,7 +2469,7 @@ export default function TanksPage() {
                   </div>
                 )}
 
-                {/* NO DATA */}
+                {/* NO DATA WARNING */}
 
                 {!item.latestReading && (
                   <div className="modern-tank-no-reading">
@@ -2497,7 +2485,7 @@ export default function TanksPage() {
                   </div>
                 )}
 
-                {/* MORE INFO */}
+                {/* MORE INFORMATION */}
 
                 <details className="modern-tank-more-info">
                   <summary>
@@ -2573,75 +2561,53 @@ export default function TanksPage() {
 }
 
 /* =========================================================
-   POLISHED FILTER STYLES
+   MINIMAL FILTER UI STYLES
 ========================================================= */
 
-const improvedToolbarStyle = {
+const compactToolbarStyle = {
   display:
     "grid",
 
   gridTemplateColumns:
-    "repeat(auto-fit, minmax(280px, 1fr))",
-
-  alignItems:
-    "stretch",
+    "minmax(260px, 1fr) minmax(180px, 210px) minmax(180px, 210px)",
 
   gap:
-    "16px",
+    "10px",
+
+  alignItems:
+    "center",
 
   overflow:
     "visible",
+
+  position:
+    "relative",
+
+  zIndex:
+    10,
 };
 
-const improvedSearchStyle = {
+const compactSearchStyle = {
   minHeight:
-    "88px",
+    "48px",
+
+  height:
+    "48px",
+
+  display:
+    "flex",
 
   alignItems:
     "center",
 
   gap:
-    "12px",
+    "9px",
 
   padding:
-    "14px 16px",
+    "0 14px",
 };
 
-const searchInputWrapStyle = {
-  display:
-    "flex",
-
-  flexDirection:
-    "column",
-
-  flex:
-    1,
-
-  gap:
-    "3px",
-
-  minWidth:
-    0,
-};
-
-const searchLabelStyle = {
-  fontSize:
-    "0.69rem",
-
-  fontWeight:
-    700,
-
-  textTransform:
-    "uppercase",
-
-  letterSpacing:
-    "0.045em",
-
-  opacity:
-    0.55,
-};
-
-const improvedSearchInputStyle = {
+const compactSearchInputStyle = {
   width:
     "100%",
 
@@ -2654,8 +2620,58 @@ const improvedSearchInputStyle = {
   background:
     "transparent",
 
-  padding:
+  color:
+    "inherit",
+
+  font:
+    "inherit",
+
+  fontSize:
+    "0.86rem",
+
+  minWidth:
     0,
+};
+
+/* =========================================================
+   DROPDOWN
+========================================================= */
+
+const dropdownWrapStyle = {
+  position:
+    "relative",
+
+  minWidth:
+    0,
+};
+
+const dropdownTriggerStyle = {
+  width:
+    "100%",
+
+  height:
+    "48px",
+
+  display:
+    "flex",
+
+  alignItems:
+    "center",
+
+  gap:
+    "8px",
+
+  padding:
+    "0 13px",
+
+  borderRadius:
+    "12px",
+
+  border:
+    "1px solid rgba(148, 163, 184, 0.18)",
+
+  background:
+    "rgba(255, 255, 255, 0.025)",
 
   color:
     "inherit",
@@ -2664,110 +2680,10 @@ const improvedSearchInputStyle = {
     "inherit",
 
   fontSize:
-    "0.9rem",
-};
-
-const filterGroupStyle = {
-  display:
-    "flex",
-
-  flexDirection:
-    "column",
-
-  gap:
-    "9px",
-
-  padding:
-    "12px",
-
-  borderRadius:
-    "16px",
-
-  border:
-    "1px solid rgba(148, 163, 184, 0.14)",
-
-  background:
-    "rgba(148, 163, 184, 0.035)",
-
-  overflow:
-    "visible",
-};
-
-const filterGroupHeadingStyle = {
-  display:
-    "flex",
-
-  alignItems:
-    "center",
-
-  gap:
-    "6px",
-
-  padding:
-    "0 3px",
-
-  fontSize:
-    "0.74rem",
+    "0.82rem",
 
   fontWeight:
-    700,
-
-  opacity:
-    0.68,
-};
-
-const filterDropdownGridStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "repeat(auto-fit, minmax(220px, 1fr))",
-
-  gap:
-    "10px",
-};
-
-const filterDropdownWrapperStyle = {
-  position:
-    "relative",
-
-  minWidth:
-    0,
-};
-
-const filterDropdownButtonStyle = {
-  width:
-    "100%",
-
-  minHeight:
-    "58px",
-
-  display:
-    "flex",
-
-  alignItems:
-    "center",
-
-  justifyContent:
-    "space-between",
-
-  gap:
-    "10px",
-
-  padding:
-    "9px 11px",
-
-  borderRadius:
-    "13px",
-
-  border:
-    "1px solid rgba(148, 163, 184, 0.18)",
-
-  background:
-    "rgba(255, 255, 255, 0.035)",
-
-  color:
-    "inherit",
+    600,
 
   cursor:
     "pointer",
@@ -2776,86 +2692,21 @@ const filterDropdownButtonStyle = {
     "left",
 
   transition:
-    "border-color 160ms ease, transform 160ms ease, background 160ms ease",
+    "background 150ms ease, border-color 150ms ease",
 };
 
-const filterDropdownButtonOpenStyle = {
-  border:
-    "1px solid rgba(59, 130, 246, 0.40)",
-
+const dropdownTriggerOpenStyle = {
   background:
-    "rgba(59, 130, 246, 0.07)",
+    "rgba(34, 211, 238, 0.05)",
+
+  borderColor:
+    "rgba(34, 211, 238, 0.28)",
 };
 
-const filterDropdownButtonLeftStyle = {
-  display:
-    "flex",
-
-  alignItems:
-    "center",
-
-  gap:
-    "9px",
-
-  minWidth:
-    0,
-};
-
-const filterDropdownIconStyle = {
-  width:
-    "34px",
-
-  height:
-    "34px",
-
-  flexShrink:
-    0,
-
-  display:
-    "grid",
-
-  placeItems:
-    "center",
-
-  borderRadius:
-    "10px",
-
-  background:
-    "rgba(59, 130, 246, 0.09)",
-};
-
-const filterDropdownTextStyle = {
-  display:
-    "flex",
-
-  flexDirection:
-    "column",
-
+const dropdownSelectedTextStyle = {
   minWidth:
     0,
 
-  gap:
-    "2px",
-};
-
-const filterDropdownLabelStyle = {
-  fontSize:
-    "0.66rem",
-
-  fontWeight:
-    700,
-
-  textTransform:
-    "uppercase",
-
-  letterSpacing:
-    "0.04em",
-
-  opacity:
-    0.5,
-};
-
-const filterDropdownSelectedStyle = {
   overflow:
     "hidden",
 
@@ -2864,141 +2715,87 @@ const filterDropdownSelectedStyle = {
 
   whiteSpace:
     "nowrap",
-
-  fontSize:
-    "0.83rem",
 };
 
-const filterDropdownHelperStyle = {
-  display:
-    "block",
+const dropdownChevronStyle = {
+  marginLeft:
+    "auto",
 
-  padding:
-    "5px 3px 0",
-
-  fontSize:
-    "0.68rem",
-
-  lineHeight:
-    1.35,
-
-  opacity:
-    0.5,
-};
-
-const filterChevronStyle = {
   flexShrink:
     0,
 
   opacity:
-    0.6,
+    0.66,
 
   transition:
-    "transform 180ms ease",
+    "transform 160ms ease",
 };
 
-const filterDropdownMenuStyle = {
+const dropdownMenuStyle = {
   position:
     "absolute",
 
-  zIndex:
-    50,
-
   top:
-    "calc(100% + 8px)",
+    "calc(100% + 6px)",
 
   left:
     0,
 
-  width:
-    "min(360px, calc(100vw - 32px))",
+  right:
+    0,
+
+  zIndex:
+    100,
 
   padding:
-    "8px",
+    "5px",
 
   borderRadius:
-    "15px",
+    "12px",
 
   border:
-    "1px solid rgba(148, 163, 184, 0.20)",
+    "1px solid rgba(148, 163, 184, 0.16)",
 
   background:
-    "var(--dashboard-card, #ffffff)",
+    "#0d2230",
 
   color:
-    "inherit",
+    "#e5f5f6",
 
   boxShadow:
-    "0 18px 45px rgba(15, 23, 42, 0.18)",
+    "0 12px 28px rgba(0, 0, 0, 0.22)",
+
+  overflow:
+    "hidden",
 };
 
-const filterDropdownMenuHeaderStyle = {
-  display:
-    "flex",
-
-  justifyContent:
-    "space-between",
-
-  alignItems:
-    "center",
-
-  gap:
-    "10px",
-
-  padding:
-    "5px 7px 9px",
-
-  borderBottom:
-    "1px solid rgba(148, 163, 184, 0.12)",
-
-  fontSize:
-    "0.75rem",
-};
-
-const filterDropdownOptionsStyle = {
-  display:
-    "flex",
-
-  flexDirection:
-    "column",
-
-  gap:
-    "4px",
-
-  paddingTop:
-    "6px",
-
-  maxHeight:
-    "320px",
-
-  overflowY:
-    "auto",
-};
-
-const filterDropdownOptionStyle = {
+const dropdownItemStyle = {
   width:
     "100%",
 
+  minHeight:
+    "38px",
+
   display:
     "flex",
 
-  justifyContent:
-    "space-between",
-
   alignItems:
     "center",
+
+  justifyContent:
+    "space-between",
 
   gap:
     "10px",
 
   padding:
-    "10px",
+    "0 10px",
 
   border:
     "none",
 
   borderRadius:
-    "11px",
+    "8px",
 
   background:
     "transparent",
@@ -3006,125 +2803,26 @@ const filterDropdownOptionStyle = {
   color:
     "inherit",
 
-  textAlign:
-    "left",
+  font:
+    "inherit",
+
+  fontSize:
+    "0.8rem",
 
   cursor:
     "pointer",
+
+  textAlign:
+    "left",
 };
 
-const filterDropdownOptionSelectedStyle = {
+const dropdownItemActiveStyle = {
   background:
-    "rgba(59, 130, 246, 0.09)",
-};
+    "rgba(34, 211, 238, 0.09)",
 
-const filterOptionMainStyle = {
-  display:
-    "flex",
-
-  alignItems:
-    "center",
-
-  gap:
-    "9px",
-
-  minWidth:
-    0,
-};
-
-const filterOptionIconStyle = {
-  width:
-    "32px",
-
-  height:
-    "32px",
-
-  display:
-    "grid",
-
-  placeItems:
-    "center",
-
-  flexShrink:
-    0,
-
-  borderRadius:
-    "9px",
-};
-
-const filterOptionTextStyle = {
-  display:
-    "flex",
-
-  flexDirection:
-    "column",
-
-  minWidth:
-    0,
-
-  gap:
-    "2px",
-};
-
-const filterOptionCheckAreaStyle = {
-  display:
-    "flex",
-
-  alignItems:
-    "center",
-
-  gap:
-    "6px",
-
-  flexShrink:
-    0,
-};
-
-const filterCountStyle = {
-  minWidth:
-    "25px",
-
-  height:
-    "25px",
-
-  padding:
-    "0 7px",
-
-  display:
-    "inline-grid",
-
-  placeItems:
-    "center",
-
-  borderRadius:
-    "999px",
-
-  background:
-    "rgba(148, 163, 184, 0.10)",
-
-  fontSize:
-    "0.7rem",
+  color:
+    "#67e8f9",
 
   fontWeight:
     700,
-};
-
-const filterCheckStyle = {
-  width:
-    "24px",
-
-  height:
-    "24px",
-
-  display:
-    "grid",
-
-  placeItems:
-    "center",
-
-  borderRadius:
-    "50%",
-
-  background:
-    "rgba(59, 130, 246, 0.14)",
 };
