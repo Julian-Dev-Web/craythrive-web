@@ -73,30 +73,21 @@ const userFilterColumns = [
 ========================================================= */
 
 function clean(value) {
-  return String(
-    value || ""
-  ).trim();
+  return String(value || "").trim();
 }
 
 function lower(value) {
-  return clean(
-    value
-  ).toLowerCase();
+  return clean(value).toLowerCase();
 }
 
-function normalizeStatusText(
-  value
-) {
+function normalizeStatusText(value) {
   return lower(value)
     .replaceAll("_", " ")
     .replaceAll("-", " ");
 }
 
-function formatFriendlyText(
-  value
-) {
-  const text =
-    clean(value);
+function formatFriendlyText(value) {
+  const text = clean(value);
 
   if (!text) {
     return "No Reading";
@@ -106,10 +97,8 @@ function formatFriendlyText(
     .replaceAll("_", " ")
     .replaceAll("-", " ")
     .toLowerCase()
-    .replace(
-      /\b\w/g,
-      (character) =>
-        character.toUpperCase()
+    .replace(/\b\w/g, (character) =>
+      character.toUpperCase()
     );
 }
 
@@ -117,9 +106,7 @@ function formatFriendlyText(
    pH NUMERIC VALUE
 ========================================================= */
 
-function getPhNumericLabel(
-  reading
-) {
+function getPhNumericLabel(reading) {
   const raw =
     reading?.ph_value ??
     reading?.ph;
@@ -127,9 +114,7 @@ function getPhNumericLabel(
   const numberValue =
     Number(raw);
 
-  return Number.isFinite(
-    numberValue
-  )
+  return Number.isFinite(numberValue)
     ? numberValue.toFixed(1)
     : null;
 }
@@ -138,58 +123,30 @@ function getPhNumericLabel(
    STATUS
 ========================================================= */
 
-function getStatusSeverity(
-  statuses
-) {
+function getStatusSeverity(statuses) {
   const joined =
     statuses
-      .map(
-        normalizeStatusText
-      )
+      .map(normalizeStatusText)
       .join(" ");
 
   if (
-    joined.includes(
-      "critical"
-    ) ||
-    joined.includes(
-      "danger"
-    ) ||
-    joined.includes(
-      "unsafe"
-    ) ||
-    joined.includes(
-      "high ph"
-    ) ||
-    joined.includes(
-      "low ph"
-    ) ||
-    joined.includes(
-      "warm"
-    ) ||
-    joined.includes(
-      "cold"
-    )
+    joined.includes("critical") ||
+    joined.includes("danger") ||
+    joined.includes("unsafe") ||
+    joined.includes("high ph") ||
+    joined.includes("low ph") ||
+    joined.includes("warm") ||
+    joined.includes("cold")
   ) {
     return "critical";
   }
 
   if (
-    joined.includes(
-      "warning"
-    ) ||
-    joined.includes(
-      "dirty"
-    ) ||
-    joined.includes(
-      "slightly"
-    ) ||
-    joined.includes(
-      "needs"
-    ) ||
-    joined.includes(
-      "moderate"
-    )
+    joined.includes("warning") ||
+    joined.includes("dirty") ||
+    joined.includes("slightly") ||
+    joined.includes("needs") ||
+    joined.includes("moderate")
   ) {
     return "warning";
   }
@@ -201,23 +158,14 @@ function getOverallReadingStatus(
   normalizedReading
 ) {
   return getStatusSeverity([
-    normalizedReading
-      .temperatureStatus,
-
-    normalizedReading
-      .phStatus,
-
-    normalizedReading
-      .turbidityStatus,
-
-    normalizedReading
-      .waterStatus,
+    normalizedReading.temperatureStatus,
+    normalizedReading.phStatus,
+    normalizedReading.turbidityStatus,
+    normalizedReading.waterStatus,
   ]);
 }
 
-function getFriendlyTankStatus(
-  status
-) {
+function getFriendlyTankStatus(status) {
   switch (status) {
     case "critical":
       return "Urgent";
@@ -237,10 +185,7 @@ function getFriendlyTankStatus(
    TANK HELPERS
 ========================================================= */
 
-function getTankId(
-  tank,
-  index
-) {
+function getTankId(tank, index) {
   return (
     tank?.id ||
     tank?.tank_id ||
@@ -249,10 +194,7 @@ function getTankId(
   );
 }
 
-function getTankName(
-  tank,
-  index
-) {
+function getTankName(tank, index) {
   return (
     tank?.name ||
     tank?.tank_name ||
@@ -262,9 +204,7 @@ function getTankName(
   );
 }
 
-function getTankType(
-  tank
-) {
+function getTankType(tank) {
   return (
     tank?.type ||
     tank?.tank_type ||
@@ -273,9 +213,7 @@ function getTankType(
   );
 }
 
-function getTankOwnerId(
-  tank
-) {
+function getTankOwnerId(tank) {
   return (
     tank?.user_id ||
     tank?.owner_id ||
@@ -286,9 +224,7 @@ function getTankOwnerId(
   );
 }
 
-function getProfileName(
-  profile
-) {
+function getProfileName(profile) {
   return (
     profile?.username ||
     profile?.full_name ||
@@ -307,9 +243,7 @@ function getProfileName(
    MATCH TANK TO SENSOR READINGS
 ========================================================= */
 
-function getTankMatchKeys(
-  tank
-) {
+function getTankMatchKeys(tank) {
   return [
     tank?.id,
     tank?.tank_id,
@@ -325,15 +259,12 @@ function getTankMatchKeys(
         value !== undefined &&
         value !== ""
     )
-    .map(
-      (value) =>
-        String(value)
+    .map((value) =>
+      String(value)
     );
 }
 
-function getReadingMatchKeys(
-  reading
-) {
+function getReadingMatchKeys(reading) {
   return [
     reading?.tank_id,
     reading?.tankId,
@@ -349,15 +280,12 @@ function getReadingMatchKeys(
         value !== undefined &&
         value !== ""
     )
-    .map(
-      (value) =>
-        String(value)
+    .map((value) =>
+      String(value)
     );
 }
 
-function getReadingDate(
-  reading
-) {
+function getReadingDate(reading) {
   return (
     reading?.created_at ||
     reading?.timestamp ||
@@ -371,9 +299,7 @@ function getReadingDate(
    pH SPIKE PROTECTION
 ========================================================= */
 
-function toNumberOrNull(
-  value
-) {
+function toNumberOrNull(value) {
   if (
     value === null ||
     value === undefined ||
@@ -385,99 +311,58 @@ function toNumberOrNull(
   const numberValue =
     Number(value);
 
-  return Number.isFinite(
-    numberValue
-  )
+  return Number.isFinite(numberValue)
     ? numberValue
     : null;
 }
 
-function getReadingPhValue(
-  reading
-) {
+function getReadingPhValue(reading) {
   return toNumberOrNull(
     reading?.ph_value ??
       reading?.ph
   );
 }
 
-function isSafePhStatus(
-  status
-) {
+function isSafePhStatus(status) {
   const value =
-    normalizeStatusText(
-      status
-    );
+    normalizeStatusText(status);
 
   return (
-    value.includes(
-      "ideal"
-    ) ||
-    value.includes(
-      "safe"
-    ) ||
-    value.includes(
-      "normal"
-    )
+    value.includes("ideal") ||
+    value.includes("safe") ||
+    value.includes("normal")
   );
 }
 
-function isUnsafePhStatus(
-  status
-) {
+function isUnsafePhStatus(status) {
   const value =
-    normalizeStatusText(
-      status
-    );
+    normalizeStatusText(status);
 
   return (
-    value.includes(
-      "unsafe"
-    ) ||
-    value.includes(
-      "critical"
-    ) ||
-    value.includes(
-      "danger"
-    ) ||
-    value.includes(
-      "high ph"
-    ) ||
-    value.includes(
-      "low ph"
-    ) ||
-    value.includes(
-      "high alkaline"
-    ) ||
-    value.includes(
-      "low alkaline"
-    ) ||
-    value.includes(
-      "acidic"
-    )
+    value.includes("unsafe") ||
+    value.includes("critical") ||
+    value.includes("danger") ||
+    value.includes("high ph") ||
+    value.includes("low ph") ||
+    value.includes("high alkaline") ||
+    value.includes("low alkaline") ||
+    value.includes("acidic")
   );
 }
 
-function isUnsafePhReading(
-  reading
-) {
+function isUnsafePhReading(reading) {
   if (!reading) {
     return false;
   }
 
   const phValue =
-    getReadingPhValue(
-      reading
-    );
+    getReadingPhValue(reading);
 
   const phStatus =
-    reading?.ph_status ||
-    "";
+    reading?.ph_status || "";
 
   if (
-    isSafePhStatus(
-      phStatus
-    )
+    isSafePhStatus(phStatus)
   ) {
     return false;
   }
@@ -500,9 +385,7 @@ function isUnsafePhReading(
 function sortReadingsNewestFirst(
   readings = []
 ) {
-  return [
-    ...readings,
-  ].sort(
+  return [...readings].sort(
     (a, b) =>
       new Date(
         getReadingDate(b)
@@ -539,9 +422,8 @@ function pickStableLatestReading(
   }
 
   /*
-   * Require three consecutive
-   * unsafe pH readings before
-   * confirming an unsafe change.
+   * Require three consecutive unsafe pH
+   * readings before confirming an unsafe pH.
    */
 
   const latestThree =
@@ -551,8 +433,7 @@ function pickStableLatestReading(
     );
 
   const confirmedUnsafePh =
-    latestThree.length >=
-      3 &&
+    latestThree.length >= 3 &&
     latestThree.every(
       isUnsafePhReading
     );
@@ -582,9 +463,7 @@ function getLatestReadingForTank(
   readings
 ) {
   const tankKeys =
-    getTankMatchKeys(
-      tank
-    );
+    getTankMatchKeys(tank);
 
   const matched =
     readings.filter(
@@ -596,9 +475,7 @@ function getLatestReadingForTank(
 
         return readingKeys.some(
           (key) =>
-            tankKeys.includes(
-              key
-            )
+            tankKeys.includes(key)
         );
       }
     );
@@ -613,9 +490,7 @@ function getLatestAmmoniaForTank(
   ammoniaRows
 ) {
   const tankKeys =
-    getTankMatchKeys(
-      tank
-    );
+    getTankMatchKeys(tank);
 
   const matched =
     ammoniaRows.filter(
@@ -627,9 +502,7 @@ function getLatestAmmoniaForTank(
 
         return rowKeys.some(
           (key) =>
-            tankKeys.includes(
-              key
-            )
+            tankKeys.includes(key)
         );
       }
     );
@@ -645,9 +518,7 @@ function getLatestAmmoniaForTank(
   )[0];
 }
 
-function getAmmoniaNumericValue(
-  row
-) {
+function getAmmoniaNumericValue(row) {
   const raw =
     row?.ammonia_mg_l ??
     row?.ammonia_level ??
@@ -659,9 +530,7 @@ function getAmmoniaNumericValue(
   const numberValue =
     Number(raw);
 
-  return Number.isFinite(
-    numberValue
-  )
+  return Number.isFinite(numberValue)
     ? numberValue
     : null;
 }
@@ -670,17 +539,12 @@ function getAmmoniaNumericValue(
    UNIQUE RECORDS
 ========================================================= */
 
-function uniqueRows(
-  rows
-) {
+function uniqueRows(rows) {
   const map =
     new Map();
 
   rows.forEach(
-    (
-      row,
-      index
-    ) => {
+    (row, index) => {
       const id =
         row?.id ||
         row?.uuid ||
@@ -710,9 +574,7 @@ async function getCurrentUserWithRole() {
   const {
     data,
   } =
-    await supabase
-      .auth
-      .getSession();
+    await supabase.auth.getSession();
 
   const user =
     data?.session?.user;
@@ -731,12 +593,8 @@ async function getCurrentUserWithRole() {
 
   const byId =
     await supabase
-      .from(
-        "profiles"
-      )
-      .select(
-        "id,email,role"
-      )
+      .from("profiles")
+      .select("id,email,role")
       .eq(
         "id",
         user.id
@@ -757,12 +615,8 @@ async function getCurrentUserWithRole() {
   ) {
     const byEmail =
       await supabase
-        .from(
-          "profiles"
-        )
-        .select(
-          "id,email,role"
-        )
+        .from("profiles")
+        .select("id,email,role")
         .ilike(
           "email",
           user.email
@@ -785,18 +639,15 @@ async function getCurrentUserWithRole() {
 
   return {
     id:
-      user.id ||
-      "",
+      user.id || "",
 
     email:
-      user.email ||
-      "",
+      user.email || "",
 
     role,
 
     isAdmin:
-      role ===
-      "admin",
+      role === "admin",
   };
 }
 
@@ -825,9 +676,7 @@ async function fetchAdminRows(
               false,
           }
         )
-        .limit(
-          limit
-        );
+        .limit(limit);
 
     if (
       !ordered.error &&
@@ -852,9 +701,7 @@ async function fetchAdminRows(
           tableName
         )
         .select("*")
-        .limit(
-          limit
-        );
+        .limit(limit);
 
     if (
       !plain.error &&
@@ -876,7 +723,6 @@ async function fetchAdminRows(
 
   return {
     rows: [],
-
     tableUsed:
       tableNames[0],
   };
@@ -918,9 +764,7 @@ async function fetchUserRows(
                 false,
             }
           )
-          .limit(
-            limit
-          );
+          .limit(limit);
 
       if (
         !ordered.error &&
@@ -948,9 +792,7 @@ async function fetchUserRows(
             column,
             userId
           )
-          .limit(
-            limit
-          );
+          .limit(limit);
 
       if (
         !plain.error &&
@@ -967,9 +809,7 @@ async function fetchUserRows(
       }
     }
 
-    if (
-      successful
-    ) {
+    if (successful) {
       return {
         rows:
           uniqueRows(
@@ -984,7 +824,6 @@ async function fetchUserRows(
 
   return {
     rows: [],
-
     tableUsed:
       tableNames[0],
   };
@@ -997,18 +836,14 @@ async function fetchProfiles(
     currentUser.isAdmin
   ) {
     return fetchAdminRows(
-      [
-        "profiles",
-      ],
+      ["profiles"],
       400
     );
   }
 
   const byId =
     await supabase
-      .from(
-        "profiles"
-      )
+      .from("profiles")
       .select("*")
       .eq(
         "id",
@@ -1035,9 +870,7 @@ async function fetchProfiles(
   ) {
     const byEmail =
       await supabase
-        .from(
-          "profiles"
-        )
+        .from("profiles")
         .select("*")
         .ilike(
           "email",
@@ -1062,7 +895,6 @@ async function fetchProfiles(
 
   return {
     rows: [],
-
     tableUsed:
       "profiles",
   };
@@ -1090,7 +922,7 @@ async function fetchRowsByScope(
 }
 
 /* =========================================================
-   SUMMARY CARD
+   SMALL UI COMPONENTS
 ========================================================= */
 
 function SummaryCard({
@@ -1106,9 +938,7 @@ function SummaryCard({
     >
       <span>
         <Icon
-          size={
-            21
-          }
+          size={21}
         />
       </span>
 
@@ -1129,10 +959,6 @@ function SummaryCard({
   );
 }
 
-/* =========================================================
-   SENSOR CARD
-========================================================= */
-
 function SensorMiniCard({
   icon: Icon,
   label,
@@ -1141,26 +967,20 @@ function SensorMiniCard({
 }) {
   const hasStatus =
     clean(status) &&
-    lower(
-      status
-    ) !==
+    lower(status) !==
       "no reading";
 
   const severity =
     hasStatus
       ? getStatusSeverity(
-          [
-            status,
-          ]
+          [status]
         )
       : "no-data";
 
   return (
     <div className="modern-tank-sensor-card">
       <Icon
-        size={
-          19
-        }
+        size={19}
       />
 
       <span>
@@ -1187,7 +1007,7 @@ function SensorMiniCard({
 }
 
 /* =========================================================
-   MINIMAL MODERN DROPDOWN
+   MINIMAL THEME-AWARE DROPDOWN
 ========================================================= */
 
 function FilterDropdown({
@@ -1195,6 +1015,7 @@ function FilterDropdown({
   value,
   options,
   onChange,
+  ariaLabel,
 }) {
   const [
     isOpen,
@@ -1265,6 +1086,18 @@ function FilterDropdown({
     };
   }, []);
 
+  function selectOption(
+    option
+  ) {
+    onChange(
+      option.value
+    );
+
+    setIsOpen(
+      false
+    );
+  }
+
   return (
     <div
       ref={
@@ -1276,16 +1109,18 @@ function FilterDropdown({
     >
       <button
         type="button"
-        onClick={() =>
-          setIsOpen(
-            (
-              current
-            ) =>
-              !current
-          )
+        aria-label={
+          ariaLabel
         }
+        aria-haspopup="listbox"
         aria-expanded={
           isOpen
+        }
+        onClick={() =>
+          setIsOpen(
+            (current) =>
+              !current
+          )
         }
         style={{
           ...dropdownTriggerStyle,
@@ -1296,8 +1131,9 @@ function FilterDropdown({
         }}
       >
         <Icon
-          size={
-            17
+          size={17}
+          style={
+            dropdownIconStyle
           }
         />
 
@@ -1312,9 +1148,7 @@ function FilterDropdown({
         </span>
 
         <ChevronDown
-          size={
-            16
-          }
+          size={16}
           style={{
             ...dropdownChevronStyle,
 
@@ -1328,14 +1162,13 @@ function FilterDropdown({
 
       {isOpen && (
         <div
+          role="listbox"
           style={
             dropdownMenuStyle
           }
         >
           {options.map(
-            (
-              option
-            ) => {
+            (option) => {
               const active =
                 option.value ===
                 value;
@@ -1343,18 +1176,18 @@ function FilterDropdown({
               return (
                 <button
                   type="button"
+                  role="option"
+                  aria-selected={
+                    active
+                  }
                   key={
                     option.value
                   }
-                  onClick={() => {
-                    onChange(
-                      option.value
-                    );
-
-                    setIsOpen(
-                      false
-                    );
-                  }}
+                  onClick={() =>
+                    selectOption(
+                      option
+                    )
+                  }
                   style={{
                     ...dropdownItemStyle,
 
@@ -1371,9 +1204,11 @@ function FilterDropdown({
 
                   {active && (
                     <Check
-                      size={
-                        15
-                      }
+                      size={15}
+                      style={{
+                        flexShrink:
+                          0,
+                      }}
                     />
                   )}
                 </button>
@@ -1425,33 +1260,25 @@ export default function TanksPage() {
     statusFilter,
     setStatusFilter,
   ] =
-    useState(
-      "all"
-    );
+    useState("all");
 
   const [
     typeFilter,
     setTypeFilter,
   ] =
-    useState(
-      "all"
-    );
+    useState("all");
 
   const [
     isLoading,
     setIsLoading,
   ] =
-    useState(
-      true
-    );
+    useState(true);
 
   const [
     thresholds,
     setThresholds,
   ] =
-    useState(
-      null
-    );
+    useState(null);
 
   useEffect(() => {
     let isMounted =
@@ -1459,9 +1286,7 @@ export default function TanksPage() {
 
     loadActiveThresholds()
       .then(
-        (
-          loaded
-        ) => {
+        (loaded) => {
           if (
             isMounted
           ) {
@@ -1593,385 +1418,342 @@ export default function TanksPage() {
   ======================================================= */
 
   const profileMap =
-    useMemo(
-      () => {
-        const map =
-          new Map();
+    useMemo(() => {
+      const map =
+        new Map();
 
-        profiles.forEach(
-          (
-            profile
-          ) => {
-            if (
-              profile?.id
-            ) {
-              map.set(
-                String(
-                  profile.id
-                ),
-                profile
-              );
-            }
-
-            if (
-              profile?.user_id
-            ) {
-              map.set(
-                String(
-                  profile.user_id
-                ),
-                profile
-              );
-            }
-
-            if (
-              profile?.email
-            ) {
-              map.set(
-                String(
-                  profile.email
-                ).toLowerCase(),
-                profile
-              );
-            }
+      profiles.forEach(
+        (profile) => {
+          if (
+            profile?.id
+          ) {
+            map.set(
+              String(
+                profile.id
+              ),
+              profile
+            );
           }
-        );
 
-        return map;
-      },
-      [
-        profiles,
-      ]
-    );
+          if (
+            profile?.user_id
+          ) {
+            map.set(
+              String(
+                profile.user_id
+              ),
+              profile
+            );
+          }
+
+          if (
+            profile?.email
+          ) {
+            map.set(
+              String(
+                profile.email
+              ).toLowerCase(),
+              profile
+            );
+          }
+        }
+      );
+
+      return map;
+    }, [profiles]);
 
   /* =======================================================
      ENRICH TANKS
   ======================================================= */
 
   const enrichedTanks =
-    useMemo(
-      () => {
-        return tanks.map(
-          (
-            tank,
-            index
-          ) => {
-            const latestReading =
-              getLatestReadingForTank(
-                tank,
-                readings
-              );
-
-            const normalized =
-              normalizeSensorReading(
-                latestReading
-              );
-
-            const readingStatus =
-              latestReading
-                ? getOverallReadingStatus(
-                    normalized
-                  )
-                : "no-data";
-
-            const latestAmmoniaRow =
-              getLatestAmmoniaForTank(
-                tank,
-                ammoniaReadings
-              );
-
-            const latestAmmoniaValue =
-              latestAmmoniaRow
-                ? getAmmoniaNumericValue(
-                    latestAmmoniaRow
-                  )
-                : null;
-
-            const safety =
-              thresholds
-                ? evaluateReadingSafety(
-                    {
-                      temperature:
-                        latestReading
-                          ?.temperature_c ??
-                        latestReading
-                          ?.temperature,
-
-                      ph:
-                        latestReading
-                          ?.ph ??
-                        latestReading
-                          ?.ph_value,
-
-                      turbidityStatus:
-                        normalized
-                          .turbidityStatus,
-
-                      waterDepth:
-                        latestReading
-                          ?.water_depth_cm ??
-                        latestReading
-                          ?.water_level,
-
-                      ammonia:
-                        latestAmmoniaValue,
-                    },
-
-                    thresholds
-                  )
-                : null;
-
-            const ownerId =
-              getTankOwnerId(
-                tank
-              );
-
-            const owner =
-              profileMap.get(
-                String(
-                  ownerId
-                )
-              ) ||
-              profileMap.get(
-                String(
-                  tank?.email ||
-                    ""
-                ).toLowerCase()
-              ) ||
-              null;
-
-            return {
+    useMemo(() => {
+      return tanks.map(
+        (
+          tank,
+          index
+        ) => {
+          const latestReading =
+            getLatestReadingForTank(
               tank,
+              readings
+            );
 
-              index,
+          const normalized =
+            normalizeSensorReading(
+              latestReading
+            );
 
-              latestReading,
+          const readingStatus =
+            latestReading
+              ? getOverallReadingStatus(
+                  normalized
+                )
+              : "no-data";
 
-              normalized,
+          const latestAmmoniaRow =
+            getLatestAmmoniaForTank(
+              tank,
+              ammoniaReadings
+            );
 
-              id:
-                getTankId(
-                  tank,
-                  index
-                ),
+          const latestAmmoniaValue =
+            latestAmmoniaRow
+              ? getAmmoniaNumericValue(
+                  latestAmmoniaRow
+                )
+              : null;
 
-              name:
-                getTankName(
-                  tank,
-                  index
-                ),
+          const safety =
+            thresholds
+              ? evaluateReadingSafety(
+                  {
+                    temperature:
+                      latestReading
+                        ?.temperature_c ??
+                      latestReading
+                        ?.temperature,
 
-              type:
-                getTankType(
-                  tank
-                ),
+                    ph:
+                      latestReading
+                        ?.ph ??
+                      latestReading
+                        ?.ph_value,
 
-              ownerName:
-                owner
-                  ? getProfileName(
-                      owner
-                    )
-                  : "Unknown owner",
+                    turbidityStatus:
+                      normalized
+                        .turbidityStatus,
 
-              ownerEmail:
-                owner?.email ||
+                    waterDepth:
+                      latestReading
+                        ?.water_depth_cm ??
+                      latestReading
+                        ?.water_level,
+
+                    ammonia:
+                      latestAmmoniaValue,
+                  },
+
+                  thresholds
+                )
+              : null;
+
+          const ownerId =
+            getTankOwnerId(
+              tank
+            );
+
+          const owner =
+            profileMap.get(
+              String(
+                ownerId
+              )
+            ) ||
+            profileMap.get(
+              String(
                 tank?.email ||
-                "",
+                  ""
+              ).toLowerCase()
+            ) ||
+            null;
 
-              status:
-                readingStatus,
+          return {
+            tank,
 
-              safety,
+            index,
 
-              lastSync:
-                normalized
-                  .createdAt ||
-                latestReading
-                  ?.created_at ||
+            latestReading,
+
+            normalized,
+
+            id:
+              getTankId(
+                tank,
+                index
+              ),
+
+            name:
+              getTankName(
+                tank,
+                index
+              ),
+
+            type:
+              getTankType(
                 tank
-                  ?.updated_at ||
-                tank
-                  ?.created_at ||
-                null,
-            };
-          }
-        );
-      },
-      [
-        tanks,
-        readings,
-        ammoniaReadings,
-        thresholds,
-        profileMap,
-      ]
-    );
+              ),
+
+            ownerName:
+              owner
+                ? getProfileName(
+                    owner
+                  )
+                : "Unknown owner",
+
+            ownerEmail:
+              owner?.email ||
+              tank?.email ||
+              "",
+
+            status:
+              readingStatus,
+
+            safety,
+
+            lastSync:
+              normalized.createdAt ||
+              latestReading?.created_at ||
+              tank?.updated_at ||
+              tank?.created_at ||
+              null,
+          };
+        }
+      );
+    }, [
+      tanks,
+      readings,
+      ammoniaReadings,
+      thresholds,
+      profileMap,
+    ]);
 
   /* =======================================================
      TYPES
   ======================================================= */
 
   const tankTypes =
-    useMemo(
-      () => {
-        return Array.from(
-          new Set(
-            enrichedTanks.map(
-              (
-                item
-              ) =>
-                item.type
-            )
+    useMemo(() => {
+      return Array.from(
+        new Set(
+          enrichedTanks.map(
+            (item) =>
+              item.type
           )
-        ).filter(
-          Boolean
-        );
-      },
-      [
-        enrichedTanks,
-      ]
-    );
+        )
+      ).filter(Boolean);
+    }, [enrichedTanks]);
 
   /* =======================================================
      FILTERING
   ======================================================= */
 
   const filteredTanks =
-    useMemo(
-      () => {
-        return enrichedTanks.filter(
-          (
-            item
-          ) => {
-            const search =
-              searchTerm
-                .trim()
-                .toLowerCase();
+    useMemo(() => {
+      return enrichedTanks.filter(
+        (item) => {
+          const search =
+            searchTerm
+              .trim()
+              .toLowerCase();
 
-            const searchableText =
-              [
-                item.name,
-                item.type,
-                item.ownerName,
-                item.ownerEmail,
-                item.status,
+          const searchableText =
+            [
+              item.name,
+              item.type,
+              item.ownerName,
+              item.ownerEmail,
+              item.status,
 
-                item.normalized
-                  .temperatureLabel,
+              item.normalized
+                .temperatureLabel,
 
-                item.normalized
-                  .temperatureStatus,
+              item.normalized
+                .temperatureStatus,
 
-                item.normalized
-                  .phStatus,
+              item.normalized
+                .phStatus,
 
-                item.normalized
-                  .turbidityStatus,
+              item.normalized
+                .turbidityStatus,
 
-                item.normalized
-                  .waterStatus,
+              item.normalized
+                .waterStatus,
 
-                item.normalized
-                  .deviceUid,
-              ]
-                .join(
-                  " "
-                )
-                .toLowerCase();
+              item.normalized
+                .deviceUid,
+            ]
+              .join(" ")
+              .toLowerCase();
 
-            const matchesSearch =
-              !search ||
-              searchableText.includes(
-                search
-              );
-
-            const matchesStatus =
-              statusFilter ===
-                "all" ||
-              item.status ===
-                statusFilter;
-
-            const matchesType =
-              typeFilter ===
-                "all" ||
-              item.type ===
-                typeFilter;
-
-            return (
-              matchesSearch &&
-              matchesStatus &&
-              matchesType
+          const matchesSearch =
+            !search ||
+            searchableText.includes(
+              search
             );
-          }
-        );
-      },
-      [
-        enrichedTanks,
-        searchTerm,
-        statusFilter,
-        typeFilter,
-      ]
-    );
+
+          const matchesStatus =
+            statusFilter ===
+              "all" ||
+            item.status ===
+              statusFilter;
+
+          const matchesType =
+            typeFilter ===
+              "all" ||
+            item.type ===
+              typeFilter;
+
+          return (
+            matchesSearch &&
+            matchesStatus &&
+            matchesType
+          );
+        }
+      );
+    }, [
+      enrichedTanks,
+      searchTerm,
+      statusFilter,
+      typeFilter,
+    ]);
 
   /* =======================================================
      SUMMARY
   ======================================================= */
 
   const summary =
-    useMemo(
-      () => {
-        const normal =
-          enrichedTanks.filter(
-            (
-              item
-            ) =>
-              item.status ===
-              "normal"
-          ).length;
+    useMemo(() => {
+      const normal =
+        enrichedTanks.filter(
+          (item) =>
+            item.status ===
+            "normal"
+        ).length;
 
-        const warning =
-          enrichedTanks.filter(
-            (
-              item
-            ) =>
-              item.status ===
-              "warning"
-          ).length;
+      const warning =
+        enrichedTanks.filter(
+          (item) =>
+            item.status ===
+            "warning"
+        ).length;
 
-        const critical =
-          enrichedTanks.filter(
-            (
-              item
-            ) =>
-              item.status ===
-              "critical"
-          ).length;
+      const critical =
+        enrichedTanks.filter(
+          (item) =>
+            item.status ===
+            "critical"
+        ).length;
 
-        const noData =
-          enrichedTanks.filter(
-            (
-              item
-            ) =>
-              item.status ===
-              "no-data"
-          ).length;
+      const noData =
+        enrichedTanks.filter(
+          (item) =>
+            item.status ===
+            "no-data"
+        ).length;
 
-        return {
-          total:
-            enrichedTanks.length,
+      return {
+        total:
+          enrichedTanks.length,
 
-          normal,
+        normal,
 
-          warning,
+        warning,
 
-          critical,
+        critical,
 
-          noData,
-        };
-      },
-      [
-        enrichedTanks,
-      ]
-    );
+        noData,
+      };
+    }, [enrichedTanks]);
 
   /* =======================================================
      FILTER OPTIONS
@@ -1981,41 +1763,31 @@ export default function TanksPage() {
     useMemo(
       () => [
         {
-          value:
-            "all",
-
+          value: "all",
           label:
             "All Conditions",
         },
 
         {
-          value:
-            "normal",
-
+          value: "normal",
           label:
             "Doing Well",
         },
 
         {
-          value:
-            "warning",
-
+          value: "warning",
           label:
             "Needs Checking",
         },
 
         {
-          value:
-            "critical",
-
+          value: "critical",
           label:
             "Urgent",
         },
 
         {
-          value:
-            "no-data",
-
+          value: "no-data",
           label:
             "No Recent Data",
         },
@@ -2027,17 +1799,13 @@ export default function TanksPage() {
     useMemo(
       () => [
         {
-          value:
-            "all",
-
+          value: "all",
           label:
             "All Tank Types",
         },
 
         ...tankTypes.map(
-          (
-            type
-          ) => ({
+          (type) => ({
             value:
               type,
 
@@ -2064,9 +1832,7 @@ export default function TanksPage() {
       <section className="modern-tank-loading">
         <Loader2
           className="spin-icon"
-          size={
-            34
-          }
+          size={34}
         />
 
         <h3>
@@ -2113,17 +1879,14 @@ export default function TanksPage() {
               }
             >
               <RefreshCw
-                size={
-                  18
-                }
+                size={18}
               />
 
               Refresh
             </button>
 
             <span>
-              {summary.total ===
-              1
+              {summary.total === 1
                 ? "1 tank registered"
                 : `${summary.total} tanks registered`}
             </span>
@@ -2132,15 +1895,11 @@ export default function TanksPage() {
 
         <div className="modern-tanks-hero-card">
           <Droplets
-            size={
-              34
-            }
+            size={34}
           />
 
           <strong>
-            {
-              summary.total
-            }
+            {summary.total}
           </strong>
 
           <span>
@@ -2212,6 +1971,8 @@ export default function TanksPage() {
           compactToolbarStyle
         }
       >
+        {/* SEARCH */}
+
         <div
           className="modern-tank-search"
           style={
@@ -2219,9 +1980,7 @@ export default function TanksPage() {
           }
         >
           <Search
-            size={
-              18
-            }
+            size={18}
           />
 
           <input
@@ -2234,8 +1993,7 @@ export default function TanksPage() {
               event
             ) =>
               setSearchTerm(
-                event.target
-                  .value
+                event.target.value
               )
             }
             style={
@@ -2244,10 +2002,11 @@ export default function TanksPage() {
           />
         </div>
 
+        {/* CONDITION */}
+
         <FilterDropdown
-          icon={
-            Filter
-          }
+          ariaLabel="Filter tanks by condition"
+          icon={Filter}
           value={
             statusFilter
           }
@@ -2259,10 +2018,11 @@ export default function TanksPage() {
           }
         />
 
+        {/* TYPE */}
+
         <FilterDropdown
-          icon={
-            Droplets
-          }
+          ariaLabel="Filter tanks by type"
+          icon={Droplets}
           value={
             typeFilter
           }
@@ -2276,16 +2036,14 @@ export default function TanksPage() {
       </section>
 
       {/* ===============================================
-          EMPTY
+          EMPTY / TANKS
       ================================================ */}
 
       {filteredTanks.length ===
       0 ? (
         <section className="modern-tank-empty">
           <Droplets
-            size={
-              34
-            }
+            size={34}
           />
 
           <h3>
@@ -2297,15 +2055,9 @@ export default function TanksPage() {
           </p>
         </section>
       ) : (
-        /* =============================================
-            TANK LIST
-        ============================================== */
-
         <section className="modern-tank-grid">
           {filteredTanks.map(
-            (
-              item
-            ) => (
+            (item) => (
               <article
                 className="modern-tank-card"
                 key={
@@ -2428,40 +2180,26 @@ export default function TanksPage() {
                 {item.safety && (
                   <div
                     className={`modern-tank-safety-chip ${
-                      item.safety
-                        .isSafe
+                      item.safety.isSafe
                         ? "is-safe"
                         : "is-unsafe"
                     }`}
                   >
-                    {item.safety
-                      .isSafe ? (
+                    {item.safety.isSafe ? (
                       <CheckCircle2
-                        size={
-                          15
-                        }
+                        size={15}
                       />
                     ) : (
                       <AlertTriangle
-                        size={
-                          15
-                        }
+                        size={15}
                       />
                     )}
 
                     <span>
-                      {item.safety
-                        .isSafe
+                      {item.safety.isSafe
                         ? "Within safe range"
-                        : `${
-                            item.safety
-                              .issues
-                              .length
-                          } ${
-                            item.safety
-                              .issues
-                              .length ===
-                            1
+                        : `${item.safety.issues.length} ${
+                            item.safety.issues.length === 1
                               ? "parameter"
                               : "parameters"
                           } outside safe range`}
@@ -2474,9 +2212,7 @@ export default function TanksPage() {
                 {!item.latestReading && (
                   <div className="modern-tank-no-reading">
                     <AlertTriangle
-                      size={
-                        17
-                      }
+                      size={17}
                     />
 
                     <span>
@@ -2495,9 +2231,7 @@ export default function TanksPage() {
                   <div className="modern-tank-more-content">
                     <div>
                       <UserRound
-                        size={
-                          16
-                        }
+                        size={16}
                       />
 
                       <span>
@@ -2515,9 +2249,7 @@ export default function TanksPage() {
 
                     <div>
                       <Database
-                        size={
-                          16
-                        }
+                        size={16}
                       />
 
                       <span>
@@ -2546,9 +2278,7 @@ export default function TanksPage() {
                   View Tank
 
                   <ArrowRight
-                    size={
-                      18
-                    }
+                    size={18}
                   />
                 </Link>
               </article>
@@ -2561,7 +2291,7 @@ export default function TanksPage() {
 }
 
 /* =========================================================
-   MINIMAL FILTER UI STYLES
+   MINIMAL THEME-AWARE FILTER UI
 ========================================================= */
 
 const compactToolbarStyle = {
@@ -2605,11 +2335,23 @@ const compactSearchStyle = {
 
   padding:
     "0 14px",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  borderColor:
+    "var(--ct-border, var(--border, #e5e4e7))",
+
+  background:
+    "var(--ct-surface, var(--bg, #ffffff))",
 };
 
 const compactSearchInputStyle = {
   width:
     "100%",
+
+  minWidth:
+    0,
 
   border:
     "none",
@@ -2621,16 +2363,13 @@ const compactSearchInputStyle = {
     "transparent",
 
   color:
-    "inherit",
+    "var(--ct-text, var(--text-h, #0f172a))",
 
   font:
     "inherit",
 
   fontSize:
     "0.86rem",
-
-  minWidth:
-    0,
 };
 
 /* =========================================================
@@ -2668,13 +2407,16 @@ const dropdownTriggerStyle = {
     "12px",
 
   border:
-    "1px solid rgba(148, 163, 184, 0.18)",
+    "1px solid var(--ct-border, var(--border, #e5e4e7))",
 
   background:
-    "rgba(255, 255, 255, 0.025)",
+    "var(--ct-surface, var(--bg, #ffffff))",
 
   color:
-    "inherit",
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  boxShadow:
+    "var(--ct-shadow-soft, 0 4px 14px rgba(15, 23, 42, 0.04))",
 
   font:
     "inherit",
@@ -2692,15 +2434,26 @@ const dropdownTriggerStyle = {
     "left",
 
   transition:
-    "background 150ms ease, border-color 150ms ease",
+    "background 150ms ease, border-color 150ms ease, box-shadow 150ms ease",
 };
 
 const dropdownTriggerOpenStyle = {
-  background:
-    "rgba(34, 211, 238, 0.05)",
-
   borderColor:
-    "rgba(34, 211, 238, 0.28)",
+    "var(--ct-brand, #00b8a9)",
+
+  background:
+    "var(--ct-surface-strong, var(--bg, #ffffff))",
+
+  boxShadow:
+    "0 0 0 3px rgba(0, 217, 199, 0.08)",
+};
+
+const dropdownIconStyle = {
+  flexShrink:
+    0,
+
+  color:
+    "var(--ct-brand, #00b8a9)",
 };
 
 const dropdownSelectedTextStyle = {
@@ -2724,8 +2477,8 @@ const dropdownChevronStyle = {
   flexShrink:
     0,
 
-  opacity:
-    0.66,
+  color:
+    "var(--ct-muted, var(--text, #64748b))",
 
   transition:
     "transform 160ms ease",
@@ -2754,19 +2507,32 @@ const dropdownMenuStyle = {
     "12px",
 
   border:
-    "1px solid rgba(148, 163, 184, 0.16)",
+    "1px solid var(--ct-border, var(--border, #e5e4e7))",
+
+  /*
+   * IMPORTANT:
+   *
+   * LIGHT MODE:
+   * --ct-surface-strong / --bg => white/light
+   *
+   * DARK MODE:
+   * --ct-surface-strong => dark dashboard surface
+   */
 
   background:
-    "#0d2230",
+    "var(--ct-surface-strong, var(--bg, #ffffff))",
 
   color:
-    "#e5f5f6",
+    "var(--ct-text, var(--text-h, #0f172a))",
 
   boxShadow:
-    "0 12px 28px rgba(0, 0, 0, 0.22)",
+    "0 14px 32px rgba(15, 23, 42, 0.14)",
 
   overflow:
     "hidden",
+
+  backdropFilter:
+    "blur(18px)",
 };
 
 const dropdownItemStyle = {
@@ -2801,13 +2567,16 @@ const dropdownItemStyle = {
     "transparent",
 
   color:
-    "inherit",
+    "var(--ct-text, var(--text-h, #0f172a))",
 
   font:
     "inherit",
 
   fontSize:
     "0.8rem",
+
+  fontWeight:
+    500,
 
   cursor:
     "pointer",
@@ -2818,10 +2587,10 @@ const dropdownItemStyle = {
 
 const dropdownItemActiveStyle = {
   background:
-    "rgba(34, 211, 238, 0.09)",
+    "var(--ct-brand-soft, var(--accent-bg, rgba(0, 217, 199, 0.10)))",
 
   color:
-    "#67e8f9",
+    "var(--ct-brand, var(--accent, #008f83))",
 
   fontWeight:
     700,
