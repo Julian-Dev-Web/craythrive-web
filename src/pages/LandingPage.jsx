@@ -22,29 +22,19 @@ import { APP_INFO } from "../constants/theme";
 
 /*
 |--------------------------------------------------------------------------
-| ANDROID APK
+| APK DOWNLOAD
 |--------------------------------------------------------------------------
 |
-| IMPORTANT:
-|
-| Every GitHub release should contain an asset named EXACTLY:
+| Every new GitHub release should contain:
 |
 | craythrive.apk
 |
-| Example release tags:
-|
-| v1.0.1
-| v1.0.2
-| v1.0.3
-|
-| The website does NOT need to be changed for every new APK.
-| GitHub /latest/download automatically points to the newest
-| published release containing craythrive.apk.
+| The website always downloads the APK from the latest published release.
 |
 */
 
 const APK_DOWNLOAD_URL =
-  "https://github.com/Julian-Dev-Web/craythrive-web/releases/latest/download/craythrive.apk";
+  "https://github.com/Julian-Dev-Web/craythrive-releases/releases/latest/download/craythrive.apk";
 
 /*
 |--------------------------------------------------------------------------
@@ -118,7 +108,7 @@ const features = [
 
 /*
 |--------------------------------------------------------------------------
-| IMAGE WITH FALLBACK
+| IMAGE FALLBACK
 |--------------------------------------------------------------------------
 */
 
@@ -235,7 +225,7 @@ function FooterContactIcon({
 
 /*
 |--------------------------------------------------------------------------
-| LANDING PAGE
+| PAGE
 |--------------------------------------------------------------------------
 */
 
@@ -291,7 +281,7 @@ export default function LandingPage() {
 
   /*
   |--------------------------------------------------------------------------
-  | PHONE ANIMATION
+  | PHONE EFFECT
   |--------------------------------------------------------------------------
   */
 
@@ -370,7 +360,9 @@ export default function LandingPage() {
 
           <div className="app-nav-links">
             <a href="#home">Home</a>
+
             <a href="#features">Features</a>
+
             <a href="#details">Details</a>
 
             <a
@@ -421,6 +413,7 @@ export default function LandingPage() {
                 className="learn-button"
               >
                 Learn More
+
                 <ArrowRight size={18} />
               </a>
             </div>
@@ -577,12 +570,11 @@ export default function LandingPage() {
           </h2>
 
           <p>
-            The web dashboard will handle tank
-            monitoring reports, alerts, marketplace
-            records, reservations, seller profiles,
-            analytics, and threshold settings while
-            using the same Supabase database as the
-            mobile application.
+            The web dashboard handles tank monitoring,
+            reports, alerts, marketplace records,
+            reservations, seller profiles, analytics,
+            and threshold settings while using the same
+            Supabase database as the mobile application.
           </p>
 
           <div className="details-list">
@@ -607,6 +599,7 @@ export default function LandingPage() {
             className="details-login-button"
           >
             Continue to Login
+
             <ArrowRight size={18} />
           </Link>
         </div>
@@ -675,8 +668,7 @@ export default function LandingPage() {
         <p>
           Download the Android APK to monitor tanks,
           view readings, manage marketplace activity,
-          and connect with the CrayThrive web
-          dashboard.
+          and connect with the CrayThrive web dashboard.
         </p>
 
         <div className="hero-buttons">
@@ -694,6 +686,7 @@ export default function LandingPage() {
             className="learn-button"
           >
             Login to Web
+
             <ArrowRight size={18} />
           </Link>
         </div>

@@ -7,9 +7,12 @@ import {
 import {
   AlertTriangle,
   BookOpen,
+  Check,
   CheckCircle2,
+  Clock3,
   Database,
   Droplets,
+  ExternalLink,
   Gauge,
   Info,
   Loader2,
@@ -17,8 +20,10 @@ import {
   Save,
   Settings,
   ShieldCheck,
+  Sparkles,
   Thermometer,
   Waves,
+  X,
 } from "lucide-react";
 
 import {
@@ -28,11 +33,15 @@ import {
 
 import {
   DEFAULT_THRESHOLDS,
-  formatResearchReference,
   getLocalThresholds,
-  getThresholdReference,
   normalizeThresholds,
 } from "../../utils/thresholdEvaluation";
+
+/*
+|--------------------------------------------------------------------------
+| CONFIG
+|--------------------------------------------------------------------------
+*/
 
 const STORAGE_KEY =
   "craythrive_threshold_settings";
@@ -40,281 +49,414 @@ const STORAGE_KEY =
 const TABLE_NAME =
   "threshold_settings";
 
+const QUEENSLAND_SOURCE =
+  "https://www.business.qld.gov.au/industries/farms-fishing-forestry/fisheries/aquaculture/species/redclaw-crayfish";
+
+const STUDY_SOURCE =
+  "https://www.mdpi.com/2304-8158/15/11/1857";
+
 /*
 |--------------------------------------------------------------------------
-| EDITABLE THRESHOLD CONTROLS
+| THRESHOLD CARD INFORMATION
 |--------------------------------------------------------------------------
 |
-| These are the values the user can actually save and use in CrayThrive.
-|
 | IMPORTANT:
-| - Research values are shown separately below.
-| - Research values DO NOT automatically replace these values.
-| - Mobile/web share the saved Supabase threshold_settings row.
+|
+| `recommendedValue` is shown as reference information.
+|
+| It does NOT automatically overwrite the active CrayThrive setting.
+|
+| Turbidity voltage + water-level cm are prototype calibration values,
+| not universal crayfish biological limits.
 |
 */
 
 const thresholdRows = [
   {
-    key:
-      "temperatureMin",
+    key: "temperatureMin",
+    group: "temperature",
 
-    referenceKey:
-      "temperature",
-
-    label:
-      "Temperature Minimum",
+    label: "Temperature Minimum",
 
     helper:
       "Lowest active water temperature before CrayThrive flags the reading.",
 
-    unit:
-      "°C",
+    unit: "°C",
 
-    icon:
-      Thermometer,
+    icon: Thermometer,
 
-    min:
-      10,
+    min: 10,
+    max: 40,
+    step: 0.1,
 
-    max:
-      40,
+    referenceType: "Research-backed reference",
 
-    step:
-      0.1,
+    recommendedValue: "26–29°C",
+
+    recommendedTitle:
+      "Preferred range for optimal redclaw growth",
+
+    recommendation:
+      "Queensland aquaculture guidance states that optimal redclaw growth occurs between 26°C and 29°C. For this minimum setting, 26°C is the preferred lower reference.",
+
+    secondaryReference:
+      "A recent redclaw culture study reports a broader physiological range of 20–32°C.",
+
+    sourceName:
+      "Business Queensland — Redclaw crayfish aquaculture",
+
+    sourceUrl:
+      QUEENSLAND_SOURCE,
+
+    sourceTwoName:
+      "Recent Cherax quadricarinatus culture study",
+
+    sourceTwoUrl:
+      STUDY_SOURCE,
+
+    tone: "research",
   },
 
   {
-    key:
-      "temperatureMax",
+    key: "temperatureMax",
+    group: "temperature",
 
-    referenceKey:
-      "temperature",
-
-    label:
-      "Temperature Maximum",
+    label: "Temperature Maximum",
 
     helper:
       "Highest active water temperature before CrayThrive flags the reading.",
 
-    unit:
-      "°C",
+    unit: "°C",
 
-    icon:
-      Thermometer,
+    icon: Thermometer,
 
-    min:
-      10,
+    min: 10,
+    max: 40,
+    step: 0.1,
 
-    max:
-      40,
+    referenceType: "Research-backed reference",
 
-    step:
-      0.1,
+    recommendedValue: "26–29°C",
+
+    recommendedTitle:
+      "Preferred range for optimal redclaw growth",
+
+    recommendation:
+      "Queensland aquaculture guidance states that optimal redclaw growth occurs between 26°C and 29°C. For this maximum setting, 29°C is the preferred upper reference.",
+
+    secondaryReference:
+      "A recent redclaw culture study reports a broader physiological range of 20–32°C.",
+
+    sourceName:
+      "Business Queensland — Redclaw crayfish aquaculture",
+
+    sourceUrl:
+      QUEENSLAND_SOURCE,
+
+    sourceTwoName:
+      "Recent Cherax quadricarinatus culture study",
+
+    sourceTwoUrl:
+      STUDY_SOURCE,
+
+    tone: "research",
   },
 
   {
-    key:
-      "phMin",
+    key: "phMin",
+    group: "ph",
 
-    referenceKey:
-      "ph",
-
-    label:
-      "pH Minimum",
+    label: "pH Minimum",
 
     helper:
-      "Lowest active pH level considered acceptable by CrayThrive.",
+      "Lowest active pH value before CrayThrive flags the reading.",
 
-    unit:
-      "pH",
+    unit: "pH",
 
-    icon:
-      Droplets,
+    icon: Droplets,
 
-    min:
-      0,
+    min: 0,
+    max: 14,
+    step: 0.1,
 
-    max:
-      14,
+    referenceType: "Research-backed reference",
 
-    step:
-      0.1,
+    recommendedValue: "7.0–8.5 pH",
+
+    recommendedTitle:
+      "Ideal redclaw pH range",
+
+    recommendation:
+      "Published redclaw guidance identifies pH 7.0–8.5 as the ideal range. For this minimum setting, 7.0 is the preferred lower reference.",
+
+    secondaryReference:
+      "The recent culture study also lists 7.0–8.5 as its safe physiological pH range.",
+
+    sourceName:
+      "Business Queensland — Redclaw crayfish aquaculture",
+
+    sourceUrl:
+      QUEENSLAND_SOURCE,
+
+    sourceTwoName:
+      "Recent Cherax quadricarinatus culture study",
+
+    sourceTwoUrl:
+      STUDY_SOURCE,
+
+    tone: "research",
   },
 
   {
-    key:
-      "phMax",
+    key: "phMax",
+    group: "ph",
 
-    referenceKey:
-      "ph",
-
-    label:
-      "pH Maximum",
+    label: "pH Maximum",
 
     helper:
-      "Highest active pH level considered acceptable by CrayThrive.",
+      "Highest active pH value before CrayThrive flags the reading.",
 
-    unit:
-      "pH",
+    unit: "pH",
 
-    icon:
-      Droplets,
+    icon: Droplets,
 
-    min:
-      0,
+    min: 0,
+    max: 14,
+    step: 0.1,
 
-    max:
-      14,
+    referenceType: "Research-backed reference",
 
-    step:
-      0.1,
+    recommendedValue: "7.0–8.5 pH",
+
+    recommendedTitle:
+      "Ideal redclaw pH range",
+
+    recommendation:
+      "Published redclaw guidance identifies pH 7.0–8.5 as the ideal range. For this maximum setting, 8.5 is the preferred upper reference.",
+
+    secondaryReference:
+      "The recent culture study also lists 7.0–8.5 as its safe physiological pH range.",
+
+    sourceName:
+      "Business Queensland — Redclaw crayfish aquaculture",
+
+    sourceUrl:
+      QUEENSLAND_SOURCE,
+
+    sourceTwoName:
+      "Recent Cherax quadricarinatus culture study",
+
+    sourceTwoUrl:
+      STUDY_SOURCE,
+
+    tone: "research",
   },
 
   {
     /*
-     * Legacy DB/property name kept as turbidityMax
-     * for compatibility with the existing system.
+     * Existing database/property name kept for compatibility.
      *
-     * Actual operational meaning:
-     * minimum voltage considered clear.
-     *
-     * Higher voltage = clearer water.
+     * Operational interpretation:
+     * higher voltage = clearer water.
      */
-    key:
-      "turbidityMax",
+    key: "turbidityMax",
+    group: "turbidity",
 
-    referenceKey:
-      "turbidity",
-
-    label:
-      "Water Clarity Minimum",
+    label: "Water Clarity Threshold",
 
     helper:
-      "Minimum turbidity-sensor voltage treated as clear. Higher voltage means clearer water.",
+      "Minimum turbidity-sensor voltage used as the clear-water reference.",
 
-    unit:
-      "V",
+    unit: "V",
 
-    icon:
-      Waves,
+    icon: Waves,
 
-    min:
-      0,
+    min: 0,
+    max: 5,
+    step: 0.01,
 
-    max:
-      5,
+    referenceType: "Prototype calibration",
 
-    step:
-      0.01,
+    recommendedValue: "≥ 2.50 V reference",
+
+    recommendedTitle:
+      "Calibrated sensor value",
+
+    recommendation:
+      "CrayThrive uses the DFRobot turbidity module's analog voltage. Higher voltage generally represents clearer water in the current prototype.",
+
+    secondaryReference:
+      "Published crayfish studies do not provide a universal DFRobot voltage threshold, so this value must not be presented as a biological research limit.",
+
+    sourceName:
+      "CrayThrive DFRobot turbidity sensor calibration",
+
+    sourceUrl:
+      null,
+
+    sourceTwoName:
+      null,
+
+    sourceTwoUrl:
+      null,
+
+    tone: "calibration",
   },
 
   {
-    key:
-      "waterLevelMin",
+    key: "waterLevelMin",
+    group: "water_level",
 
-    referenceKey:
-      "waterLevel",
-
-    label:
-      "Water Level Minimum",
+    label: "Water Level Minimum",
 
     helper:
-      "Lowest active tank water depth before CrayThrive identifies a low-water condition.",
+      "Lowest tank water depth before CrayThrive identifies a low-water condition.",
 
-    unit:
-      "cm",
+    unit: "cm",
 
-    icon:
-      Gauge,
+    icon: Gauge,
 
-    min:
-      0,
+    min: 0,
+    max: 20,
+    step: 0.1,
 
-    max:
-      20,
+    referenceType: "Tank-specific calibration",
 
-    step:
-      0.1,
+    recommendedValue: "Prototype-specific",
+
+    recommendedTitle:
+      "Based on tank geometry",
+
+    recommendation:
+      "The safe operational centimetre value depends on the CrayThrive tank height, ultrasonic sensor position, and the desired working water depth.",
+
+    secondaryReference:
+      "Commercial pond-depth recommendations cannot be directly converted into the centimetre threshold used by the small CrayThrive prototype.",
+
+    sourceName:
+      "CrayThrive ultrasonic and tank calibration",
+
+    sourceUrl:
+      null,
+
+    sourceTwoName:
+      null,
+
+    sourceTwoUrl:
+      null,
+
+    tone: "calibration",
   },
 
   {
-    key:
-      "ammoniaMax",
+    key: "ammoniaMax",
+    group: "ammonia",
 
-    referenceKey:
-      "ammonia",
-
-    label:
-      "Ammonia Maximum",
+    label: "Ammonia Maximum",
 
     helper:
-      "Maximum active ammonia reading before CrayThrive flags the recorded test result.",
+      "Maximum active ammonia value before CrayThrive flags the recorded scan.",
 
-    unit:
-      "mg/L",
+    unit: "mg/L",
 
-    icon:
-      AlertTriangle,
+    icon: AlertTriangle,
 
-    min:
-      0,
+    min: 0,
+    max: 5,
+    step: 0.01,
 
-    max:
-      5,
+    referenceType: "Research-backed reference",
 
-    step:
-      0.01,
+    recommendedValue: "< 0.05 mg/L",
+
+    recommendedTitle:
+      "Preferred management reference",
+
+    recommendation:
+      "Queensland redclaw aquaculture guidance recommends maintaining ammonia below 0.05 mg/L during production.",
+
+    secondaryReference:
+      "A recent redclaw culture study reports NH₄⁺-N below 0.5 mg/L as a safe physiological range. These ammonia measurements are not necessarily interchangeable.",
+
+    measurementWarning:
+      "Confirm what ammonia form the LIANKAI phone-scanned test strip reports before treating a literature value as an exact strip cutoff.",
+
+    sourceName:
+      "Business Queensland — Redclaw crayfish aquaculture",
+
+    sourceUrl:
+      QUEENSLAND_SOURCE,
+
+    sourceTwoName:
+      "Recent Cherax quadricarinatus culture study",
+
+    sourceTwoUrl:
+      STUDY_SOURCE,
+
+    tone: "research",
   },
 ];
 
 /*
 |--------------------------------------------------------------------------
-| REFERENCE CARD ORDER
+| SANITIZE LEGACY VALUES
 |--------------------------------------------------------------------------
+|
+| Earlier CrayThrive versions used values such as:
+|
+| turbidityMax = 40
+| waterLevelMin = 35
+|
+| Those are incompatible with the present 0–5V and 0–20cm controls.
+|
+| We normalize them locally rather than displaying an impossible slider value.
+|
 */
 
-const referenceRows = [
-  {
-    key:
-      "temperature",
+function sanitizeOperationalThresholds(
+  values
+) {
+  const normalized =
+    normalizeThresholds(
+      values
+    );
 
-    icon:
-      Thermometer,
-  },
+  return {
+    ...normalized,
 
-  {
-    key:
-      "ph",
+    turbidityMax:
+      Number(
+        normalized
+          .turbidityMax
+      ) >= 0 &&
+      Number(
+        normalized
+          .turbidityMax
+      ) <= 5
+        ? Number(
+            normalized
+              .turbidityMax
+          )
+        : DEFAULT_THRESHOLDS
+            .turbidityMax,
 
-    icon:
-      Droplets,
-  },
-
-  {
-    key:
-      "turbidity",
-
-    icon:
-      Waves,
-  },
-
-  {
-    key:
-      "waterLevel",
-
-    icon:
-      Gauge,
-  },
-
-  {
-    key:
-      "ammonia",
-
-    icon:
-      AlertTriangle,
-  },
-];
+    waterLevelMin:
+      Number(
+        normalized
+          .waterLevelMin
+      ) >= 0 &&
+      Number(
+        normalized
+          .waterLevelMin
+      ) <= 20
+        ? Number(
+            normalized
+              .waterLevelMin
+          )
+        : DEFAULT_THRESHOLDS
+            .waterLevelMin,
+  };
+}
 
 /*
 |--------------------------------------------------------------------------
@@ -322,7 +464,7 @@ const referenceRows = [
 |--------------------------------------------------------------------------
 */
 
-function isRangeValid(
+function validateThresholds(
   thresholds
 ) {
   const temperatureMin =
@@ -353,101 +495,7 @@ function isRangeValid(
         .turbidityMax
     );
 
-  const water =
-    Number(
-      thresholds
-        .waterLevelMin
-    );
-
-  const ammonia =
-    Number(
-      thresholds
-        .ammoniaMax
-    );
-
-  return (
-    Number.isFinite(
-      temperatureMin
-    ) &&
-    Number.isFinite(
-      temperatureMax
-    ) &&
-    temperatureMin >=
-      10 &&
-    temperatureMax <=
-      40 &&
-    temperatureMin <
-      temperatureMax &&
-
-    Number.isFinite(
-      phMin
-    ) &&
-    Number.isFinite(
-      phMax
-    ) &&
-    phMin >= 0 &&
-    phMax <= 14 &&
-    phMin <
-      phMax &&
-
-    Number.isFinite(
-      turbidity
-    ) &&
-    turbidity >=
-      0 &&
-    turbidity <=
-      5 &&
-
-    Number.isFinite(
-      water
-    ) &&
-    water >=
-      0 &&
-    water <=
-      20 &&
-
-    Number.isFinite(
-      ammonia
-    ) &&
-    ammonia >=
-      0 &&
-    ammonia <=
-      5
-  );
-}
-
-function getValidationMessage(
-  thresholds
-) {
-  const temperatureMin =
-    Number(
-      thresholds
-        .temperatureMin
-    );
-
-  const temperatureMax =
-    Number(
-      thresholds
-        .temperatureMax
-    );
-
-  const phMin =
-    Number(
-      thresholds.phMin
-    );
-
-  const phMax =
-    Number(
-      thresholds.phMax
-    );
-
-  const turbidity =
-    Number(
-      thresholds
-        .turbidityMax
-    );
-
-  const water =
+  const waterLevel =
     Number(
       thresholds
         .waterLevelMin
@@ -467,7 +515,11 @@ function getValidationMessage(
       temperatureMax
     )
   ) {
-    return "Temperature thresholds must contain valid numbers.";
+    return {
+      valid: false,
+      message:
+        "Temperature thresholds must contain valid numbers.",
+    };
   }
 
   if (
@@ -476,14 +528,22 @@ function getValidationMessage(
     temperatureMax >
       40
   ) {
-    return "Temperature thresholds must remain between 10°C and 40°C.";
+    return {
+      valid: false,
+      message:
+        "Temperature values must remain between 10°C and 40°C.",
+    };
   }
 
   if (
     temperatureMin >=
     temperatureMax
   ) {
-    return "Temperature minimum must be lower than temperature maximum.";
+    return {
+      valid: false,
+      message:
+        "Temperature minimum must be lower than temperature maximum.",
+    };
   }
 
   if (
@@ -494,21 +554,32 @@ function getValidationMessage(
       phMax
     )
   ) {
-    return "pH thresholds must contain valid numbers.";
+    return {
+      valid: false,
+      message:
+        "pH thresholds must contain valid numbers.",
+    };
   }
 
   if (
     phMin < 0 ||
     phMax > 14
   ) {
-    return "pH thresholds must remain between 0 and 14.";
+    return {
+      valid: false,
+      message:
+        "pH values must remain between 0 and 14.",
+    };
   }
 
   if (
-    phMin >=
-    phMax
+    phMin >= phMax
   ) {
-    return "pH minimum must be lower than pH maximum.";
+    return {
+      valid: false,
+      message:
+        "pH minimum must be lower than pH maximum.",
+    };
   }
 
   if (
@@ -518,17 +589,25 @@ function getValidationMessage(
     turbidity < 0 ||
     turbidity > 5
   ) {
-    return "Water-clarity sensor voltage must remain between 0V and 5V.";
+    return {
+      valid: false,
+      message:
+        "Water-clarity sensor voltage must remain between 0V and 5V.",
+    };
   }
 
   if (
     !Number.isFinite(
-      water
+      waterLevel
     ) ||
-    water < 0 ||
-    water > 20
+    waterLevel < 0 ||
+    waterLevel > 20
   ) {
-    return "Water-level minimum must remain between 0cm and 20cm for the current prototype setting.";
+    return {
+      valid: false,
+      message:
+        "Water-level minimum must remain between 0cm and 20cm for the current prototype.",
+    };
   }
 
   if (
@@ -538,10 +617,17 @@ function getValidationMessage(
     ammonia < 0 ||
     ammonia > 5
   ) {
-    return "Ammonia threshold must remain between 0mg/L and 5mg/L.";
+    return {
+      valid: false,
+      message:
+        "Ammonia threshold must remain between 0mg/L and 5mg/L.",
+    };
   }
 
-  return "";
+  return {
+    valid: true,
+    message: "",
+  };
 }
 
 /*
@@ -574,11 +660,11 @@ async function getCurrentUser() {
 
 /*
 |--------------------------------------------------------------------------
-| LOAD THRESHOLDS
+| LOAD
 |--------------------------------------------------------------------------
 */
 
-async function loadThresholdsFromSupabase(
+async function loadThresholdRow(
   userId
 ) {
   const {
@@ -597,60 +683,25 @@ async function loadThresholdsFromSupabase(
       .maybeSingle();
 
   if (error) {
-    console.log(
-      "LOAD THRESHOLDS ERROR:",
-      error
-    );
-
-    return {
-      thresholds:
-        getLocalThresholds(),
-
-      source:
-        "localStorage",
-    };
+    throw error;
   }
 
-  if (!data) {
-    return {
-      thresholds:
-        getLocalThresholds(),
-
-      source:
-        "localStorage",
-    };
-  }
-
-  return {
-    thresholds:
-      normalizeThresholds(
-        data
-      ),
-
-    source:
-      TABLE_NAME,
-  };
+  return data;
 }
 
 /*
 |--------------------------------------------------------------------------
-| SAVE THRESHOLDS
+| SAVE ACTIVE THRESHOLDS
 |--------------------------------------------------------------------------
-|
-| Existing table only:
-|
-| public.threshold_settings
-|
-| No new threshold table is created.
-|
 */
 
 async function saveThresholdsToSupabase(
   userId,
-  thresholds
+  thresholds,
+  extraValues = {}
 ) {
   const cleanThresholds =
-    normalizeThresholds(
+    sanitizeOperationalThresholds(
       thresholds
     );
 
@@ -706,6 +757,8 @@ async function saveThresholdsToSupabase(
     updated_at:
       new Date()
         .toISOString(),
+
+    ...extraValues,
   };
 
   const {
@@ -735,7 +788,224 @@ async function saveThresholdsToSupabase(
 
 /*
 |--------------------------------------------------------------------------
-| EDITABLE CONTROL
+| CLEAR PENDING AI SUGGESTION
+|--------------------------------------------------------------------------
+*/
+
+async function clearPendingAiSuggestion(
+  userId
+) {
+  const {
+    error,
+  } =
+    await supabase
+      .from(
+        TABLE_NAME
+      )
+      .update({
+        pending_ai_suggestion:
+          null,
+
+        pending_ai_suggested_at:
+          null,
+
+        updated_at:
+          new Date()
+            .toISOString(),
+      })
+      .eq(
+        "user_id",
+        userId
+      );
+
+  if (error) {
+    throw error;
+  }
+}
+
+/*
+|--------------------------------------------------------------------------
+| APPLY AI SUGGESTION TO THRESHOLD OBJECT
+|--------------------------------------------------------------------------
+*/
+
+function applySuggestionToThresholds(
+  currentThresholds,
+  suggestion
+) {
+  const next = {
+    ...sanitizeOperationalThresholds(
+      currentThresholds
+    ),
+  };
+
+  const parameter =
+    normalizeAiParameter(
+      suggestion
+        ?.parameter
+    );
+
+  const suggestedMin =
+    firstNumber(
+      suggestion
+        ?.suggested_min,
+      suggestion
+        ?.suggested
+        ?.min
+    );
+
+  const suggestedMax =
+    firstNumber(
+      suggestion
+        ?.suggested_max,
+      suggestion
+        ?.suggested
+        ?.max
+    );
+
+  const suggestedValue =
+    firstNumber(
+      suggestion
+        ?.suggested_value,
+      suggestion
+        ?.suggested
+        ?.value,
+      typeof suggestion
+        ?.suggested ===
+      "number"
+        ? suggestion
+            .suggested
+        : null
+    );
+
+  switch (
+    parameter
+  ) {
+    case "temperature":
+      if (
+        suggestedMin ===
+          null ||
+        suggestedMax ===
+          null
+      ) {
+        throw new Error(
+          "The pending temperature suggestion is incomplete."
+        );
+      }
+
+      next.temperatureMin =
+        suggestedMin;
+
+      next.temperatureMax =
+        suggestedMax;
+
+      break;
+
+    case "ph":
+      if (
+        suggestedMin ===
+          null ||
+        suggestedMax ===
+          null
+      ) {
+        throw new Error(
+          "The pending pH suggestion is incomplete."
+        );
+      }
+
+      next.phMin =
+        suggestedMin;
+
+      next.phMax =
+        suggestedMax;
+
+      break;
+
+    case "turbidity": {
+      const value =
+        suggestedValue ??
+        suggestedMin ??
+        suggestedMax;
+
+      if (
+        value === null
+      ) {
+        throw new Error(
+          "The pending turbidity suggestion is incomplete."
+        );
+      }
+
+      next.turbidityMax =
+        value;
+
+      break;
+    }
+
+    case "water_level": {
+      const value =
+        suggestedValue ??
+        suggestedMin ??
+        suggestedMax;
+
+      if (
+        value === null
+      ) {
+        throw new Error(
+          "The pending water-level suggestion is incomplete."
+        );
+      }
+
+      next.waterLevelMin =
+        value;
+
+      break;
+    }
+
+    case "ammonia": {
+      const value =
+        suggestedValue ??
+        suggestedMax ??
+        suggestedMin;
+
+      if (
+        value === null
+      ) {
+        throw new Error(
+          "The pending ammonia suggestion is incomplete."
+        );
+      }
+
+      next.ammoniaMax =
+        value;
+
+      break;
+    }
+
+    default:
+      throw new Error(
+        "The pending AI suggestion uses an unsupported parameter."
+      );
+  }
+
+  const validation =
+    validateThresholds(
+      next
+    );
+
+  if (
+    !validation.valid
+  ) {
+    throw new Error(
+      validation.message
+    );
+  }
+
+  return next;
+}
+
+/*
+|--------------------------------------------------------------------------
+| THRESHOLD CONTROL
 |--------------------------------------------------------------------------
 */
 
@@ -747,47 +1017,58 @@ function ThresholdControl({
   const Icon =
     item.icon;
 
+  const isResearch =
+    item.tone ===
+    "research";
+
   return (
     <article className="modern-setting-threshold-card">
+      {/* HEADER */}
+
       <div className="modern-setting-threshold-top">
         <span>
-          <Icon
-            size={
-              20
-            }
-          />
+          <Icon size={20} />
         </span>
 
         <div>
           <strong>
-            {
-              item.label
-            }
+            {item.label}
           </strong>
 
           <small>
-            {
-              item.helper
-            }
+            {item.helper}
           </small>
         </div>
       </div>
 
+      {/* ACTIVE VALUE */}
+
+      <div
+        style={
+          activeValueHeaderStyle
+        }
+      >
+        <span>
+          Current Active Setting
+        </span>
+
+        <strong>
+          {formatThresholdValue(
+            item,
+            value
+          )}
+        </strong>
+      </div>
+
+      {/* CONTROL */}
+
       <div className="modern-setting-threshold-control">
         <input
           type="range"
-          min={
-            item.min
-          }
-          max={
-            item.max
-          }
-          step={
-            item.step
-          }
-          value={
-            value
-          }
+          min={item.min}
+          max={item.max}
+          step={item.step}
+          value={value}
           onChange={(
             event
           ) =>
@@ -802,18 +1083,10 @@ function ThresholdControl({
         <label>
           <input
             type="number"
-            min={
-              item.min
-            }
-            max={
-              item.max
-            }
-            step={
-              item.step
-            }
-            value={
-              value
-            }
+            min={item.min}
+            max={item.max}
+            step={item.step}
+            value={value}
             onChange={(
               event
             ) =>
@@ -826,321 +1099,179 @@ function ThresholdControl({
           />
 
           <span>
-            {
-              item.unit
-            }
+            {item.unit}
           </span>
         </label>
       </div>
-    </article>
-  );
-}
 
-/*
-|--------------------------------------------------------------------------
-| RESEARCH / CALIBRATION CARD
-|--------------------------------------------------------------------------
-*/
-
-function ThresholdReferenceCard({
-  item,
-  thresholds,
-}) {
-  const Icon =
-    item.icon;
-
-  const reference =
-    getThresholdReference(
-      item.key
-    );
-
-  if (!reference) {
-    return null;
-  }
-
-  const activeValue =
-    getActiveThresholdDisplay(
-      item.key,
-      thresholds
-    );
-
-  const mainReference =
-    formatResearchReference(
-      item.key
-    );
-
-  const supporting =
-    formatSupportingReference(
-      reference
-    );
-
-  const isResearch =
-    reference
-      .referenceType ===
-      "research" ||
-    reference
-      .referenceType ===
-      "research-with-measurement-caveat";
-
-  return (
-    <article
-      className="modern-setting-threshold-card"
-      style={
-        referenceCardStyle
-      }
-    >
-      <div className="modern-setting-threshold-top">
-        <span>
-          <Icon
-            size={
-              20
-            }
-          />
-        </span>
-
-        <div>
-          <strong>
-            {
-              reference.title
-            }
-          </strong>
-
-          <small>
-            {isResearch
-              ? "Published reference compared with your active CrayThrive setting."
-              : "Operational value depends on the CrayThrive prototype calibration."}
-          </small>
-        </div>
-      </div>
+      {/* RESEARCH / CALIBRATION BASIS */}
 
       <div
-        style={
-          referenceSectionStyle
-        }
+        style={{
+          ...referenceBoxStyle,
+
+          ...(isResearch
+            ? researchReferenceStyle
+            : calibrationReferenceStyle),
+        }}
       >
-        <ReferenceLabel
-          icon={
-            ShieldCheck
-          }
-          title="Current Active Setting"
-          value={
-            activeValue
-          }
-          tone="active"
-        />
-
-        <ReferenceLabel
-          icon={
-            BookOpen
-          }
-          title={
-            reference
-              .referenceLabel
-          }
-          value={
-            mainReference
-          }
-          tone={
-            isResearch
-              ? "research"
-              : "calibration"
-          }
-        />
-      </div>
-
-      {reference.primary ? (
         <div
           style={
-            sourceBoxStyle
+            referenceHeaderStyle
           }
         >
-          <strong
+          <div
             style={
-              sourceTitleStyle
+              referenceHeaderLeftStyle
             }
           >
-            {
-              reference
-                .primary
-                .label
-            }
-          </strong>
+            {isResearch ? (
+              <BookOpen
+                size={16}
+              />
+            ) : (
+              <Settings
+                size={16}
+              />
+            )}
 
-          <span
-            style={
-              sourceTextStyle
-            }
-          >
-            Source:{" "}
-            {
-              reference
-                .primary
-                .source
-            }
-          </span>
-
-          <span
-            style={
-              sourceMetaStyle
-            }
-          >
-            {
-              reference
-                .primary
-                .sourceType
-            }
-          </span>
-        </div>
-      ) : null}
-
-      {supporting ? (
-        <div
-          style={
-            supportingBoxStyle
-          }
-        >
-          <span
-            style={
-              referenceMiniLabelStyle
-            }
-          >
-            Supporting published reference
-          </span>
-
-          <strong
-            style={
-              supportingValueStyle
-            }
-          >
-            {
-              supporting
-            }
-          </strong>
-
-          {reference
-            .supporting
-            ?.source ? (
-            <span
-              style={
-                sourceTextStyle
-              }
-            >
+            <span>
               {
-                reference
-                  .supporting
-                  .source
+                item.referenceType
               }
             </span>
-          ) : null}
-        </div>
-      ) : null}
+          </div>
 
-      <div
-        style={
-          explanationStyle
-        }
-      >
-        <Info
-          size={
-            16
+          <strong
+            style={
+              referenceValueStyle
+            }
+          >
+            {
+              item.recommendedValue
+            }
+          </strong>
+        </div>
+
+        <strong
+          style={
+            recommendedTitleStyle
           }
-          style={{
-            flexShrink:
-              0,
-          }}
-        />
+        >
+          {
+            item.recommendedTitle
+          }
+        </strong>
 
         <p
           style={
-            explanationTextStyle
+            referenceDescriptionStyle
           }
         >
           {
-            reference
-              .explanation
+            item.recommendation
           }
         </p>
-      </div>
 
-      {reference
-        .calibrationNote ? (
         <div
           style={
-            calibrationStyle
+            supportingReferenceStyle
           }
         >
-          <strong>
-            Prototype note:
-          </strong>{" "}
-          {
-            reference
-              .calibrationNote
-          }
-        </div>
-      ) : null}
-
-      {reference
-        .measurementWarning ? (
-        <div
-          style={
-            warningStyle
-          }
-        >
-          <AlertTriangle
-            size={
-              15
-            }
-            style={{
-              flexShrink:
-                0,
-            }}
+          <Info
+            size={14}
           />
 
           <span>
             {
-              reference
-                .measurementWarning
+              item.secondaryReference
             }
           </span>
         </div>
-      ) : null}
 
-      <div
-        style={
-          surveyStyle
-        }
-      >
-        <span
+        {item.measurementWarning ? (
+          <div
+            style={
+              measurementWarningStyle
+            }
+          >
+            <AlertTriangle
+              size={14}
+            />
+
+            <span>
+              {
+                item.measurementWarning
+              }
+            </span>
+          </div>
+        ) : null}
+
+        <div
           style={
-            referenceMiniLabelStyle
+            sourcesStyle
           }
         >
-          Expert / Validation Recommendation
-        </span>
-
-        {reference
-          .surveyRecommendation ? (
-          <strong>
-            {
-              reference
-                .surveyRecommendation
+          <span
+            style={
+              sourceLabelStyle
             }
-          </strong>
-        ) : (
-          <>
-            <strong>
-              Pending
-            </strong>
+          >
+            Basis
+          </span>
 
-            <small
+          {item.sourceUrl ? (
+            <a
+              href={
+                item.sourceUrl
+              }
+              target="_blank"
+              rel="noreferrer"
               style={
-                surveyNoteStyle
+                sourceLinkStyle
               }
             >
-              Actual expert or survey results will be shown here after the validation activity. No expert value is fabricated beforehand.
-            </small>
-          </>
-        )}
+              {
+                item.sourceName
+              }
+
+              <ExternalLink
+                size={12}
+              />
+            </a>
+          ) : (
+            <strong
+              style={
+                localSourceStyle
+              }
+            >
+              {
+                item.sourceName
+              }
+            </strong>
+          )}
+
+          {item.sourceTwoUrl ? (
+            <a
+              href={
+                item.sourceTwoUrl
+              }
+              target="_blank"
+              rel="noreferrer"
+              style={
+                sourceLinkStyle
+              }
+            >
+              {
+                item.sourceTwoName
+              }
+
+              <ExternalLink
+                size={12}
+              />
+            </a>
+          ) : null}
+        </div>
       </div>
     </article>
   );
@@ -1148,58 +1279,305 @@ function ThresholdReferenceCard({
 
 /*
 |--------------------------------------------------------------------------
-| SMALL REFERENCE LABEL
+| AI SUGGESTION CARD
 |--------------------------------------------------------------------------
 */
 
-function ReferenceLabel({
-  icon: Icon,
-  title,
-  value,
-  tone,
+function PendingAiSuggestionCard({
+  suggestion,
+  suggestedAt,
+  thresholds,
+  isApplying,
+  isDismissing,
+  onApply,
+  onDismiss,
 }) {
-  return (
-    <div
-      style={{
-        ...referenceValueBoxStyle,
+  if (
+    !suggestion
+  ) {
+    return null;
+  }
 
-        ...(tone ===
-        "research"
-          ? researchToneStyle
-          : tone ===
-            "calibration"
-          ? calibrationToneStyle
-          : activeToneStyle),
-      }}
+  const parameter =
+    normalizeAiParameter(
+      suggestion
+        ?.parameter
+    );
+
+  const parameterLabel =
+    getAiParameterLabel(
+      parameter
+    );
+
+  const currentDisplay =
+    getAiCurrentValueDisplay(
+      parameter,
+      thresholds,
+      suggestion
+    );
+
+  const suggestedDisplay =
+    getAiSuggestedValueDisplay(
+      parameter,
+      suggestion
+    );
+
+  return (
+    <section
+      className="modern-settings-panel modern-settings-wide"
+      style={
+        aiPanelStyle
+      }
     >
       <div
         style={
-          referenceValueHeaderStyle
+          aiGlowStyle
         }
-      >
-        <Icon
-          size={
-            14
-          }
-        />
+      />
 
-        <span>
-          {
-            title
+      <div
+        className="modern-panel-heading"
+        style={{
+          position:
+            "relative",
+
+          zIndex:
+            1,
+        }}
+      >
+        <div>
+          <p className="dashboard-eyebrow">
+            AI Review
+          </p>
+
+          <h3>
+            Pending threshold suggestion
+          </h3>
+
+          <p
+            style={
+              sectionDescriptionStyle
+            }
+          >
+            CrayThrive AI suggested a change from the mobile app. Review it before updating your active settings.
+          </p>
+        </div>
+
+        <div
+          style={
+            aiIconStyle
           }
-        </span>
+        >
+          <Sparkles
+            size={22}
+          />
+        </div>
       </div>
 
-      <strong
+      <div
         style={
-          referenceValueStyle
+          aiContentStyle
         }
       >
-        {
-          value
-        }
-      </strong>
-    </div>
+        <div
+          style={
+            aiParameterHeaderStyle
+          }
+        >
+          <div>
+            <span
+              style={
+                aiMiniLabelStyle
+              }
+            >
+              Parameter
+            </span>
+
+            <strong
+              style={
+                aiParameterTitleStyle
+              }
+            >
+              {
+                parameterLabel
+              }
+            </strong>
+          </div>
+
+          {suggestedAt ? (
+            <div
+              style={
+                aiDateStyle
+              }
+            >
+              <Clock3
+                size={14}
+              />
+
+              {formatDateTime(
+                suggestedAt
+              )}
+            </div>
+          ) : null}
+        </div>
+
+        <div
+          style={
+            aiComparisonStyle
+          }
+        >
+          <div
+            style={
+              aiValueCardStyle
+            }
+          >
+            <span>
+              Current Active
+            </span>
+
+            <strong>
+              {
+                currentDisplay
+              }
+            </strong>
+          </div>
+
+          <div
+            style={
+              aiArrowStyle
+            }
+          >
+            →
+          </div>
+
+          <div
+            style={{
+              ...aiValueCardStyle,
+
+              ...aiSuggestedValueStyle,
+            }}
+          >
+            <span>
+              AI Suggested
+            </span>
+
+            <strong>
+              {
+                suggestedDisplay
+              }
+            </strong>
+          </div>
+        </div>
+
+        {suggestion
+          ?.reason ? (
+          <div
+            style={
+              aiReasonStyle
+            }
+          >
+            <Info
+              size={16}
+            />
+
+            <div>
+              <strong>
+                Why was this suggested?
+              </strong>
+
+              <p>
+                {
+                  suggestion
+                    .reason
+                }
+              </p>
+            </div>
+          </div>
+        ) : null}
+
+        <div
+          style={
+            aiHumanControlStyle
+          }
+        >
+          <ShieldCheck
+            size={16}
+          />
+
+          <span>
+            AI only recommends changes. Your active threshold remains unchanged until you approve it here.
+          </span>
+        </div>
+
+        <div
+          style={
+            aiActionsStyle
+          }
+        >
+          <button
+            type="button"
+            className="dashboard-primary-button"
+            onClick={
+              onApply
+            }
+            disabled={
+              isApplying ||
+              isDismissing
+            }
+          >
+            {isApplying ? (
+              <>
+                Applying...
+
+                <Loader2
+                  size={17}
+                  className="spin-icon"
+                />
+              </>
+            ) : (
+              <>
+                <Check
+                  size={17}
+                />
+
+                Apply Suggestion
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
+            className="modern-secondary-link"
+            onClick={
+              onDismiss
+            }
+            disabled={
+              isApplying ||
+              isDismissing
+            }
+          >
+            {isDismissing ? (
+              <>
+                Dismissing...
+
+                <Loader2
+                  size={17}
+                  className="spin-icon"
+                />
+              </>
+            ) : (
+              <>
+                <X
+                  size={17}
+                />
+
+                Dismiss
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -1214,8 +1592,10 @@ export default function ThresholdSettingsPage() {
     thresholds,
     setThresholds,
   ] =
-    useState(
-      getLocalThresholds
+    useState(() =>
+      sanitizeOperationalThresholds(
+        getLocalThresholds()
+      )
     );
 
   const [
@@ -1266,10 +1646,42 @@ export default function ThresholdSettingsPage() {
       "success"
     );
 
-  const validThresholds =
+  const [
+    pendingAiSuggestion,
+    setPendingAiSuggestion,
+  ] =
+    useState(
+      null
+    );
+
+  const [
+    pendingAiSuggestedAt,
+    setPendingAiSuggestedAt,
+  ] =
+    useState(
+      null
+    );
+
+  const [
+    isApplyingAi,
+    setIsApplyingAi,
+  ] =
+    useState(
+      false
+    );
+
+  const [
+    isDismissingAi,
+    setIsDismissingAi,
+  ] =
+    useState(
+      false
+    );
+
+  const validation =
     useMemo(
       () =>
-        isRangeValid(
+        validateThresholds(
           thresholds
         ),
       [
@@ -1279,7 +1691,7 @@ export default function ThresholdSettingsPage() {
 
   /*
   |--------------------------------------------------------------------------
-  | LOAD
+  | LOAD SETTINGS
   |--------------------------------------------------------------------------
   */
 
@@ -1295,7 +1707,9 @@ export default function ThresholdSettingsPage() {
       );
 
       setThresholds(
-        getLocalThresholds()
+        sanitizeOperationalThresholds(
+          getLocalThresholds()
+        )
       );
 
       setIsLoading(
@@ -1325,31 +1739,93 @@ export default function ThresholdSettingsPage() {
         );
 
         setThresholds(
-          getLocalThresholds()
+          sanitizeOperationalThresholds(
+            getLocalThresholds()
+          )
         );
 
         return;
       }
 
-      const loaded =
-        await loadThresholdsFromSupabase(
+      const row =
+        await loadThresholdRow(
           currentUser.id
         );
 
+      if (!row) {
+        const local =
+          sanitizeOperationalThresholds(
+            getLocalThresholds()
+          );
+
+        setThresholds(
+          local
+        );
+
+        setDataSource(
+          "localStorage"
+        );
+
+        return;
+      }
+
+      const normalized =
+        sanitizeOperationalThresholds(
+          row
+        );
+
       setThresholds(
-        loaded.thresholds
+        normalized
       );
 
       setDataSource(
-        loaded.source
+        TABLE_NAME
+      );
+
+      setPendingAiSuggestion(
+        normalizePendingSuggestion(
+          row.pending_ai_suggestion
+        )
+      );
+
+      setPendingAiSuggestedAt(
+        row.pending_ai_suggested_at ||
+          null
       );
 
       localStorage.setItem(
         STORAGE_KEY,
         JSON.stringify(
-          loaded.thresholds
+          normalized
         )
       );
+
+      /*
+       * Notify user if old invalid values were automatically
+       * normalized for display.
+       */
+
+      const raw =
+        normalizeThresholds(
+          row
+        );
+
+      if (
+        Number(
+          raw.turbidityMax
+        ) > 5 ||
+        Number(
+          raw.waterLevelMin
+        ) > 20
+      ) {
+        setMessageType(
+          "warning"
+        );
+
+        setMessage(
+          "Older incompatible turbidity or water-level values were replaced with the current CrayThrive prototype defaults for this screen. Save Settings to synchronize the corrected values."
+        );
+      }
     } catch (
       error
     ) {
@@ -1363,7 +1839,9 @@ export default function ThresholdSettingsPage() {
       );
 
       setThresholds(
-        getLocalThresholds()
+        sanitizeOperationalThresholds(
+          getLocalThresholds()
+        )
       );
 
       setMessageType(
@@ -1371,7 +1849,8 @@ export default function ThresholdSettingsPage() {
       );
 
       setMessage(
-        "Loaded local thresholds because Supabase was not available."
+        error?.message ||
+          "Loaded local thresholds because Supabase was not available."
       );
     } finally {
       setIsLoading(
@@ -1386,7 +1865,7 @@ export default function ThresholdSettingsPage() {
 
   /*
   |--------------------------------------------------------------------------
-  | EDIT
+  | MANUAL CHANGE
   |--------------------------------------------------------------------------
   */
 
@@ -1432,27 +1911,27 @@ export default function ThresholdSettingsPage() {
 
   /*
   |--------------------------------------------------------------------------
-  | SAVE
+  | MANUAL SAVE
   |--------------------------------------------------------------------------
   */
 
   async function handleSave() {
     setMessage("");
 
-    const validationMessage =
-      getValidationMessage(
+    const result =
+      validateThresholds(
         thresholds
       );
 
     if (
-      validationMessage
+      !result.valid
     ) {
       setMessageType(
         "warning"
       );
 
       setMessage(
-        validationMessage
+        result.message
       );
 
       return;
@@ -1463,15 +1942,15 @@ export default function ThresholdSettingsPage() {
         true
       );
 
-      const cleanThresholds =
-        normalizeThresholds(
+      const clean =
+        sanitizeOperationalThresholds(
           thresholds
         );
 
       localStorage.setItem(
         STORAGE_KEY,
         JSON.stringify(
-          cleanThresholds
+          clean
         )
       );
 
@@ -1481,7 +1960,7 @@ export default function ThresholdSettingsPage() {
         !user?.id
       ) {
         setThresholds(
-          cleanThresholds
+          clean
         );
 
         setDataSource(
@@ -1493,7 +1972,7 @@ export default function ThresholdSettingsPage() {
         );
 
         setMessage(
-          "Saved locally only. Sign in and connect Supabase to synchronize these thresholds with the mobile app."
+          "Saved locally only. Sign in and connect Supabase to synchronize these settings."
         );
 
         return;
@@ -1502,13 +1981,13 @@ export default function ThresholdSettingsPage() {
       const saved =
         await saveThresholdsToSupabase(
           user.id,
-          cleanThresholds
+          clean
         );
 
       const savedThresholds =
-        normalizeThresholds(
+        sanitizeOperationalThresholds(
           saved ||
-            cleanThresholds
+            clean
         );
 
       setThresholds(
@@ -1531,7 +2010,7 @@ export default function ThresholdSettingsPage() {
       );
 
       setMessage(
-        "Threshold settings saved to Supabase. The web dashboard and mobile app can now use the same active values."
+        "Active thresholds saved to Supabase. Web and mobile can now use the same values."
       );
     } catch (
       error
@@ -1541,15 +2020,142 @@ export default function ThresholdSettingsPage() {
         error
       );
 
+      setMessageType(
+        "warning"
+      );
+
+      setMessage(
+        error?.message ||
+          "Could not save threshold settings to Supabase."
+      );
+    } finally {
+      setIsSaving(
+        false
+      );
+    }
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | APPLY AI SUGGESTION
+  |--------------------------------------------------------------------------
+  */
+
+  async function handleApplyAiSuggestion() {
+    if (
+      !pendingAiSuggestion
+    ) {
+      return;
+    }
+
+    if (
+      !user?.id ||
+      !supabase
+    ) {
+      setMessageType(
+        "warning"
+      );
+
+      setMessage(
+        "Sign in before applying an AI threshold suggestion."
+      );
+
+      return;
+    }
+
+    try {
+      setIsApplyingAi(
+        true
+      );
+
+      setMessage("");
+
+      /*
+       * Reload latest row first.
+       *
+       * This prevents an old browser copy from overwriting
+       * thresholds that may have changed elsewhere.
+       */
+
+      const latestRow =
+        await loadThresholdRow(
+          user.id
+        );
+
+      const latestThresholds =
+        sanitizeOperationalThresholds(
+          latestRow ||
+            thresholds
+        );
+
+      const latestSuggestion =
+        normalizePendingSuggestion(
+          latestRow
+            ?.pending_ai_suggestion
+        ) ||
+        pendingAiSuggestion;
+
+      const nextThresholds =
+        applySuggestionToThresholds(
+          latestThresholds,
+          latestSuggestion
+        );
+
+      const saved =
+        await saveThresholdsToSupabase(
+          user.id,
+          nextThresholds,
+          {
+            pending_ai_suggestion:
+              null,
+
+            pending_ai_suggested_at:
+              null,
+          }
+        );
+
+      const cleanSaved =
+        sanitizeOperationalThresholds(
+          saved ||
+            nextThresholds
+        );
+
+      setThresholds(
+        cleanSaved
+      );
+
+      setPendingAiSuggestion(
+        null
+      );
+
+      setPendingAiSuggestedAt(
+        null
+      );
+
       localStorage.setItem(
         STORAGE_KEY,
         JSON.stringify(
-          thresholds
+          cleanSaved
         )
       );
 
       setDataSource(
-        "localStorage"
+        TABLE_NAME
+      );
+
+      setMessageType(
+        "success"
+      );
+
+      setMessage(
+        "AI threshold suggestion applied successfully. The updated values are now active in CrayThrive."
+      );
+    } catch (
+      error
+    ) {
+      console.log(
+        "APPLY AI THRESHOLD ERROR:",
+        error
       );
 
       setMessageType(
@@ -1558,10 +2164,73 @@ export default function ThresholdSettingsPage() {
 
       setMessage(
         error?.message ||
-          "Saved locally because the Supabase threshold save failed."
+          "The AI threshold suggestion could not be applied."
       );
     } finally {
-      setIsSaving(
+      setIsApplyingAi(
+        false
+      );
+    }
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | DISMISS AI SUGGESTION
+  |--------------------------------------------------------------------------
+  */
+
+  async function handleDismissAiSuggestion() {
+    if (
+      !user?.id ||
+      !supabase
+    ) {
+      return;
+    }
+
+    try {
+      setIsDismissingAi(
+        true
+      );
+
+      setMessage("");
+
+      await clearPendingAiSuggestion(
+        user.id
+      );
+
+      setPendingAiSuggestion(
+        null
+      );
+
+      setPendingAiSuggestedAt(
+        null
+      );
+
+      setMessageType(
+        "success"
+      );
+
+      setMessage(
+        "AI suggestion dismissed. Your active threshold settings were not changed."
+      );
+    } catch (
+      error
+    ) {
+      console.log(
+        "DISMISS AI THRESHOLD ERROR:",
+        error
+      );
+
+      setMessageType(
+        "warning"
+      );
+
+      setMessage(
+        error?.message ||
+          "The AI suggestion could not be dismissed."
+      );
+    } finally {
+      setIsDismissingAi(
         false
       );
     }
@@ -1580,9 +2249,7 @@ export default function ThresholdSettingsPage() {
       <section className="modern-settings-loading">
         <Loader2
           className="spin-icon"
-          size={
-            34
-          }
+          size={34}
         />
 
         <h3>
@@ -1590,7 +2257,7 @@ export default function ThresholdSettingsPage() {
         </h3>
 
         <p>
-          CrayThrive is preparing your active water-condition thresholds and reference information.
+          CrayThrive is loading your active thresholds, research references, and AI review status.
         </p>
       </section>
     );
@@ -1598,17 +2265,15 @@ export default function ThresholdSettingsPage() {
 
   /*
   |--------------------------------------------------------------------------
-  | UI
+  | PAGE UI
   |--------------------------------------------------------------------------
   */
 
   return (
     <div className="modern-settings-page">
-      {/*
-      ------------------------------------------------------------------------
-      HERO
-      ------------------------------------------------------------------------
-      */}
+      {/* ==============================================================
+          HERO
+      =============================================================== */}
 
       <section className="modern-settings-hero">
         <div>
@@ -1617,11 +2282,11 @@ export default function ThresholdSettingsPage() {
           </p>
 
           <h2>
-            Configure CrayThrive water-condition thresholds.
+            Configure tank condition thresholds.
           </h2>
 
           <p>
-            These active values are used by CrayThrive to classify readings and support alerts, tank checks, AI recommendations, and automation rules. Research references are shown separately so published guidance is not confused with your actual saved settings.
+            Adjust the active values used by CrayThrive for monitoring and alerts. Each setting also shows its research or prototype-calibration basis so the operational threshold is not confused with published guidance.
           </p>
 
           <div className="modern-settings-actions">
@@ -1633,26 +2298,24 @@ export default function ThresholdSettingsPage() {
               }
               disabled={
                 isSaving ||
-                !validThresholds
+                !validation.valid
               }
             >
               {isSaving ? (
                 <>
                   Saving...
+
                   <Loader2
                     className="spin-icon"
-                    size={
-                      18
-                    }
+                    size={18}
                   />
                 </>
               ) : (
                 <>
                   Save Settings
+
                   <Save
-                    size={
-                      18
-                    }
+                    size={18}
                   />
                 </>
               )}
@@ -1666,9 +2329,7 @@ export default function ThresholdSettingsPage() {
               }
             >
               <RefreshCw
-                size={
-                  18
-                }
+                size={18}
               />
 
               Restore Defaults
@@ -1676,39 +2337,36 @@ export default function ThresholdSettingsPage() {
 
             <span>
               Source:{" "}
-              {formatDataSource(
-                dataSource
-              )}
+              {dataSource ===
+              TABLE_NAME
+                ? "Supabase"
+                : "Browser cache"}
             </span>
           </div>
         </div>
 
         <div className="modern-settings-hero-card">
           <Settings
-            size={
-              38
-            }
+            size={38}
           />
 
           <strong>
-            {validThresholds
+            {validation.valid
               ? "Ready"
               : "Check"}
           </strong>
 
           <span>
-            {validThresholds
-              ? "Active values are valid"
+            {validation.valid
+              ? "Threshold values are valid"
               : "Some values need review"}
           </span>
         </div>
       </section>
 
-      {/*
-      ------------------------------------------------------------------------
-      MESSAGE
-      ------------------------------------------------------------------------
-      */}
+      {/* ==============================================================
+          MESSAGE
+      =============================================================== */}
 
       {message && (
         <section
@@ -1722,70 +2380,86 @@ export default function ThresholdSettingsPage() {
           {messageType ===
           "warning" ? (
             <AlertTriangle
-              size={
-                20
-              }
+              size={20}
             />
           ) : (
             <CheckCircle2
-              size={
-                20
-              }
+              size={20}
             />
           )}
 
           <span>
-            {
-              message
-            }
+            {message}
           </span>
         </section>
       )}
 
-      {/*
-      ------------------------------------------------------------------------
-      IMPORTANT EXPLANATION
-      ------------------------------------------------------------------------
-      */}
+      {/* ==============================================================
+          PENDING AI SUGGESTION
+      =============================================================== */}
+
+      <PendingAiSuggestionCard
+        suggestion={
+          pendingAiSuggestion
+        }
+        suggestedAt={
+          pendingAiSuggestedAt
+        }
+        thresholds={
+          thresholds
+        }
+        isApplying={
+          isApplyingAi
+        }
+        isDismissing={
+          isDismissingAi
+        }
+        onApply={
+          handleApplyAiSuggestion
+        }
+        onDismiss={
+          handleDismissAiSuggestion
+        }
+      />
+
+      {/* ==============================================================
+          EXPLANATION
+      =============================================================== */}
 
       <section
         className="modern-settings-panel modern-settings-wide"
         style={
-          infoPanelStyle
+          explanationPanelStyle
         }
       >
         <div
           style={
-            infoPanelIconStyle
+            explanationIconStyle
           }
         >
           <Info
-            size={
-              22
-            }
+            size={21}
           />
         </div>
 
         <div>
           <strong>
-            Research reference and active threshold are different.
+            Active setting vs. recommended reference
           </strong>
 
           <p
             style={
-              infoPanelTextStyle
+              explanationPanelTextStyle
             }
           >
-            Published values below are supporting guidance for redclaw crayfish care. They do not automatically change CrayThrive. Only the values you save under Active Thresholds are written to Supabase and used by the web dashboard, mobile app, and connected rule logic.
+            The number you save is the operational value actually used by CrayThrive. The recommended value shown inside each card is supporting research or prototype-calibration information and does not automatically replace your active setting.
           </p>
         </div>
       </section>
 
-      {/*
-      ------------------------------------------------------------------------
-      ACTIVE THRESHOLDS
-      ------------------------------------------------------------------------
-      */}
+      {/* ==============================================================
+          ACTIVE SETTINGS
+      =============================================================== */}
 
       <section className="modern-settings-panel modern-settings-wide">
         <div className="modern-panel-heading">
@@ -1795,7 +2469,7 @@ export default function ThresholdSettingsPage() {
             </p>
 
             <h3>
-              CrayThrive operational settings
+              Water-condition rules
             </h3>
 
             <p
@@ -1803,14 +2477,12 @@ export default function ThresholdSettingsPage() {
                 sectionDescriptionStyle
               }
             >
-              These are the actual values currently used after you save them.
+              Review the study or calibration basis shown directly below every editable threshold.
             </p>
           </div>
 
           <Database
-            size={
-              22
-            }
+            size={22}
           />
         </div>
 
@@ -1840,69 +2512,9 @@ export default function ThresholdSettingsPage() {
         </div>
       </section>
 
-      {/*
-      ------------------------------------------------------------------------
-      RESEARCH / CALIBRATION BASIS
-      ------------------------------------------------------------------------
-      */}
-
-      <section className="modern-settings-panel modern-settings-wide">
-        <div className="modern-panel-heading">
-          <div>
-            <p className="dashboard-eyebrow">
-              Reference Basis
-            </p>
-
-            <h3>
-              Research and prototype guidance
-            </h3>
-
-            <p
-              style={
-                sectionDescriptionStyle
-              }
-            >
-              Compare the active CrayThrive settings with published redclaw guidance and parameters that require prototype-specific calibration.
-            </p>
-          </div>
-
-          <BookOpen
-            size={
-              22
-            }
-          />
-        </div>
-
-        <div
-          style={
-            referenceGridStyle
-          }
-        >
-          {referenceRows.map(
-            (
-              item
-            ) => (
-              <ThresholdReferenceCard
-                key={
-                  item.key
-                }
-                item={
-                  item
-                }
-                thresholds={
-                  thresholds
-                }
-              />
-            )
-          )}
-        </div>
-      </section>
-
-      {/*
-      ------------------------------------------------------------------------
-      SURVEY / VALIDATION
-      ------------------------------------------------------------------------
-      */}
+      {/* ==============================================================
+          EXPERT VALIDATION NOTE
+      =============================================================== */}
 
       <section className="modern-settings-panel modern-settings-wide">
         <div className="modern-panel-heading">
@@ -1917,9 +2529,7 @@ export default function ThresholdSettingsPage() {
           </div>
 
           <ShieldCheck
-            size={
-              22
-            }
+            size={22}
           />
         </div>
 
@@ -1929,9 +2539,7 @@ export default function ThresholdSettingsPage() {
           }
         >
           <AlertTriangle
-            size={
-              21
-            }
+            size={20}
           />
 
           <div>
@@ -1944,48 +2552,9 @@ export default function ThresholdSettingsPage() {
                 validationNoticeTextStyle
               }
             >
-              CrayThrive will display expert or aquaculture validation recommendations here only after the researchers have collected and analyzed the actual evaluation results. No survey threshold recommendation is being assumed or fabricated in advance.
+              CrayThrive will only display expert or aquaculture-specialist threshold recommendations after the study's actual validation responses have been collected and analyzed. No survey result is being assumed in advance.
             </p>
           </div>
-        </div>
-      </section>
-
-      {/*
-      ------------------------------------------------------------------------
-      FINAL NOTE
-      ------------------------------------------------------------------------
-      */}
-
-      <section
-        className="modern-settings-panel modern-settings-wide"
-        style={
-          finalNoteStyle
-        }
-      >
-        <div
-          style={
-            finalNoteIconStyle
-          }
-        >
-          <CheckCircle2
-            size={
-              20
-            }
-          />
-        </div>
-
-        <div>
-          <strong>
-            Shared configuration
-          </strong>
-
-          <p
-            style={
-              finalNoteTextStyle
-            }
-          >
-            Saving here updates the existing Supabase threshold_settings record for your account. The mobile application can fetch the same active values, including threshold changes accepted from the AI Guide.
-          </p>
         </div>
       </section>
     </div>
@@ -1994,16 +2563,154 @@ export default function ThresholdSettingsPage() {
 
 /*
 |--------------------------------------------------------------------------
-| DISPLAY HELPERS
+| AI DISPLAY HELPERS
 |--------------------------------------------------------------------------
 */
 
-function getActiveThresholdDisplay(
-  key,
-  thresholds
+function normalizeAiParameter(
+  value
+) {
+  const parameter =
+    String(
+      value || ""
+    )
+      .trim()
+      .toLowerCase()
+      .replace(
+        /\s+/g,
+        "_"
+      )
+      .replace(
+        /-/g,
+        "_"
+      );
+
+  if (
+    parameter ===
+      "temperature" ||
+    parameter ===
+      "temp" ||
+    parameter ===
+      "water_temperature"
+  ) {
+    return "temperature";
+  }
+
+  if (
+    parameter === "ph" ||
+    parameter ===
+      "ph_level"
+  ) {
+    return "ph";
+  }
+
+  if (
+    parameter ===
+      "turbidity" ||
+    parameter ===
+      "clarity" ||
+    parameter ===
+      "water_clarity"
+  ) {
+    return "turbidity";
+  }
+
+  if (
+    parameter ===
+      "water" ||
+    parameter ===
+      "water_level" ||
+    parameter ===
+      "water_depth"
+  ) {
+    return "water_level";
+  }
+
+  if (
+    parameter ===
+      "ammonia" ||
+    parameter ===
+      "nh3"
+  ) {
+    return "ammonia";
+  }
+
+  return parameter;
+}
+
+function normalizePendingSuggestion(
+  value
+) {
+  if (!value) {
+    return null;
+  }
+
+  if (
+    typeof value ===
+    "string"
+  ) {
+    try {
+      const parsed =
+        JSON.parse(
+          value
+        );
+
+      return parsed &&
+        typeof parsed ===
+          "object"
+        ? parsed
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  if (
+    typeof value ===
+      "object" &&
+    !Array.isArray(
+      value
+    )
+  ) {
+    return value;
+  }
+
+  return null;
+}
+
+function getAiParameterLabel(
+  parameter
 ) {
   switch (
-    key
+    parameter
+  ) {
+    case "temperature":
+      return "Water Temperature";
+
+    case "ph":
+      return "pH Level";
+
+    case "turbidity":
+      return "Water Clarity";
+
+    case "water_level":
+      return "Water Level";
+
+    case "ammonia":
+      return "Ammonia";
+
+    default:
+      return "Threshold";
+  }
+}
+
+function getAiCurrentValueDisplay(
+  parameter,
+  thresholds,
+  suggestion
+) {
+  switch (
+    parameter
   ) {
     case "temperature":
       return `${formatNumber(
@@ -2027,7 +2734,7 @@ function getActiveThresholdDisplay(
           .turbidityMax
       )} V`;
 
-    case "waterLevel":
+    case "water_level":
       return `≥ ${formatNumber(
         thresholds
           .waterLevelMin
@@ -2040,83 +2747,184 @@ function getActiveThresholdDisplay(
       )} mg/L`;
 
     default:
+      return (
+        suggestion
+          ?.current_value ??
+        "—"
+      );
+  }
+}
+
+function getAiSuggestedValueDisplay(
+  parameter,
+  suggestion
+) {
+  const min =
+    firstNumber(
+      suggestion
+        ?.suggested_min,
+      suggestion
+        ?.suggested
+        ?.min
+    );
+
+  const max =
+    firstNumber(
+      suggestion
+        ?.suggested_max,
+      suggestion
+        ?.suggested
+        ?.max
+    );
+
+  const value =
+    firstNumber(
+      suggestion
+        ?.suggested_value,
+      suggestion
+        ?.suggested
+        ?.value
+    );
+
+  switch (
+    parameter
+  ) {
+    case "temperature":
+      return min !==
+        null &&
+        max !== null
+        ? `${formatNumber(
+            min
+          )}–${formatNumber(
+            max
+          )} °C`
+        : "Incomplete";
+
+    case "ph":
+      return min !==
+        null &&
+        max !== null
+        ? `${formatNumber(
+            min
+          )}–${formatNumber(
+            max
+          )} pH`
+        : "Incomplete";
+
+    case "turbidity":
+      return value !==
+        null
+        ? `≥ ${formatNumber(
+            value
+          )} V`
+        : "Incomplete";
+
+    case "water_level":
+      return value !==
+        null
+        ? `≥ ${formatNumber(
+            value
+          )} cm`
+        : "Incomplete";
+
+    case "ammonia":
+      return value !==
+        null
+        ? `≤ ${formatNumber(
+            value
+          )} mg/L`
+        : "Incomplete";
+
+    default:
       return "—";
   }
 }
 
-function formatSupportingReference(
-  reference
+/*
+|--------------------------------------------------------------------------
+| GENERAL HELPERS
+|--------------------------------------------------------------------------
+*/
+
+function firstNumber(
+  ...values
 ) {
-  const value =
-    reference
-      ?.supporting;
+  for (
+    const value of
+    values
+  ) {
+    if (
+      value ===
+        null ||
+      value ===
+        undefined ||
+      value ===
+        ""
+    ) {
+      continue;
+    }
 
-  if (!value) {
-    return "";
+    const number =
+      Number(
+        value
+      );
+
+    if (
+      Number.isFinite(
+        number
+      )
+    ) {
+      return number;
+    }
   }
 
-  const unit =
-    value.unit ||
-    reference.unit ||
-    "";
+  return null;
+}
 
-  const min =
-    Number(
-      value.min
-    );
-
-  const max =
-    Number(
-      value.max
+function formatThresholdValue(
+  item,
+  value
+) {
+  const numeric =
+    formatNumber(
+      value
     );
 
   if (
-    Number.isFinite(
-      min
-    ) &&
-    Number.isFinite(
-      max
-    )
+    item.key ===
+    "turbidityMax"
   ) {
-    return `${formatNumber(
-      min
-    )}–${formatNumber(
-      max
-    )}${
-      unit
-        ? ` ${unit}`
-        : ""
-    }`;
+    return `≥ ${numeric} ${item.unit}`;
   }
 
   if (
-    Number.isFinite(
-      max
-    )
+    item.key ===
+    "waterLevelMin"
   ) {
-    return `${value.comparison || "≤"} ${formatNumber(
-      max
-    )}${
-      unit
-        ? ` ${unit}`
-        : ""
-    }`;
+    return `≥ ${numeric} ${item.unit}`;
   }
 
-  return "";
+  if (
+    item.key ===
+    "ammoniaMax"
+  ) {
+    return `≤ ${numeric} ${item.unit}`;
+  }
+
+  return `${numeric} ${item.unit}`;
 }
 
 function formatNumber(
   value
 ) {
-  const number =
+  const numeric =
     Number(
       value
     );
 
   if (
     !Number.isFinite(
-      number
+      numeric
     )
   ) {
     return "—";
@@ -2124,18 +2932,16 @@ function formatNumber(
 
   if (
     Number.isInteger(
-      number
+      numeric
     )
   ) {
     return String(
-      number
+      numeric
     );
   }
 
-  return number
-    .toFixed(
-      2
-    )
+  return numeric
+    .toFixed(2)
     .replace(
       /0+$/,
       ""
@@ -2146,99 +2952,141 @@ function formatNumber(
     );
 }
 
-function formatDataSource(
-  source
+function formatDateTime(
+  value
 ) {
-  if (
-    source ===
-    TABLE_NAME
-  ) {
-    return "Supabase";
+  if (!value) {
+    return "";
   }
 
+  const date =
+    new Date(
+      value
+    );
+
   if (
-    source ===
-    "localStorage"
+    Number.isNaN(
+      date.getTime()
+    )
   ) {
-    return "Browser cache";
+    return "";
   }
 
-  return (
-    source ||
-    "Unknown"
+  return date.toLocaleString(
+    undefined,
+    {
+      dateStyle:
+        "medium",
+
+      timeStyle:
+        "short",
+    }
   );
 }
 
 /*
 |--------------------------------------------------------------------------
-| LIGHTWEIGHT INLINE STYLES
+| INLINE UI STYLES FOR NEW SECTIONS
 |--------------------------------------------------------------------------
 |
-| These are only for the NEW information sections.
-| Existing CrayThrive CSS still controls the main page/cards/buttons.
-|
+| Existing classes still control the main CrayThrive visual theme.
+|--------------------------------------------------------------------------
 */
 
-const referenceGridStyle = {
-  display:
-    "grid",
+const sectionDescriptionStyle = {
+  margin:
+    "5px 0 0",
 
-  gridTemplateColumns:
-    "repeat(auto-fit, minmax(280px, 1fr))",
+  opacity:
+    0.68,
 
-  gap:
-    "16px",
+  fontSize:
+    "0.84rem",
+
+  lineHeight:
+    1.5,
 };
 
-const referenceCardStyle = {
+const activeValueHeaderStyle = {
   display:
     "flex",
 
-  flexDirection:
-    "column",
+  alignItems:
+    "center",
+
+  justifyContent:
+    "space-between",
 
   gap:
     "12px",
+
+  margin:
+    "12px 0 4px",
+
+  padding:
+    "9px 11px",
+
+  borderRadius:
+    "11px",
+
+  background:
+    "rgba(59, 130, 246, 0.06)",
+
+  border:
+    "1px solid rgba(59, 130, 246, 0.11)",
+
+  fontSize:
+    "0.78rem",
 };
 
-const referenceSectionStyle = {
-  display:
-    "grid",
+const referenceBoxStyle = {
+  marginTop:
+    "14px",
 
-  gridTemplateColumns:
-    "repeat(2, minmax(0, 1fr))",
+  padding:
+    "13px",
+
+  borderRadius:
+    "14px",
+
+  border:
+    "1px solid rgba(148, 163, 184, 0.14)",
+};
+
+const researchReferenceStyle = {
+  background:
+    "rgba(34, 197, 94, 0.055)",
+
+  border:
+    "1px solid rgba(34, 197, 94, 0.15)",
+};
+
+const calibrationReferenceStyle = {
+  background:
+    "rgba(245, 158, 11, 0.055)",
+
+  border:
+    "1px solid rgba(245, 158, 11, 0.15)",
+};
+
+const referenceHeaderStyle = {
+  display:
+    "flex",
+
+  justifyContent:
+    "space-between",
+
+  alignItems:
+    "center",
 
   gap:
+    "10px",
+
+  marginBottom:
     "8px",
 };
 
-const referenceValueBoxStyle = {
-  padding:
-    "10px",
-
-  borderRadius:
-    "12px",
-
-  border:
-    "1px solid rgba(148, 163, 184, 0.18)",
-};
-
-const activeToneStyle = {
-  background:
-    "rgba(59, 130, 246, 0.08)",
-};
-
-const researchToneStyle = {
-  background:
-    "rgba(34, 197, 94, 0.08)",
-};
-
-const calibrationToneStyle = {
-  background:
-    "rgba(245, 158, 11, 0.08)",
-};
-
-const referenceValueHeaderStyle = {
+const referenceHeaderLeftStyle = {
   display:
     "flex",
 
@@ -2246,13 +3094,19 @@ const referenceValueHeaderStyle = {
     "center",
 
   gap:
-    "5px",
-
-  marginBottom:
-    "4px",
+    "6px",
 
   fontSize:
-    "0.74rem",
+    "0.72rem",
+
+  fontWeight:
+    700,
+
+  textTransform:
+    "uppercase",
+
+  letterSpacing:
+    "0.035em",
 
   opacity:
     0.72,
@@ -2260,147 +3114,38 @@ const referenceValueHeaderStyle = {
 
 const referenceValueStyle = {
   fontSize:
-    "0.98rem",
+    "0.9rem",
 
-  lineHeight:
-    1.25,
+  textAlign:
+    "right",
 };
 
-const sourceBoxStyle = {
+const recommendedTitleStyle = {
   display:
-    "flex",
+    "block",
 
-  flexDirection:
-    "column",
+  marginBottom:
+    "5px",
 
-  gap:
-    "3px",
-
-  padding:
-    "10px",
-
-  borderRadius:
-    "12px",
-
-  background:
-    "rgba(34, 197, 94, 0.06)",
-
-  border:
-    "1px solid rgba(34, 197, 94, 0.14)",
-};
-
-const sourceTitleStyle = {
   fontSize:
-    "0.86rem",
+    "0.84rem",
 };
 
-const sourceTextStyle = {
+const referenceDescriptionStyle = {
+  margin:
+    0,
+
   fontSize:
     "0.78rem",
 
   lineHeight:
-    1.4,
+    1.5,
 
   opacity:
     0.78,
 };
 
-const sourceMetaStyle = {
-  fontSize:
-    "0.71rem",
-
-  opacity:
-    0.55,
-};
-
-const supportingBoxStyle = {
-  display:
-    "flex",
-
-  flexDirection:
-    "column",
-
-  gap:
-    "3px",
-
-  padding:
-    "10px",
-
-  borderRadius:
-    "12px",
-
-  background:
-    "rgba(59, 130, 246, 0.05)",
-
-  border:
-    "1px solid rgba(59, 130, 246, 0.12)",
-};
-
-const referenceMiniLabelStyle = {
-  fontSize:
-    "0.7rem",
-
-  textTransform:
-    "uppercase",
-
-  letterSpacing:
-    "0.04em",
-
-  opacity:
-    0.58,
-};
-
-const supportingValueStyle = {
-  fontSize:
-    "0.94rem",
-};
-
-const explanationStyle = {
-  display:
-    "flex",
-
-  alignItems:
-    "flex-start",
-
-  gap:
-    "7px",
-
-  paddingTop:
-    "2px",
-
-  opacity:
-    0.86,
-};
-
-const explanationTextStyle = {
-  margin:
-    0,
-
-  fontSize:
-    "0.79rem",
-
-  lineHeight:
-    1.5,
-};
-
-const calibrationStyle = {
-  padding:
-    "9px 10px",
-
-  borderRadius:
-    "10px",
-
-  background:
-    "rgba(245, 158, 11, 0.07)",
-
-  fontSize:
-    "0.76rem",
-
-  lineHeight:
-    1.45,
-};
-
-const warningStyle = {
+const supportingReferenceStyle = {
   display:
     "flex",
 
@@ -2410,54 +3155,135 @@ const warningStyle = {
   gap:
     "6px",
 
+  marginTop:
+    "9px",
+
   padding:
-    "9px 10px",
+    "8px 9px",
 
   borderRadius:
     "10px",
 
   background:
-    "rgba(245, 158, 11, 0.08)",
+    "rgba(148, 163, 184, 0.06)",
 
   fontSize:
-    "0.75rem",
+    "0.74rem",
+
+  lineHeight:
+    1.45,
+
+  opacity:
+    0.78,
+};
+
+const measurementWarningStyle = {
+  display:
+    "flex",
+
+  alignItems:
+    "flex-start",
+
+  gap:
+    "6px",
+
+  marginTop:
+    "8px",
+
+  padding:
+    "8px 9px",
+
+  borderRadius:
+    "10px",
+
+  background:
+    "rgba(245, 158, 11, 0.09)",
+
+  fontSize:
+    "0.73rem",
 
   lineHeight:
     1.45,
 };
 
-const surveyStyle = {
+const sourcesStyle = {
   display:
     "flex",
 
   flexDirection:
     "column",
 
-  gap:
-    "3px",
+  alignItems:
+    "flex-start",
 
-  padding:
+  gap:
+    "4px",
+
+  marginTop:
     "10px",
 
-  borderRadius:
-    "11px",
+  paddingTop:
+    "9px",
 
-  border:
-    "1px dashed rgba(148, 163, 184, 0.28)",
-
-  background:
-    "rgba(148, 163, 184, 0.04)",
+  borderTop:
+    "1px solid rgba(148, 163, 184, 0.13)",
 };
 
-const surveyNoteStyle = {
+const sourceLabelStyle = {
+  fontSize:
+    "0.68rem",
+
+  fontWeight:
+    700,
+
+  textTransform:
+    "uppercase",
+
+  letterSpacing:
+    "0.04em",
+
   opacity:
-    0.63,
-
-  lineHeight:
-    1.4,
+    0.52,
 };
 
-const infoPanelStyle = {
+const sourceLinkStyle = {
+  display:
+    "inline-flex",
+
+  alignItems:
+    "center",
+
+  gap:
+    "5px",
+
+  fontSize:
+    "0.72rem",
+
+  fontWeight:
+    650,
+
+  color:
+    "inherit",
+
+  textDecoration:
+    "underline",
+
+  textUnderlineOffset:
+    "3px",
+
+  opacity:
+    0.76,
+};
+
+const localSourceStyle = {
+  fontSize:
+    "0.72rem",
+
+  opacity:
+    0.74,
+};
+
+const explanationPanelStyle = {
   display:
     "flex",
 
@@ -2468,15 +3294,86 @@ const infoPanelStyle = {
     "12px",
 };
 
-const infoPanelIconStyle = {
+const explanationIconStyle = {
   width:
     "40px",
 
   height:
     "40px",
 
+  display:
+    "grid",
+
+  placeItems:
+    "center",
+
   flexShrink:
     0,
+
+  borderRadius:
+    "12px",
+
+  background:
+    "rgba(59, 130, 246, 0.09)",
+};
+
+const explanationPanelTextStyle = {
+  margin:
+    "5px 0 0",
+
+  fontSize:
+    "0.82rem",
+
+  lineHeight:
+    1.55,
+
+  opacity:
+    0.72,
+};
+
+const aiPanelStyle = {
+  position:
+    "relative",
+
+  overflow:
+    "hidden",
+
+  border:
+    "1px solid rgba(139, 92, 246, 0.18)",
+};
+
+const aiGlowStyle = {
+  position:
+    "absolute",
+
+  top:
+    "-100px",
+
+  right:
+    "-80px",
+
+  width:
+    "240px",
+
+  height:
+    "240px",
+
+  borderRadius:
+    "50%",
+
+  background:
+    "radial-gradient(circle, rgba(139, 92, 246, 0.14), transparent 68%)",
+
+  pointerEvents:
+    "none",
+};
+
+const aiIconStyle = {
+  width:
+    "42px",
+
+  height:
+    "42px",
 
   display:
     "grid",
@@ -2485,35 +3382,196 @@ const infoPanelIconStyle = {
     "center",
 
   borderRadius:
+    "13px",
+
+  background:
+    "rgba(139, 92, 246, 0.11)",
+};
+
+const aiContentStyle = {
+  position:
+    "relative",
+
+  zIndex:
+    1,
+
+  display:
+    "flex",
+
+  flexDirection:
+    "column",
+
+  gap:
+    "14px",
+
+  marginTop:
+    "12px",
+};
+
+const aiParameterHeaderStyle = {
+  display:
+    "flex",
+
+  alignItems:
+    "center",
+
+  justifyContent:
+    "space-between",
+
+  gap:
+    "12px",
+};
+
+const aiMiniLabelStyle = {
+  display:
+    "block",
+
+  marginBottom:
+    "2px",
+
+  fontSize:
+    "0.68rem",
+
+  textTransform:
+    "uppercase",
+
+  letterSpacing:
+    "0.05em",
+
+  opacity:
+    0.54,
+};
+
+const aiParameterTitleStyle = {
+  fontSize:
+    "1rem",
+};
+
+const aiDateStyle = {
+  display:
+    "inline-flex",
+
+  alignItems:
+    "center",
+
+  gap:
+    "5px",
+
+  fontSize:
+    "0.73rem",
+
+  opacity:
+    0.62,
+};
+
+const aiComparisonStyle = {
+  display:
+    "grid",
+
+  gridTemplateColumns:
+    "minmax(0, 1fr) auto minmax(0, 1fr)",
+
+  alignItems:
+    "center",
+
+  gap:
+    "10px",
+};
+
+const aiValueCardStyle = {
+  display:
+    "flex",
+
+  flexDirection:
+    "column",
+
+  gap:
+    "5px",
+
+  padding:
+    "13px",
+
+  borderRadius:
+    "13px",
+
+  background:
+    "rgba(148, 163, 184, 0.055)",
+
+  border:
+    "1px solid rgba(148, 163, 184, 0.14)",
+
+  fontSize:
+    "0.76rem",
+};
+
+const aiSuggestedValueStyle = {
+  background:
+    "rgba(139, 92, 246, 0.07)",
+
+  border:
+    "1px solid rgba(139, 92, 246, 0.18)",
+};
+
+const aiArrowStyle = {
+  fontSize:
+    "1.25rem",
+
+  opacity:
+    0.45,
+};
+
+const aiReasonStyle = {
+  display:
+    "flex",
+
+  alignItems:
+    "flex-start",
+
+  gap:
+    "9px",
+
+  padding:
+    "12px",
+
+  borderRadius:
     "12px",
 
   background:
-    "rgba(59, 130, 246, 0.10)",
+    "rgba(59, 130, 246, 0.055)",
 };
 
-const infoPanelTextStyle = {
-  margin:
-    "5px 0 0",
+const aiHumanControlStyle = {
+  display:
+    "flex",
+
+  alignItems:
+    "flex-start",
+
+  gap:
+    "7px",
+
+  fontSize:
+    "0.76rem",
 
   lineHeight:
-    1.55,
+    1.45,
 
   opacity:
     0.75,
 };
 
-const sectionDescriptionStyle = {
-  margin:
-    "5px 0 0",
+const aiActionsStyle = {
+  display:
+    "flex",
 
-  fontSize:
-    "0.84rem",
+  alignItems:
+    "center",
 
-  lineHeight:
-    1.5,
+  flexWrap:
+    "wrap",
 
-  opacity:
-    0.68,
+  gap:
+    "10px",
 };
 
 const validationNoticeStyle = {
@@ -2536,7 +3594,7 @@ const validationNoticeStyle = {
     "rgba(245, 158, 11, 0.07)",
 
   border:
-    "1px solid rgba(245, 158, 11, 0.15)",
+    "1px solid rgba(245, 158, 11, 0.14)",
 };
 
 const validationNoticeTextStyle = {
@@ -2550,50 +3608,5 @@ const validationNoticeTextStyle = {
     1.5,
 
   opacity:
-    0.75,
-};
-
-const finalNoteStyle = {
-  display:
-    "flex",
-
-  alignItems:
-    "flex-start",
-
-  gap:
-    "10px",
-};
-
-const finalNoteIconStyle = {
-  width:
-    "38px",
-
-  height:
-    "38px",
-
-  flexShrink:
-    0,
-
-  display:
-    "grid",
-
-  placeItems:
-    "center",
-
-  borderRadius:
-    "12px",
-
-  background:
-    "rgba(34, 197, 94, 0.09)",
-};
-
-const finalNoteTextStyle = {
-  margin:
-    "4px 0 0",
-
-  lineHeight:
-    1.5,
-
-  opacity:
-    0.72,
+    0.74,
 };

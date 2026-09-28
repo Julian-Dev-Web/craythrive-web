@@ -1,5 +1,9 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import {
+  Link,
+  useNavigate,
+} from "react-router-dom";
+
 import {
   AlertTriangle,
   ArrowLeft,
@@ -12,8 +16,13 @@ import {
   Waves,
 } from "lucide-react";
 
-import { APP_INFO } from "../../constants/theme";
-import { isSupabaseConfigured } from "../../lib/supabase";
+import {
+  APP_INFO,
+} from "../../constants/theme";
+
+import {
+  isSupabaseConfigured,
+} from "../../lib/supabase";
 
 import {
   signInWithDashboardAccess,
@@ -21,19 +30,19 @@ import {
 
 /*
 |--------------------------------------------------------------------------
-| ANDROID APK
+| APK DOWNLOAD
 |--------------------------------------------------------------------------
 |
-| GitHub release asset must always be named:
+| Permanent latest-release URL.
+|
+| Every GitHub release must contain a file named exactly:
 |
 | craythrive.apk
-|
-| This URL automatically follows the newest published GitHub release.
 |
 */
 
 const APK_DOWNLOAD_URL =
-  "https://github.com/Julian-Dev-Web/craythrive-web/releases/latest/download/craythrive.apk";
+  "https://github.com/Julian-Dev-Web/craythrive-releases/releases/latest/download/craythrive.apk";
 
 export default function AdminLogin() {
   const navigate =
@@ -81,9 +90,7 @@ export default function AdminLogin() {
     ) => {
       event.preventDefault();
 
-      setErrorMessage(
-        ""
-      );
+      setErrorMessage("");
 
       if (
         !isSupabaseConfigured
@@ -177,11 +184,7 @@ export default function AdminLogin() {
         to="/"
         className="admin-auth-back"
       >
-        <ArrowLeft
-          size={
-            17
-          }
-        />
+        <ArrowLeft size={17} />
 
         <span>
           Back to Home
@@ -189,12 +192,12 @@ export default function AdminLogin() {
       </Link>
 
       {/* ================================================================
-          MAIN CARD
+          CARD
       ================================================================= */}
 
       <section className="admin-auth-card">
         {/* ==============================================================
-            LEFT SIDE
+            LEFT
         =============================================================== */}
 
         <div className="admin-auth-showcase">
@@ -223,29 +226,20 @@ export default function AdminLogin() {
             </h1>
 
             <p className="admin-showcase-description">
-              Monitor your crayfish tanks, review water conditions,
-              manage thresholds, and stay connected to your
-              aquaculture system from one intelligent dashboard.
+              Monitor your crayfish tanks, review water
+              conditions, manage thresholds, and stay
+              connected to your aquaculture system from
+              one intelligent dashboard.
             </p>
 
             <div className="admin-showcase-features">
               <div className="admin-feature-pill">
-                <ShieldCheck
-                  size={
-                    17
-                  }
-                />
-
+                <ShieldCheck size={17} />
                 Secure access
               </div>
 
               <div className="admin-feature-pill">
-                <Waves
-                  size={
-                    17
-                  }
-                />
-
+                <Waves size={17} />
                 Live monitoring
               </div>
             </div>
@@ -258,14 +252,13 @@ export default function AdminLogin() {
 
             <div className="admin-showcase-status">
               <span />
-
               System ready
             </div>
           </div>
         </div>
 
         {/* ==============================================================
-            RIGHT SIDE
+            RIGHT
         =============================================================== */}
 
         <div className="admin-auth-form-panel">
@@ -282,9 +275,7 @@ export default function AdminLogin() {
               />
 
               <strong>
-                {
-                  APP_INFO.name
-                }
+                {APP_INFO.name}
               </strong>
             </div>
 
@@ -309,16 +300,10 @@ export default function AdminLogin() {
 
             {errorMessage && (
               <div className="admin-auth-alert">
-                <AlertTriangle
-                  size={
-                    18
-                  }
-                />
+                <AlertTriangle size={18} />
 
                 <span>
-                  {
-                    errorMessage
-                  }
+                  {errorMessage}
                 </span>
               </div>
             )}
@@ -327,9 +312,7 @@ export default function AdminLogin() {
 
             <form
               className="admin-auth-form"
-              onSubmit={
-                handleLogin
-              }
+              onSubmit={handleLogin}
             >
               {/* EMAIL */}
 
@@ -341,21 +324,14 @@ export default function AdminLogin() {
                 <input
                   type="email"
                   placeholder="name@example.com"
-                  value={
-                    email
-                  }
-                  onChange={(
-                    event
-                  ) =>
+                  value={email}
+                  onChange={(event) =>
                     setEmail(
-                      event.target
-                        .value
+                      event.target.value
                     )
                   }
                   autoComplete="email"
-                  disabled={
-                    isSigningIn
-                  }
+                  disabled={isSigningIn}
                 />
               </label>
 
@@ -374,21 +350,14 @@ export default function AdminLogin() {
                         : "password"
                     }
                     placeholder="Enter your password"
-                    value={
-                      password
-                    }
-                    onChange={(
-                      event
-                    ) =>
+                    value={password}
+                    onChange={(event) =>
                       setPassword(
-                        event.target
-                          .value
+                        event.target.value
                       )
                     }
                     autoComplete="current-password"
-                    disabled={
-                      isSigningIn
-                    }
+                    disabled={isSigningIn}
                   />
 
                   <button
@@ -396,9 +365,7 @@ export default function AdminLogin() {
                     className="admin-password-toggle"
                     onClick={() =>
                       setShowPassword(
-                        (
-                          current
-                        ) =>
+                        (current) =>
                           !current
                       )
                     }
@@ -409,23 +376,15 @@ export default function AdminLogin() {
                     }
                   >
                     {showPassword ? (
-                      <EyeOff
-                        size={
-                          18
-                        }
-                      />
+                      <EyeOff size={18} />
                     ) : (
-                      <Eye
-                        size={
-                          18
-                        }
-                      />
+                      <Eye size={18} />
                     )}
                   </button>
                 </div>
               </label>
 
-              {/* FORGOT PASSWORD */}
+              {/* FORGOT */}
 
               <div className="admin-forgot-row">
                 <Link to="/forgot-password">
@@ -433,14 +392,12 @@ export default function AdminLogin() {
                 </Link>
               </div>
 
-              {/* LOGIN BUTTON */}
+              {/* LOGIN */}
 
               <button
                 type="submit"
                 className="admin-auth-submit"
-                disabled={
-                  isSigningIn
-                }
+                disabled={isSigningIn}
               >
                 {isSigningIn ? (
                   <>
@@ -450,9 +407,7 @@ export default function AdminLogin() {
 
                     <LogIn
                       className="admin-auth-spin"
-                      size={
-                        18
-                      }
+                      size={18}
                     />
                   </>
                 ) : (
@@ -461,19 +416,13 @@ export default function AdminLogin() {
                       Login
                     </span>
 
-                    <ArrowRight
-                      size={
-                        18
-                      }
-                    />
+                    <ArrowRight size={18} />
                   </>
                 )}
               </button>
             </form>
 
-            {/* ==========================================================
-                DIVIDER
-            =========================================================== */}
+            {/* DIVIDER */}
 
             <div className="admin-auth-divider">
               <span />
@@ -485,23 +434,15 @@ export default function AdminLogin() {
               <span />
             </div>
 
-            {/* ==========================================================
-                DOWNLOAD MOBILE APP
-            =========================================================== */}
+            {/* APK DOWNLOAD */}
 
             <a
-              href={
-                APK_DOWNLOAD_URL
-              }
+              href={APK_DOWNLOAD_URL}
               className="admin-auth-download"
               aria-label="Download CrayThrive Android APK"
             >
               <div className="admin-download-icon">
-                <Smartphone
-                  size={
-                    19
-                  }
-                />
+                <Smartphone size={19} />
               </div>
 
               <div>
@@ -510,32 +451,25 @@ export default function AdminLogin() {
                 </span>
 
                 <small>
-                  Create and manage your registered account
+                  Download the latest Android APK
                 </small>
               </div>
 
               <ArrowRight
                 className="admin-download-arrow"
-                size={
-                  18
-                }
+                size={18}
               />
             </a>
 
-            {/* ==========================================================
-                SECURITY NOTE
-            =========================================================== */}
+            {/* SECURITY */}
 
             <div className="admin-auth-security-note">
-              <ShieldCheck
-                size={
-                  16
-                }
-              />
+              <ShieldCheck size={16} />
 
               <p>
-                Account access is securely verified using your
-                Supabase profile and assigned dashboard role.
+                Account access is securely verified using
+                your Supabase profile and assigned
+                dashboard role.
               </p>
             </div>
           </div>
