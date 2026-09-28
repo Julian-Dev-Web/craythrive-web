@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
 import {
   Activity,
   AlertTriangle,
+  Check,
   CheckCircle2,
+  ChevronDown,
   Database,
   Droplets,
   Filter,
@@ -30,10 +33,6 @@ import {
   loadActiveThresholds,
 } from "../../utils/thresholdEvaluation";
 
-/* =========================================================
-   TABLES
-========================================================= */
-
 const readingTables = [
   "sensor_readings",
   "tank_readings",
@@ -55,10 +54,6 @@ const userFilterColumns = [
   "created_by",
   "farmer_id",
 ];
-
-/* =========================================================
-   FILTER OPTIONS
-========================================================= */
 
 const sensorOptions = [
   {
@@ -86,10 +81,6 @@ const sensorOptions = [
     label: "Needs Attention",
   },
 ];
-
-/* =========================================================
-   GENERAL HELPERS
-========================================================= */
 
 function clean(value) {
   return String(value ?? "").trim();
@@ -141,18 +132,10 @@ function formatDate(value) {
   });
 }
 
-/* =========================================================
-   STATUS
-========================================================= */
-
 function getStatusSeverity(statuses) {
   const joined = statuses
     .map(normalizeStatusText)
     .join(" ");
-
-  /*
-    CRITICAL
-  */
 
   if (
     joined.includes("critical") ||
@@ -162,10 +145,6 @@ function getStatusSeverity(statuses) {
   ) {
     return "critical";
   }
-
-  /*
-    WARNING
-  */
 
   if (
     joined.includes("warning") ||
@@ -178,10 +157,6 @@ function getStatusSeverity(statuses) {
   ) {
     return "warning";
   }
-
-  /*
-    SAFE / NORMAL
-  */
 
   return "normal";
 }
@@ -225,10 +200,6 @@ function getSeverityRank(severity) {
   return 4;
 }
 
-/* =========================================================
-   SENSOR FOCUS
-========================================================= */
-
 function getSensorFocus(
   item,
   sensorFilter
@@ -239,19 +210,21 @@ function getSensorFocus(
   if (sensorFilter === "temperature") {
     return {
       label: "Temperature",
+
       value:
         normalized.temperatureLabel,
+
       status:
         normalized.temperatureStatus,
+
       severity:
         getStatusSeverity([
           normalized.temperatureStatus,
         ]),
+
       hasValue:
-        normalized.temperatureValue !==
-          null &&
-        normalized.temperatureValue !==
-          undefined &&
+        normalized.temperatureValue !== null &&
+        normalized.temperatureValue !== undefined &&
         normalized.temperatureValue !== "",
     };
   }
@@ -259,15 +232,19 @@ function getSensorFocus(
   if (sensorFilter === "ph") {
     return {
       label: "pH Level",
+
       value:
         normalized.phNumberLabel ||
         normalized.phStatus,
+
       status:
         normalized.phStatus,
+
       severity:
         getStatusSeverity([
           normalized.phStatus,
         ]),
+
       hasValue:
         normalized.phStatus !==
         "No Reading",
@@ -277,14 +254,18 @@ function getSensorFocus(
   if (sensorFilter === "turbidity") {
     return {
       label: "Water Clarity",
+
       value:
         normalized.turbidityStatus,
+
       status:
         normalized.turbidityStatus,
+
       severity:
         getStatusSeverity([
           normalized.turbidityStatus,
         ]),
+
       hasValue:
         normalized.turbidityStatus !==
         "No Reading",
@@ -294,19 +275,21 @@ function getSensorFocus(
   if (sensorFilter === "water_depth") {
     return {
       label: "Water Level",
+
       value:
         normalized.waterLabel,
+
       status:
         normalized.waterStatus,
+
       severity:
         getStatusSeverity([
           normalized.waterStatus,
         ]),
+
       hasValue:
-        normalized.waterValue !==
-          null &&
-        normalized.waterValue !==
-          undefined &&
+        normalized.waterValue !== null &&
+        normalized.waterValue !== undefined &&
         normalized.waterValue !== "",
     };
   }
@@ -319,12 +302,6 @@ function getSensorFocus(
     hasValue: true,
   };
 }
-
-/* =========================================================
-   AVERAGE HELPER
-   Used only for analytics / summary if needed.
-   NOT used for Latest Condition water level.
-========================================================= */
 
 function averageFromNormalized(
   items,
@@ -357,10 +334,6 @@ function averageFromNormalized(
     values.length
   ).toFixed(2);
 }
-
-/* =========================================================
-   TANK HELPERS
-========================================================= */
 
 function getTankIdValues(tank) {
   return [
@@ -439,13 +412,6 @@ function getTankDisplayName(
   return `Tank ${index + 1}`;
 }
 
-/* =========================================================
-   UNIQUE ROWS
-
-   IMPORTANT:
-   tank_id IS NOT a unique reading ID.
-========================================================= */
-
 function uniqueRows(rows) {
   const map =
     new Map();
@@ -486,10 +452,6 @@ function uniqueRows(rows) {
     map.values()
   );
 }
-
-/* =========================================================
-   CURRENT USER
-========================================================= */
 
 async function getCurrentUserWithRole() {
   const { data } =
@@ -573,10 +535,6 @@ async function getCurrentUserWithRole() {
   };
 }
 
-/* =========================================================
-   FETCH ADMIN DATA
-========================================================= */
-
 async function fetchAdminRows(
   tableNames,
   limit = 500
@@ -587,7 +545,9 @@ async function fetchAdminRows(
   ) {
     const ordered =
       await supabase
-        .from(tableName)
+        .from(
+          tableName
+        )
         .select("*")
         .order(
           "created_at",
@@ -616,7 +576,9 @@ async function fetchAdminRows(
 
     const plain =
       await supabase
-        .from(tableName)
+        .from(
+          tableName
+        )
         .select("*")
         .limit(limit);
 
@@ -645,10 +607,6 @@ async function fetchAdminRows(
   };
 }
 
-/* =========================================================
-   FETCH USER DATA
-========================================================= */
-
 async function fetchUserRows(
   tableNames,
   userId,
@@ -669,7 +627,9 @@ async function fetchUserRows(
     ) {
       const ordered =
         await supabase
-          .from(tableName)
+          .from(
+            tableName
+          )
           .select("*")
           .eq(
             column,
@@ -701,7 +661,9 @@ async function fetchUserRows(
 
       const plain =
         await supabase
-          .from(tableName)
+          .from(
+            tableName
+          )
           .select("*")
           .eq(
             column,
@@ -743,10 +705,6 @@ async function fetchUserRows(
       tableNames[0],
   };
 }
-
-/* =========================================================
-   SMALL COMPONENTS
-========================================================= */
 
 function SummaryCard({
   icon: Icon,
@@ -795,7 +753,6 @@ function MetricCard({
 
   return (
     <div className="modern-reading-metric">
-
       <span className="modern-reading-metric-icon">
         <Icon size={20} />
       </span>
@@ -823,89 +780,289 @@ function MetricCard({
   );
 }
 
-/* =========================================================
-   PAGE
-========================================================= */
+function ReadingFilterDropdown({
+  icon: Icon,
+  value,
+  options,
+  onChange,
+  ariaLabel,
+}) {
+  const [
+    isOpen,
+    setIsOpen,
+  ] =
+    useState(false);
+
+  const dropdownRef =
+    useRef(null);
+
+  const selectedOption =
+    options.find(
+      (option) =>
+        option.value ===
+        value
+    ) ||
+    options[0];
+
+  useEffect(() => {
+    function handleOutsideClick(
+      event
+    ) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(
+          event.target
+        )
+      ) {
+        setIsOpen(false);
+      }
+    }
+
+    function handleEscape(
+      event
+    ) {
+      if (
+        event.key === "Escape"
+      ) {
+        setIsOpen(false);
+      }
+    }
+
+    document.addEventListener(
+      "mousedown",
+      handleOutsideClick
+    );
+
+    document.addEventListener(
+      "keydown",
+      handleEscape
+    );
+
+    return () => {
+      document.removeEventListener(
+        "mousedown",
+        handleOutsideClick
+      );
+
+      document.removeEventListener(
+        "keydown",
+        handleEscape
+      );
+    };
+  }, []);
+
+  function handleSelect(
+    option
+  ) {
+    onChange(
+      option.value
+    );
+
+    setIsOpen(false);
+  }
+
+  return (
+    <div
+      ref={dropdownRef}
+      style={
+        readingDropdownWrapStyle
+      }
+    >
+      <button
+        type="button"
+        aria-label={
+          ariaLabel
+        }
+        aria-haspopup="listbox"
+        aria-expanded={
+          isOpen
+        }
+        onClick={() =>
+          setIsOpen(
+            (current) =>
+              !current
+          )
+        }
+        style={{
+          ...readingDropdownTriggerStyle,
+
+          ...(isOpen
+            ? readingDropdownTriggerOpenStyle
+            : {}),
+        }}
+      >
+        <Icon
+          size={17}
+          style={
+            readingDropdownIconStyle
+          }
+        />
+
+        <span
+          style={
+            readingDropdownSelectedTextStyle
+          }
+        >
+          {
+            selectedOption?.label
+          }
+        </span>
+
+        <ChevronDown
+          size={16}
+          style={{
+            ...readingDropdownChevronStyle,
+
+            transform:
+              isOpen
+                ? "rotate(180deg)"
+                : "rotate(0deg)",
+          }}
+        />
+      </button>
+
+      {isOpen && (
+        <div
+          role="listbox"
+          style={
+            readingDropdownMenuStyle
+          }
+        >
+          {options.map(
+            (option) => {
+              const isSelected =
+                option.value ===
+                value;
+
+              return (
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={
+                    isSelected
+                  }
+                  key={
+                    option.value
+                  }
+                  onClick={() =>
+                    handleSelect(
+                      option
+                    )
+                  }
+                  style={{
+                    ...readingDropdownItemStyle,
+
+                    ...(isSelected
+                      ? readingDropdownItemActiveStyle
+                      : {}),
+                  }}
+                >
+                  <span>
+                    {
+                      option.label
+                    }
+                  </span>
+
+                  {isSelected && (
+                    <Check
+                      size={15}
+                      style={{
+                        flexShrink:
+                          0,
+                      }}
+                    />
+                  )}
+                </button>
+              );
+            }
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function SensorReadingsPage() {
-
   const [
     readings,
     setReadings,
-  ] = useState([]);
+  ] =
+    useState([]);
 
   const [
     tanks,
     setTanks,
-  ] = useState([]);
+  ] =
+    useState([]);
 
   const [
     searchTerm,
     setSearchTerm,
-  ] = useState("");
+  ] =
+    useState("");
 
   const [
     statusFilter,
     setStatusFilter,
-  ] = useState("all");
+  ] =
+    useState("all");
 
   const [
     sensorFilter,
     setSensorFilter,
-  ] = useState("all");
+  ] =
+    useState("all");
 
   const [
     tankFilter,
     setTankFilter,
-  ] = useState("all");
+  ] =
+    useState("all");
 
   const [
     readingsPage,
     setReadingsPage,
-  ] = useState(1);
+  ] =
+    useState(1);
 
   const [
     isLoading,
     setIsLoading,
-  ] = useState(true);
+  ] =
+    useState(true);
 
   const [
     lastUpdated,
     setLastUpdated,
-  ] = useState(null);
+  ] =
+    useState(null);
 
   const [
     thresholds,
     setThresholds,
-  ] = useState(null);
-
-  /*
-    Load the user's saved safe-range thresholds once. These come from the
-    same source Threshold Settings writes to, so "safe" here always matches
-    what the user configured there.
-  */
+  ] =
+    useState(null);
 
   useEffect(() => {
     let isMounted = true;
 
-    loadActiveThresholds().then((loaded) => {
-      if (isMounted) {
-        setThresholds(loaded);
+    loadActiveThresholds().then(
+      (loaded) => {
+        if (isMounted) {
+          setThresholds(
+            loaded
+          );
+        }
       }
-    });
+    );
 
     return () => {
       isMounted = false;
     };
   }, []);
 
-  /* =======================================================
-     LOAD
-  ======================================================= */
-
   const loadReadings =
     async () => {
-
       if (
         !isSupabaseConfigured ||
         !supabase
@@ -975,10 +1132,6 @@ export default function SensorReadingsPage() {
       }
     };
 
-  /*
-    Initial load + refresh every 10 seconds.
-  */
-
   useEffect(() => {
     loadReadings();
 
@@ -1006,23 +1159,14 @@ export default function SensorReadingsPage() {
     tankFilter,
   ]);
 
-  /* =======================================================
-     ENRICH READINGS
-
-     IMPORTANT:
-     Sort newest -> oldest here.
-  ======================================================= */
-
   const enrichedReadings =
     useMemo(() => {
-
       return readings
         .map(
           (
             reading,
             index
           ) => {
-
             const normalized =
               normalizeSensorReading(
                 reading
@@ -1084,25 +1228,18 @@ export default function SensorReadingsPage() {
               a.date || 0
             )
         );
-
     }, [
       readings,
       tanks,
     ]);
 
-  /* =======================================================
-     TANK FILTER OPTIONS
-  ======================================================= */
-
   const tankFilterOptions =
     useMemo(() => {
-
       const optionMap =
         new Map();
 
       enrichedReadings.forEach(
         (item) => {
-
           if (
             !optionMap.has(
               item.tankKey
@@ -1124,18 +1261,55 @@ export default function SensorReadingsPage() {
           label,
         })
       );
-
     }, [
       enrichedReadings,
     ]);
 
-  /* =======================================================
-     SELECTED TANK READINGS
-  ======================================================= */
+  const tankDropdownOptions =
+    useMemo(
+      () => [
+        {
+          value: "all",
+          label: "All Tanks",
+        },
+
+        ...tankFilterOptions,
+      ],
+      [
+        tankFilterOptions,
+      ]
+    );
+
+  const conditionDropdownOptions =
+    useMemo(
+      () => [
+        {
+          value: "all",
+          label:
+            "All Conditions",
+        },
+
+        {
+          value: "normal",
+          label: "Good",
+        },
+
+        {
+          value: "warning",
+          label:
+            "Needs Checking",
+        },
+
+        {
+          value: "critical",
+          label: "Urgent",
+        },
+      ],
+      []
+    );
 
   const tankScopedReadings =
     useMemo(() => {
-
       if (
         tankFilter ===
         "all"
@@ -1148,23 +1322,16 @@ export default function SensorReadingsPage() {
           item.tankKey ===
           tankFilter
       );
-
     }, [
       enrichedReadings,
       tankFilter,
     ]);
 
-  /* =======================================================
-     FILTERED TABLE READINGS
-  ======================================================= */
-
   const filteredReadings =
     useMemo(() => {
-
       const filtered =
         tankScopedReadings.filter(
           (item) => {
-
             const search =
               searchTerm
                 .trim()
@@ -1228,7 +1395,6 @@ export default function SensorReadingsPage() {
             const matchesSensor =
               sensorFilter ===
                 "all" ||
-
               (
                 sensorFilter ===
                   "issues" &&
@@ -1239,7 +1405,6 @@ export default function SensorReadingsPage() {
                   item.status
                 )
               ) ||
-
               focus.hasValue;
 
             return (
@@ -1250,14 +1415,8 @@ export default function SensorReadingsPage() {
           }
         );
 
-      /*
-        Problems first in history,
-        then newest first.
-      */
-
       return filtered.sort(
         (a, b) => {
-
           const focusA =
             getSensorFocus(
               a,
@@ -1311,17 +1470,12 @@ export default function SensorReadingsPage() {
           );
         }
       );
-
     }, [
       tankScopedReadings,
       searchTerm,
       statusFilter,
       sensorFilter,
     ]);
-
-  /* =======================================================
-     PAGINATION
-  ======================================================= */
 
   const totalReadingPages =
     Math.max(
@@ -1344,10 +1498,10 @@ export default function SensorReadingsPage() {
         currentReadingPage -
         1
       ) *
-      READINGS_PER_PAGE,
+        READINGS_PER_PAGE,
 
       currentReadingPage *
-      READINGS_PER_PAGE
+        READINGS_PER_PAGE
     );
 
   const showingStart =
@@ -1365,16 +1519,12 @@ export default function SensorReadingsPage() {
     Math.min(
       currentReadingPage *
         READINGS_PER_PAGE,
+
       filteredReadings.length
     );
 
-  /* =======================================================
-     SUMMARY FOR SELECTED TANK
-  ======================================================= */
-
   const summary =
     useMemo(() => {
-
       const normal =
         tankScopedReadings.filter(
           (item) =>
@@ -1416,31 +1566,13 @@ export default function SensorReadingsPage() {
             "waterValue"
           ),
       };
-
     }, [
       tankScopedReadings,
     ]);
 
-  /* =======================================================
-     TRUE LATEST READING
-
-     Because tankScopedReadings is already sorted newest first,
-     index 0 is the latest row.
-  ======================================================= */
-
   const latestReading =
     tankScopedReadings[0] ||
     null;
-
-  /*
-    WATER:
-    Priority:
-    1. water_depth_cm
-    2. water_level
-    3. normalized fallback
-
-    NEVER use water_distance_cm for displayed tank depth.
-  */
 
   const latestWaterDepth =
     latestReading
@@ -1502,18 +1634,30 @@ export default function SensorReadingsPage() {
 
   const latestSafety =
     useMemo(() => {
-      if (!latestReading || !thresholds) {
+      if (
+        !latestReading ||
+        !thresholds
+      ) {
         return null;
       }
 
       return evaluateReadingSafety(
         {
-          temperature: latestTemperature,
-          ph: latestPH,
+          temperature:
+            latestTemperature,
+
+          ph:
+            latestPH,
+
           turbidityStatus:
-            latestReading?.normalized?.turbidityStatus,
-          waterDepth: latestWaterDepth,
+            latestReading
+              ?.normalized
+              ?.turbidityStatus,
+
+          waterDepth:
+            latestWaterDepth,
         },
+
         thresholds
       );
     }, [
@@ -1548,14 +1692,9 @@ export default function SensorReadingsPage() {
     )?.label ||
     "All Water Data";
 
-  /* =======================================================
-     LOADING
-  ======================================================= */
-
   if (isLoading) {
     return (
       <section className="modern-reading-loading">
-
         <Loader2
           className="spin-icon"
           size={34}
@@ -1566,48 +1705,30 @@ export default function SensorReadingsPage() {
         </h3>
 
         <p>
-          Getting the latest
-          tank information.
+          Getting the latest tank information.
         </p>
-
       </section>
     );
   }
 
-  /* =======================================================
-     UI
-  ======================================================= */
-
   return (
     <div className="modern-readings-page">
-
-      {/* ===============================================
-          HERO
-      ================================================ */}
-
       <section className="modern-readings-hero">
-
         <div>
-
           <p className="dashboard-eyebrow">
             Water Readings
           </p>
 
           <h2>
-            Check your water condition
-            without the technical clutter.
+            Check your water condition without the technical clutter.
           </h2>
 
           <p>
-            Review temperature, pH,
-            water clarity, and water
-            level for your tanks.
-            Problems are placed first so
-            they are easier to notice.
+            Review temperature, pH, water clarity, and water level for your tanks.
+            Problems are placed first so they are easier to notice.
           </p>
 
           <div className="modern-readings-actions">
-
             <button
               type="button"
               className="dashboard-primary-button"
@@ -1629,12 +1750,10 @@ export default function SensorReadingsPage() {
                   )}`
                 : "Waiting for latest data"}
             </span>
-
           </div>
         </div>
 
         <div className="modern-readings-live-card">
-
           <Activity
             size={34}
           />
@@ -1646,25 +1765,26 @@ export default function SensorReadingsPage() {
           <span>
             Water readings
           </span>
-
         </div>
       </section>
-
-      {/* ===============================================
-          SAFE RANGE STATUS
-      ================================================ */}
 
       {latestSafety && (
         <section
           className={`modern-safety-banner ${
-            latestSafety.isSafe ? "is-safe" : "is-unsafe"
+            latestSafety.isSafe
+              ? "is-safe"
+              : "is-unsafe"
           }`}
         >
           <div className="modern-safety-banner-icon">
             {latestSafety.isSafe ? (
-              <CheckCircle2 size={26} />
+              <CheckCircle2
+                size={26}
+              />
             ) : (
-              <AlertTriangle size={26} />
+              <AlertTriangle
+                size={26}
+              />
             )}
           </div>
 
@@ -1673,7 +1793,8 @@ export default function SensorReadingsPage() {
               {latestSafety.isSafe
                 ? "Latest reading is within the safe range"
                 : `Latest reading is outside the safe range (${latestSafety.issues.length} ${
-                    latestSafety.issues.length === 1
+                    latestSafety.issues.length ===
+                    1
                       ? "issue"
                       : "issues"
                   })`}
@@ -1682,31 +1803,39 @@ export default function SensorReadingsPage() {
             <span>
               Checked against your saved Threshold Settings
               {lastUpdated
-                ? ` · as of ${formatReadingTime(lastUpdated)}`
+                ? ` · as of ${formatReadingTime(
+                    lastUpdated
+                  )}`
                 : ""}
             </span>
 
             {!latestSafety.isSafe && (
               <ul className="modern-safety-issue-list">
-                {latestSafety.issues.map((issue) => (
-                  <li key={issue.key}>
-                    <b>{issue.label}:</b> {issue.message}
-                  </li>
-                ))}
+                {latestSafety.issues.map(
+                  (issue) => (
+                    <li
+                      key={
+                        issue.key
+                      }
+                    >
+                      <b>
+                        {issue.label}:
+                      </b>{" "}
+                      {issue.message}
+                    </li>
+                  )
+                )}
               </ul>
             )}
           </div>
         </section>
       )}
 
-      {/* ===============================================
-          SUMMARY
-      ================================================ */}
-
       <section className="modern-reading-summary-grid">
-
         <SummaryCard
-          icon={CheckCircle2}
+          icon={
+            CheckCircle2
+          }
           label="Good"
           value={
             summary.normal
@@ -1716,7 +1845,9 @@ export default function SensorReadingsPage() {
         />
 
         <SummaryCard
-          icon={AlertTriangle}
+          icon={
+            AlertTriangle
+          }
           label="Needs Checking"
           value={
             summary.warning
@@ -1726,7 +1857,9 @@ export default function SensorReadingsPage() {
         />
 
         <SummaryCard
-          icon={AlertTriangle}
+          icon={
+            AlertTriangle
+          }
           label="Urgent"
           value={
             summary.critical
@@ -1736,26 +1869,20 @@ export default function SensorReadingsPage() {
         />
 
         <SummaryCard
-          icon={Database}
+          icon={
+            Database
+          }
           label="Total Records"
           value={
             summary.total
           }
           helper="Saved water readings"
         />
-
       </section>
 
-      {/* ===============================================
-          LATEST CONDITION
-      ================================================ */}
-
       <section className="modern-readings-grid">
-
         <article className="modern-readings-panel">
-
           <div className="modern-panel-heading">
-
             <div>
               <p className="dashboard-eyebrow">
                 Water Overview
@@ -1770,13 +1897,9 @@ export default function SensorReadingsPage() {
             <Gauge
               size={22}
             />
-
           </div>
 
           <div className="modern-reading-metric-grid">
-
-            {/* TEMPERATURE */}
-
             <MetricCard
               icon={
                 Thermometer
@@ -1797,8 +1920,6 @@ export default function SensorReadingsPage() {
                 "No Reading"
               }
             />
-
-            {/* PH */}
 
             <MetricCard
               icon={
@@ -1829,8 +1950,6 @@ export default function SensorReadingsPage() {
               }
             />
 
-            {/* TURBIDITY */}
-
             <MetricCard
               icon={
                 Waves
@@ -1849,8 +1968,6 @@ export default function SensorReadingsPage() {
                 "No Reading"
               }
             />
-
-            {/* WATER LEVEL */}
 
             <MetricCard
               icon={
@@ -1872,18 +1989,11 @@ export default function SensorReadingsPage() {
                 "No Reading"
               }
             />
-
           </div>
         </article>
 
-        {/* ===============================================
-            LATEST UPDATE
-        ================================================ */}
-
         <article className="modern-readings-panel">
-
           <div className="modern-panel-heading">
-
             <div>
               <p className="dashboard-eyebrow">
                 Latest Update
@@ -1897,22 +2007,17 @@ export default function SensorReadingsPage() {
             <Activity
               size={22}
             />
-
           </div>
 
           {latestReading ? (
             <div className="modern-latest-reading">
-
               <span className="modern-latest-reading-icon">
-
                 <Droplets
                   size={22}
                 />
-
               </span>
 
               <div>
-
                 <strong>
                   {
                     latestReading.tankName
@@ -1924,7 +2029,6 @@ export default function SensorReadingsPage() {
                     latestReading.date
                   )}
                 </span>
-
               </div>
 
               <b
@@ -1934,11 +2038,9 @@ export default function SensorReadingsPage() {
                   latestReading.status
                 )}
               </b>
-
             </div>
           ) : (
             <div className="modern-reading-empty-small">
-
               <Droplets
                 size={25}
               />
@@ -1946,26 +2048,28 @@ export default function SensorReadingsPage() {
               <span>
                 No water reading yet.
               </span>
-
             </div>
           )}
-
         </article>
-
       </section>
 
-      {/* ===============================================
-          FILTERS
-      ================================================ */}
-
-      <section className="modern-reading-toolbar">
-
-        {/* SEARCH */}
-
-        <div className="modern-reading-search">
-
+      <section
+        className="modern-reading-toolbar"
+        style={
+          readingToolbarStyle
+        }
+      >
+        <div
+          className="modern-reading-search"
+          style={
+            readingSearchStyle
+          }
+        >
           <Search
             size={18}
+            style={
+              readingSearchIconStyle
+            }
           />
 
           <input
@@ -1974,161 +2078,69 @@ export default function SensorReadingsPage() {
             value={
               searchTerm
             }
-            onChange={(
-              event
-            ) =>
+            onChange={(event) =>
               setSearchTerm(
                 event.target.value
               )
             }
+            style={
+              readingSearchInputStyle
+            }
           />
-
         </div>
 
-        {/* TANK SELECTOR */}
+        <ReadingFilterDropdown
+          ariaLabel="Filter readings by tank"
+          icon={
+            Database
+          }
+          value={
+            tankFilter
+          }
+          options={
+            tankDropdownOptions
+          }
+          onChange={
+            setTankFilter
+          }
+        />
 
-        <label className="modern-reading-filter">
+        <ReadingFilterDropdown
+          ariaLabel="Filter readings by condition"
+          icon={
+            Filter
+          }
+          value={
+            statusFilter
+          }
+          options={
+            conditionDropdownOptions
+          }
+          onChange={
+            setStatusFilter
+          }
+        />
 
-          <Database
-            size={18}
-          />
-
-          <select
-            value={
-              tankFilter
-            }
-            onChange={(
-              event
-            ) =>
-              setTankFilter(
-                event.target.value
-              )
-            }
-          >
-
-            <option value="all">
-              All Tanks
-            </option>
-
-            {tankFilterOptions.map(
-              (option) => (
-
-                <option
-                  key={
-                    option.value
-                  }
-                  value={
-                    option.value
-                  }
-                >
-                  {
-                    option.label
-                  }
-                </option>
-
-              )
-            )}
-
-          </select>
-
-        </label>
-
-        {/* STATUS FILTER */}
-
-        <label className="modern-reading-filter">
-
-          <Filter
-            size={18}
-          />
-
-          <select
-            value={
-              statusFilter
-            }
-            onChange={(
-              event
-            ) =>
-              setStatusFilter(
-                event.target.value
-              )
-            }
-          >
-
-            <option value="all">
-              All Conditions
-            </option>
-
-            <option value="normal">
-              Good
-            </option>
-
-            <option value="warning">
-              Needs Checking
-            </option>
-
-            <option value="critical">
-              Urgent
-            </option>
-
-          </select>
-
-        </label>
-
-        {/* SENSOR FILTER */}
-
-        <label className="modern-reading-filter">
-
-          <Database
-            size={18}
-          />
-
-          <select
-            value={
-              sensorFilter
-            }
-            onChange={(
-              event
-            ) =>
-              setSensorFilter(
-                event.target.value
-              )
-            }
-          >
-
-            {sensorOptions.map(
-              (option) => (
-
-                <option
-                  key={
-                    option.value
-                  }
-                  value={
-                    option.value
-                  }
-                >
-                  {
-                    option.label
-                  }
-                </option>
-
-              )
-            )}
-
-          </select>
-
-        </label>
-
+        <ReadingFilterDropdown
+          ariaLabel="Filter readings by water parameter"
+          icon={
+            Droplets
+          }
+          value={
+            sensorFilter
+          }
+          options={
+            sensorOptions
+          }
+          onChange={
+            setSensorFilter
+          }
+        />
       </section>
-
-      {/* ===============================================
-          EMPTY
-      ================================================ */}
 
       {filteredReadings.length ===
       0 ? (
-
         <section className="modern-reading-empty">
-
           <Database
             size={34}
           />
@@ -2138,24 +2150,13 @@ export default function SensorReadingsPage() {
           </h3>
 
           <p>
-            Try another search or
-            change your filters.
+            Try another search or change your filters.
           </p>
-
         </section>
-
       ) : (
-
-        /* =============================================
-            TABLE
-        ============================================== */
-
         <section className="modern-reading-table-card">
-
           <div className="modern-reading-table-title">
-
             <div>
-
               <span>
                 Reading History
               </span>
@@ -2163,7 +2164,6 @@ export default function SensorReadingsPage() {
               <h3>
                 Water records
               </h3>
-
             </div>
 
             <small>
@@ -2171,13 +2171,9 @@ export default function SensorReadingsPage() {
                 selectedSensorLabel
               }
             </small>
-
           </div>
 
-          {/* TABLE HEADER */}
-
           <div className="modern-reading-table-header">
-
             <span>
               Tank
             </span>
@@ -2205,16 +2201,11 @@ export default function SensorReadingsPage() {
             <span>
               Date
             </span>
-
           </div>
 
-          {/* TABLE BODY */}
-
           <div className="modern-reading-table-body">
-
             {paginatedReadings.map(
               (item) => {
-
                 const normalized =
                   item.normalized;
 
@@ -2263,23 +2254,15 @@ export default function SensorReadingsPage() {
                       `${item.tankKey}:${item.date}:${item.index}`
                     }
                   >
-
-                    {/* TANK */}
-
                     <span data-label="Tank">
-
                       <strong>
                         {
                           item.tankName
                         }
                       </strong>
-
                     </span>
 
-                    {/* TEMPERATURE */}
-
                     <span data-label="Temperature">
-
                       {
                         normalized.temperatureLabel
                       }
@@ -2289,16 +2272,15 @@ export default function SensorReadingsPage() {
                           normalized.temperatureStatus
                         )}
                       </small>
-
                     </span>
 
-                    {/* PH */}
-
                     <span data-label="pH">
-
-                      {rowPH !== null && (
+                      {rowPH !==
+                        null && (
                         <span>
-                          {rowPH.toFixed(2)}
+                          {rowPH.toFixed(
+                            2
+                          )}
                         </span>
                       )}
 
@@ -2313,13 +2295,9 @@ export default function SensorReadingsPage() {
                           normalized.phStatus
                         )}
                       </b>
-
                     </span>
 
-                    {/* TURBIDITY */}
-
                     <span data-label="Water Clarity">
-
                       <b
                         className={`modern-reading-status ${getStatusSeverity(
                           [
@@ -2331,37 +2309,27 @@ export default function SensorReadingsPage() {
                           normalized.turbidityStatus
                         )}
                       </b>
-
                     </span>
 
-                    {/* WATER */}
-
                     <span data-label="Water Level">
-
                       {rowWaterDepth ===
                         null
                         ? normalized.waterLabel
                         : `${rowWaterDepth.toFixed(
                             2
-                          )} cm`
-                      }
+                          )} cm`}
 
                       <small>
                         {formatFriendlyText(
                           normalized.waterStatus
                         )}
                       </small>
-
                     </span>
 
-                    {/* OVERALL STATUS */}
-
                     <span data-label="Status">
-
                       <b
                         className={`modern-reading-status ${displaySeverity}`}
                       >
-
                         {sensorFilter ===
                           "all" ||
                         sensorFilter ===
@@ -2372,34 +2340,21 @@ export default function SensorReadingsPage() {
                           : formatFriendlyText(
                               focus.status
                             )}
-
                       </b>
-
                     </span>
 
-                    {/* DATE */}
-
                     <span data-label="Date">
-
                       {formatDate(
                         item.date
                       )}
-
                     </span>
-
                   </div>
                 );
               }
             )}
-
           </div>
 
-          {/* ===============================================
-              PAGINATION
-          ================================================ */}
-
           <div className="modern-reading-pagination">
-
             <span>
               Showing{" "}
               {showingStart}-
@@ -2410,7 +2365,6 @@ export default function SensorReadingsPage() {
             </span>
 
             <div>
-
               <button
                 type="button"
                 disabled={
@@ -2459,15 +2413,306 @@ export default function SensorReadingsPage() {
               >
                 Next
               </button>
-
             </div>
-
           </div>
-
         </section>
-
       )}
-
     </div>
   );
 }
+
+const readingToolbarStyle = {
+  display: "grid",
+
+  gridTemplateColumns:
+    "minmax(260px, 1fr) minmax(160px, 190px) minmax(160px, 190px) minmax(170px, 200px)",
+
+  alignItems: "center",
+
+  gap: "10px",
+
+  overflow: "visible",
+
+  position: "relative",
+
+  zIndex: 12,
+};
+
+const readingSearchStyle = {
+  height: "48px",
+
+  minHeight: "48px",
+
+  display: "flex",
+
+  alignItems: "center",
+
+  gap: "9px",
+
+  padding: "0 14px",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  border:
+    "1px solid var(--ct-border, var(--border, #e5e4e7))",
+
+  borderRadius:
+    "12px",
+
+  background:
+    "var(--ct-surface, var(--bg, #ffffff))",
+
+  boxShadow:
+    "var(--ct-shadow-soft, 0 4px 14px rgba(15, 23, 42, 0.04))",
+};
+
+const readingSearchIconStyle = {
+  flexShrink:
+    0,
+
+  color:
+    "var(--ct-muted, var(--text, #64748b))",
+};
+
+const readingSearchInputStyle = {
+  width:
+    "100%",
+
+  minWidth:
+    0,
+
+  padding:
+    0,
+
+  border:
+    "none",
+
+  outline:
+    "none",
+
+  background:
+    "transparent",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  font:
+    "inherit",
+
+  fontSize:
+    "0.82rem",
+};
+
+const readingDropdownWrapStyle = {
+  position:
+    "relative",
+
+  minWidth:
+    0,
+};
+
+const readingDropdownTriggerStyle = {
+  width:
+    "100%",
+
+  height:
+    "48px",
+
+  display:
+    "flex",
+
+  alignItems:
+    "center",
+
+  gap:
+    "8px",
+
+  padding:
+    "0 13px",
+
+  border:
+    "1px solid var(--ct-border, var(--border, #e5e4e7))",
+
+  borderRadius:
+    "12px",
+
+  background:
+    "var(--ct-surface, var(--bg, #ffffff))",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  boxShadow:
+    "var(--ct-shadow-soft, 0 4px 14px rgba(15, 23, 42, 0.04))",
+
+  font:
+    "inherit",
+
+  fontSize:
+    "0.8rem",
+
+  fontWeight:
+    600,
+
+  cursor:
+    "pointer",
+
+  textAlign:
+    "left",
+
+  transition:
+    "background 150ms ease, border-color 150ms ease, box-shadow 150ms ease",
+};
+
+const readingDropdownTriggerOpenStyle = {
+  borderColor:
+    "var(--ct-brand, #00b8a9)",
+
+  background:
+    "var(--ct-surface-strong, var(--bg, #ffffff))",
+
+  boxShadow:
+    "0 0 0 3px rgba(0, 217, 199, 0.08)",
+};
+
+const readingDropdownIconStyle = {
+  flexShrink:
+    0,
+
+  color:
+    "var(--ct-brand, #00b8a9)",
+};
+
+const readingDropdownSelectedTextStyle = {
+  minWidth:
+    0,
+
+  overflow:
+    "hidden",
+
+  textOverflow:
+    "ellipsis",
+
+  whiteSpace:
+    "nowrap",
+};
+
+const readingDropdownChevronStyle = {
+  marginLeft:
+    "auto",
+
+  flexShrink:
+    0,
+
+  color:
+    "var(--ct-muted, var(--text, #64748b))",
+
+  opacity:
+    0.8,
+
+  transition:
+    "transform 160ms ease",
+};
+
+const readingDropdownMenuStyle = {
+  position:
+    "absolute",
+
+  top:
+    "calc(100% + 6px)",
+
+  left:
+    0,
+
+  right:
+    0,
+
+  zIndex:
+    120,
+
+  padding:
+    "5px",
+
+  border:
+    "1px solid var(--ct-border, var(--border, #e5e4e7))",
+
+  borderRadius:
+    "12px",
+
+  background:
+    "var(--ct-surface-strong, var(--bg, #ffffff))",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  boxShadow:
+    "0 14px 32px rgba(15, 23, 42, 0.14)",
+
+  overflow:
+    "hidden",
+
+  backdropFilter:
+    "blur(18px)",
+};
+
+const readingDropdownItemStyle = {
+  width:
+    "100%",
+
+  minHeight:
+    "38px",
+
+  display:
+    "flex",
+
+  alignItems:
+    "center",
+
+  justifyContent:
+    "space-between",
+
+  gap:
+    "10px",
+
+  padding:
+    "0 10px",
+
+  border:
+    "none",
+
+  borderRadius:
+    "8px",
+
+  background:
+    "transparent",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  font:
+    "inherit",
+
+  fontSize:
+    "0.78rem",
+
+  fontWeight:
+    500,
+
+  cursor:
+    "pointer",
+
+  textAlign:
+    "left",
+};
+
+const readingDropdownItemActiveStyle = {
+  background:
+    "var(--ct-brand-soft, var(--accent-bg, rgba(0, 217, 199, 0.10)))",
+
+  color:
+    "var(--ct-brand, var(--accent, #008f83))",
+
+  fontWeight:
+    700,
+};

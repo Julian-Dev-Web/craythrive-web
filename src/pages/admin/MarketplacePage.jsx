@@ -1,10 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
 import { Link } from "react-router-dom";
 
 import {
   AlertTriangle,
   ArrowRight,
+  Check,
   CheckCircle2,
+  ChevronDown,
   DollarSign,
   Filter,
   ImageIcon,
@@ -46,6 +54,41 @@ const userFilterColumns = [
   "created_by",
   "seller_id",
   "breeder_id",
+];
+
+const listingStatusOptions = [
+  {
+    value: "all",
+    label: "All Status",
+  },
+  {
+    value: "active",
+    label: "Available",
+  },
+  {
+    value: "reserved",
+    label: "Reserved",
+  },
+  {
+    value: "pending",
+    label: "Pending",
+  },
+  {
+    value: "sold",
+    label: "Sold",
+  },
+  {
+    value: "hidden",
+    label: "Hidden",
+  },
+  {
+    value: "inactive",
+    label: "Inactive",
+  },
+  {
+    value: "archived",
+    label: "Archived",
+  },
 ];
 
 /* =========================================================
@@ -554,6 +597,210 @@ function SummaryCard({
 }
 
 /* =========================================================
+   MINIMAL THEME-AWARE DROPDOWN
+========================================================= */
+
+function MarketplaceFilterDropdown({
+  icon: Icon,
+  value,
+  options,
+  onChange,
+  ariaLabel,
+}) {
+  const [
+    isOpen,
+    setIsOpen,
+  ] =
+    useState(false);
+
+  const dropdownRef =
+    useRef(null);
+
+  const selectedOption =
+    options.find(
+      (option) =>
+        option.value === value
+    ) || options[0];
+
+  useEffect(() => {
+    function handleOutsideClick(
+      event
+    ) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(
+          event.target
+        )
+      ) {
+        setIsOpen(false);
+      }
+    }
+
+    function handleEscape(
+      event
+    ) {
+      if (
+        event.key === "Escape"
+      ) {
+        setIsOpen(false);
+      }
+    }
+
+    document.addEventListener(
+      "mousedown",
+      handleOutsideClick
+    );
+
+    document.addEventListener(
+      "keydown",
+      handleEscape
+    );
+
+    return () => {
+      document.removeEventListener(
+        "mousedown",
+        handleOutsideClick
+      );
+
+      document.removeEventListener(
+        "keydown",
+        handleEscape
+      );
+    };
+  }, []);
+
+  function handleSelect(
+    option
+  ) {
+    onChange(
+      option.value
+    );
+
+    setIsOpen(false);
+  }
+
+  return (
+    <div
+      ref={dropdownRef}
+      style={
+        marketDropdownWrapStyle
+      }
+    >
+      <button
+        type="button"
+        aria-label={
+          ariaLabel
+        }
+        aria-haspopup="listbox"
+        aria-expanded={
+          isOpen
+        }
+        onClick={() =>
+          setIsOpen(
+            (current) =>
+              !current
+          )
+        }
+        style={{
+          ...marketDropdownTriggerStyle,
+
+          ...(isOpen
+            ? marketDropdownTriggerOpenStyle
+            : {}),
+        }}
+      >
+        <Icon
+          size={17}
+          style={
+            marketDropdownIconStyle
+          }
+        />
+
+        <span
+          style={
+            marketDropdownSelectedTextStyle
+          }
+        >
+          {
+            selectedOption?.label
+          }
+        </span>
+
+        <ChevronDown
+          size={16}
+          style={{
+            ...marketDropdownChevronStyle,
+
+            transform:
+              isOpen
+                ? "rotate(180deg)"
+                : "rotate(0deg)",
+          }}
+        />
+      </button>
+
+      {isOpen && (
+        <div
+          role="listbox"
+          style={
+            marketDropdownMenuStyle
+          }
+        >
+          {options.map(
+            (option) => {
+              const isSelected =
+                option.value ===
+                value;
+
+              return (
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={
+                    isSelected
+                  }
+                  key={
+                    option.value
+                  }
+                  onClick={() =>
+                    handleSelect(
+                      option
+                    )
+                  }
+                  style={{
+                    ...marketDropdownItemStyle,
+
+                    ...(isSelected
+                      ? marketDropdownItemActiveStyle
+                      : {}),
+                  }}
+                >
+                  <span>
+                    {
+                      option.label
+                    }
+                  </span>
+
+                  {isSelected && (
+                    <Check
+                      size={15}
+                      style={{
+                        flexShrink:
+                          0,
+                      }}
+                    />
+                  )}
+                </button>
+              );
+            }
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================
    PAGE
 ========================================================= */
 
@@ -561,37 +808,44 @@ export default function MarketplacePage() {
   const [
     listings,
     setListings,
-  ] = useState([]);
+  ] =
+    useState([]);
 
   const [
     orders,
     setOrders,
-  ] = useState([]);
+  ] =
+    useState([]);
 
   const [
     searchTerm,
     setSearchTerm,
-  ] = useState("");
+  ] =
+    useState("");
 
   const [
     statusFilter,
     setStatusFilter,
-  ] = useState("all");
+  ] =
+    useState("all");
 
   const [
     typeFilter,
     setTypeFilter,
-  ] = useState("all");
+  ] =
+    useState("all");
 
   const [
     isLoading,
     setIsLoading,
-  ] = useState(true);
+  ] =
+    useState(true);
 
   const [
     lastUpdated,
     setLastUpdated,
-  ] = useState(null);
+  ] =
+    useState(null);
 
   /* =======================================================
      LOAD
@@ -702,8 +956,10 @@ export default function MarketplacePage() {
             index,
             status,
             title,
+
             type:
               String(type),
+
             image:
               getListingImage(
                 listing
@@ -724,6 +980,28 @@ export default function MarketplacePage() {
         )
       ).filter(Boolean);
     }, [enrichedListings]);
+
+  const typeDropdownOptions =
+    useMemo(
+      () => [
+        {
+          value: "all",
+          label: "All Types",
+        },
+
+        ...listingTypes.map(
+          (type) => ({
+            value: type,
+
+            label:
+              formatFriendlyText(
+                type
+              ),
+          })
+        ),
+      ],
+      [listingTypes]
+    );
 
   const filteredListings =
     useMemo(() => {
@@ -889,7 +1167,6 @@ export default function MarketplacePage() {
   if (isLoading) {
     return (
       <section className="modern-market-loading">
-
         <Loader2
           className="spin-icon"
           size={34}
@@ -913,13 +1190,11 @@ export default function MarketplacePage() {
 
   return (
     <div className="modern-market-page">
-
       {/* ===============================================
           HERO
       ================================================ */}
 
       <section className="modern-market-hero">
-
         <div>
           <p className="dashboard-eyebrow">
             Marketplace
@@ -938,7 +1213,6 @@ export default function MarketplacePage() {
           </p>
 
           <div className="modern-market-actions">
-
             <button
               type="button"
               className="dashboard-primary-button"
@@ -979,7 +1253,6 @@ export default function MarketplacePage() {
         </div>
 
         <div className="modern-market-hero-card">
-
           <ShoppingBag
             size={34}
           />
@@ -1001,7 +1274,6 @@ export default function MarketplacePage() {
       ================================================ */}
 
       <section className="modern-market-summary-grid">
-
         <SummaryCard
           icon={
             CheckCircle2
@@ -1055,13 +1327,10 @@ export default function MarketplacePage() {
       ================================================ */}
 
       <section className="modern-market-grid">
-
         {/* LISTINGS */}
 
         <article className="modern-market-panel">
-
           <div className="modern-market-panel-heading">
-
             <div>
               <p className="dashboard-eyebrow">
                 My Listings
@@ -1072,17 +1341,30 @@ export default function MarketplacePage() {
               </h3>
             </div>
 
-            <Tag size={22} />
+            <Tag
+              size={22}
+            />
           </div>
 
           {/* FILTERS */}
 
-          <div className="modern-market-toolbar">
-
-            <div className="modern-market-search">
-
+          <div
+            className="modern-market-toolbar"
+            style={
+              marketToolbarStyle
+            }
+          >
+            <div
+              className="modern-market-search"
+              style={
+                marketSearchStyle
+              }
+            >
               <Search
                 size={18}
+                style={
+                  marketSearchIconStyle
+                }
               />
 
               <input
@@ -1091,110 +1373,44 @@ export default function MarketplacePage() {
                 value={
                   searchTerm
                 }
-                onChange={(
-                  event
-                ) =>
+                onChange={(event) =>
                   setSearchTerm(
-                    event
-                      .target
-                      .value
+                    event.target.value
                   )
+                }
+                style={
+                  marketSearchInputStyle
                 }
               />
             </div>
 
-            <label className="modern-market-filter">
+            <MarketplaceFilterDropdown
+              ariaLabel="Filter listings by status"
+              icon={Filter}
+              value={
+                statusFilter
+              }
+              options={
+                listingStatusOptions
+              }
+              onChange={
+                setStatusFilter
+              }
+            />
 
-              <Filter
-                size={18}
-              />
-
-              <select
-                value={
-                  statusFilter
-                }
-                onChange={(
-                  event
-                ) =>
-                  setStatusFilter(
-                    event
-                      .target
-                      .value
-                  )
-                }
-              >
-                <option value="all">
-                  All Status
-                </option>
-
-                <option value="active">
-                  Available
-                </option>
-
-                <option value="reserved">
-                  Reserved
-                </option>
-
-                <option value="pending">
-                  Pending
-                </option>
-
-                <option value="sold">
-                  Sold
-                </option>
-
-                <option value="hidden">
-                  Hidden
-                </option>
-
-                <option value="inactive">
-                  Inactive
-                </option>
-
-                <option value="archived">
-                  Archived
-                </option>
-              </select>
-            </label>
-
-            <label className="modern-market-filter">
-
-              <Package
-                size={18}
-              />
-
-              <select
-                value={
-                  typeFilter
-                }
-                onChange={(
-                  event
-                ) =>
-                  setTypeFilter(
-                    event
-                      .target
-                      .value
-                  )
-                }
-              >
-                <option value="all">
-                  All Types
-                </option>
-
-                {listingTypes.map(
-                  (type) => (
-                    <option
-                      key={type}
-                      value={type}
-                    >
-                      {formatFriendlyText(
-                        type
-                      )}
-                    </option>
-                  )
-                )}
-              </select>
-            </label>
+            <MarketplaceFilterDropdown
+              ariaLabel="Filter listings by type"
+              icon={Package}
+              value={
+                typeFilter
+              }
+              options={
+                typeDropdownOptions
+              }
+              onChange={
+                setTypeFilter
+              }
+            />
           </div>
 
           {/* EMPTY */}
@@ -1202,7 +1418,6 @@ export default function MarketplacePage() {
           {filteredListings.length ===
           0 ? (
             <div className="modern-market-empty-small">
-
               <ShoppingBag
                 size={30}
               />
@@ -1219,11 +1434,9 @@ export default function MarketplacePage() {
               </span>
             </div>
           ) : (
-
             /* LISTING CARDS */
 
             <div className="modern-market-listing-grid">
-
               {filteredListings.map(
                 (item) => {
                   const listing =
@@ -1237,9 +1450,7 @@ export default function MarketplacePage() {
                         item.index
                       }
                     >
-
                       <div className="modern-market-image">
-
                         {item.image ? (
                           <img
                             src={
@@ -1257,9 +1468,7 @@ export default function MarketplacePage() {
                       </div>
 
                       <div className="modern-market-listing-body">
-
                         <div className="modern-market-listing-top">
-
                           <span className="modern-market-type">
                             {formatFriendlyText(
                               item.type
@@ -1276,7 +1485,9 @@ export default function MarketplacePage() {
                         </div>
 
                         <h4>
-                          {item.title}
+                          {
+                            item.title
+                          }
                         </h4>
 
                         <strong className="modern-market-price">
@@ -1288,9 +1499,9 @@ export default function MarketplacePage() {
                         </strong>
 
                         <div className="modern-market-meta">
-
                           <span>
                             Stock:{" "}
+
                             <strong>
                               {getListingStock(
                                 listing
@@ -1300,6 +1511,7 @@ export default function MarketplacePage() {
 
                           <span>
                             Posted:{" "}
+
                             {formatDate(
                               listing?.created_at ||
                                 listing?.updated_at
@@ -1318,9 +1530,7 @@ export default function MarketplacePage() {
         {/* ORDERS */}
 
         <article className="modern-market-panel">
-
           <div className="modern-market-panel-heading">
-
             <div>
               <p className="dashboard-eyebrow">
                 Recent Orders
@@ -1339,7 +1549,6 @@ export default function MarketplacePage() {
           {recentOrders.length ===
           0 ? (
             <div className="modern-market-empty-small">
-
               <ShoppingBag
                 size={28}
               />
@@ -1356,7 +1565,6 @@ export default function MarketplacePage() {
           ) : (
             <>
               <div className="modern-market-order-list">
-
                 {recentOrders.map(
                   (
                     order,
@@ -1383,7 +1591,9 @@ export default function MarketplacePage() {
                       >
                         <div>
                           <strong>
-                            {title}
+                            {
+                              title
+                            }
                           </strong>
 
                           <span>
@@ -1434,3 +1644,318 @@ export default function MarketplacePage() {
     </div>
   );
 }
+
+/* =========================================================
+   MINIMAL THEME-AWARE MARKETPLACE FILTER UI
+========================================================= */
+
+const marketToolbarStyle = {
+  display:
+    "grid",
+
+  gridTemplateColumns:
+    "minmax(230px, 1fr) minmax(150px, 180px) minmax(150px, 180px)",
+
+  alignItems:
+    "center",
+
+  gap:
+    "10px",
+
+  overflow:
+    "visible",
+
+  position:
+    "relative",
+
+  zIndex:
+    12,
+};
+
+const marketSearchStyle = {
+  height:
+    "46px",
+
+  minHeight:
+    "46px",
+
+  display:
+    "flex",
+
+  alignItems:
+    "center",
+
+  gap:
+    "9px",
+
+  padding:
+    "0 13px",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  border:
+    "1px solid var(--ct-border, var(--border, #e5e4e7))",
+
+  borderRadius:
+    "12px",
+
+  background:
+    "var(--ct-surface, var(--bg, #ffffff))",
+
+  boxShadow:
+    "var(--ct-shadow-soft, 0 4px 14px rgba(15, 23, 42, 0.04))",
+};
+
+const marketSearchIconStyle = {
+  flexShrink:
+    0,
+
+  color:
+    "var(--ct-muted, var(--text, #64748b))",
+};
+
+const marketSearchInputStyle = {
+  width:
+    "100%",
+
+  minWidth:
+    0,
+
+  padding:
+    0,
+
+  border:
+    "none",
+
+  outline:
+    "none",
+
+  background:
+    "transparent",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  font:
+    "inherit",
+
+  fontSize:
+    "0.8rem",
+};
+
+const marketDropdownWrapStyle = {
+  position:
+    "relative",
+
+  minWidth:
+    0,
+};
+
+const marketDropdownTriggerStyle = {
+  width:
+    "100%",
+
+  height:
+    "46px",
+
+  display:
+    "flex",
+
+  alignItems:
+    "center",
+
+  gap:
+    "8px",
+
+  padding:
+    "0 12px",
+
+  border:
+    "1px solid var(--ct-border, var(--border, #e5e4e7))",
+
+  borderRadius:
+    "12px",
+
+  background:
+    "var(--ct-surface, var(--bg, #ffffff))",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  boxShadow:
+    "var(--ct-shadow-soft, 0 4px 14px rgba(15, 23, 42, 0.04))",
+
+  font:
+    "inherit",
+
+  fontSize:
+    "0.78rem",
+
+  fontWeight:
+    600,
+
+  cursor:
+    "pointer",
+
+  textAlign:
+    "left",
+
+  transition:
+    "background 150ms ease, border-color 150ms ease, box-shadow 150ms ease",
+};
+
+const marketDropdownTriggerOpenStyle = {
+  borderColor:
+    "var(--ct-brand, #00b8a9)",
+
+  background:
+    "var(--ct-surface-strong, var(--bg, #ffffff))",
+
+  boxShadow:
+    "0 0 0 3px rgba(0, 217, 199, 0.08)",
+};
+
+const marketDropdownIconStyle = {
+  flexShrink:
+    0,
+
+  color:
+    "var(--ct-brand, #00b8a9)",
+};
+
+const marketDropdownSelectedTextStyle = {
+  minWidth:
+    0,
+
+  overflow:
+    "hidden",
+
+  textOverflow:
+    "ellipsis",
+
+  whiteSpace:
+    "nowrap",
+};
+
+const marketDropdownChevronStyle = {
+  marginLeft:
+    "auto",
+
+  flexShrink:
+    0,
+
+  color:
+    "var(--ct-muted, var(--text, #64748b))",
+
+  opacity:
+    0.8,
+
+  transition:
+    "transform 160ms ease",
+};
+
+const marketDropdownMenuStyle = {
+  position:
+    "absolute",
+
+  top:
+    "calc(100% + 6px)",
+
+  left:
+    0,
+
+  right:
+    0,
+
+  zIndex:
+    120,
+
+  padding:
+    "5px",
+
+  maxHeight:
+    "250px",
+
+  overflowY:
+    "auto",
+
+  border:
+    "1px solid var(--ct-border, var(--border, #e5e4e7))",
+
+  borderRadius:
+    "12px",
+
+  background:
+    "var(--ct-surface-strong, var(--bg, #ffffff))",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  boxShadow:
+    "0 14px 32px rgba(15, 23, 42, 0.14)",
+
+  backdropFilter:
+    "blur(18px)",
+};
+
+const marketDropdownItemStyle = {
+  width:
+    "100%",
+
+  minHeight:
+    "36px",
+
+  display:
+    "flex",
+
+  alignItems:
+    "center",
+
+  justifyContent:
+    "space-between",
+
+  gap:
+    "10px",
+
+  padding:
+    "0 9px",
+
+  border:
+    "none",
+
+  borderRadius:
+    "8px",
+
+  background:
+    "transparent",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  font:
+    "inherit",
+
+  fontSize:
+    "0.76rem",
+
+  fontWeight:
+    500,
+
+  cursor:
+    "pointer",
+
+  textAlign:
+    "left",
+};
+
+const marketDropdownItemActiveStyle = {
+  background:
+    "var(--ct-brand-soft, var(--accent-bg, rgba(0, 217, 199, 0.10)))",
+
+  color:
+    "var(--ct-brand, var(--accent, #008f83))",
+
+  fontWeight:
+    700,
+};

@@ -1,9 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   AlertTriangle,
   Bell,
+  Check,
   CheckCircle2,
+  ChevronDown,
   Clock3,
   Droplets,
   Filter,
@@ -89,6 +96,44 @@ const categoryOptions = [
   },
 ];
 
+const severityOptions = [
+  {
+    value: "all",
+    label: "All Priority",
+  },
+  {
+    value: "critical",
+    label: "Urgent",
+  },
+  {
+    value: "warning",
+    label: "Needs Checking",
+  },
+  {
+    value: "info",
+    label: "Information",
+  },
+  {
+    value: "normal",
+    label: "Good",
+  },
+];
+
+const alertStatusOptions = [
+  {
+    value: "all",
+    label: "All Status",
+  },
+  {
+    value: "open",
+    label: "Open",
+  },
+  {
+    value: "resolved",
+    label: "Handled",
+  },
+];
+
 /* =========================================================
    GENERAL HELPERS
 ========================================================= */
@@ -118,8 +163,10 @@ function formatFriendlyText(value) {
     .replaceAll("_", " ")
     .replaceAll("-", " ")
     .toLowerCase()
-    .replace(/\b\w/g, (character) =>
-      character.toUpperCase()
+    .replace(
+      /\b\w/g,
+      (character) =>
+        character.toUpperCase()
     );
 }
 
@@ -130,7 +177,11 @@ function formatDate(value) {
 
   const date = new Date(value);
 
-  if (Number.isNaN(date.getTime())) {
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
     return "No date";
   }
 
@@ -150,7 +201,11 @@ function formatShortTime(value) {
 
   const date = new Date(value);
 
-  if (Number.isNaN(date.getTime())) {
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
     return "";
   }
 
@@ -287,11 +342,15 @@ function getAlertCategory(row) {
       ""
   );
 
-  if (raw.includes("temp")) {
+  if (
+    raw.includes("temp")
+  ) {
     return "temperature";
   }
 
-  if (raw.includes("ph")) {
+  if (
+    raw.includes("ph")
+  ) {
     return "ph";
   }
 
@@ -372,8 +431,7 @@ function getCategoryLabel(category) {
   const option =
     categoryOptions.find(
       (item) =>
-        item.value ===
-        category
+        item.value === category
     );
 
   return (
@@ -506,21 +564,15 @@ function getTankDisplayName(
     );
 
   const matchedTank =
-    tanks.find(
-      (tank) => {
-        const tankKeys =
-          getTankKeys(
-            tank
-          );
+    tanks.find((tank) => {
+      const tankKeys =
+        getTankKeys(tank);
 
-        return alertKeys.some(
-          (key) =>
-            tankKeys.includes(
-              key
-            )
-        );
-      }
-    );
+      return alertKeys.some(
+        (key) =>
+          tankKeys.includes(key)
+      );
+    });
 
   if (!matchedTank) {
     return "Tank";
@@ -570,7 +622,9 @@ function uniqueRows(rows) {
 ========================================================= */
 
 async function getCurrentUserWithRole() {
-  const { data } =
+  const {
+    data,
+  } =
     await supabase.auth.getSession();
 
   const user =
@@ -665,7 +719,9 @@ async function fetchAdminRows(
   ) {
     const ordered =
       await supabase
-        .from(tableName)
+        .from(
+          tableName
+        )
         .select("*")
         .order(
           "created_at",
@@ -694,7 +750,9 @@ async function fetchAdminRows(
 
     const plain =
       await supabase
-        .from(tableName)
+        .from(
+          tableName
+        )
         .select("*")
         .limit(limit);
 
@@ -733,7 +791,9 @@ async function fetchUserRows(
     of tableNames
   ) {
     const mergedRows = [];
-    let successful = false;
+
+    let successful =
+      false;
 
     for (
       const column
@@ -741,7 +801,9 @@ async function fetchUserRows(
     ) {
       const ordered =
         await supabase
-          .from(tableName)
+          .from(
+            tableName
+          )
           .select("*")
           .eq(
             column,
@@ -773,7 +835,9 @@ async function fetchUserRows(
 
       const plain =
         await supabase
-          .from(tableName)
+          .from(
+            tableName
+          )
           .select("*")
           .eq(
             column,
@@ -832,7 +896,9 @@ function SummaryCard({
       className={`cray-alert-summary-card ${tone}`}
     >
       <span>
-        <Icon size={21} />
+        <Icon
+          size={21}
+        />
       </span>
 
       <div>
@@ -853,6 +919,209 @@ function SummaryCard({
 }
 
 /* =========================================================
+   MINIMAL THEME-AWARE DROPDOWN
+========================================================= */
+
+function AlertFilterDropdown({
+  icon: Icon,
+  value,
+  options,
+  onChange,
+  ariaLabel,
+}) {
+  const [
+    isOpen,
+    setIsOpen,
+  ] =
+    useState(false);
+
+  const dropdownRef =
+    useRef(null);
+
+  const selectedOption =
+    options.find(
+      (option) =>
+        option.value === value
+    ) ||
+    options[0];
+
+  useEffect(() => {
+    function handleOutsideClick(
+      event
+    ) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(
+          event.target
+        )
+      ) {
+        setIsOpen(false);
+      }
+    }
+
+    function handleEscape(event) {
+      if (
+        event.key === "Escape"
+      ) {
+        setIsOpen(false);
+      }
+    }
+
+    document.addEventListener(
+      "mousedown",
+      handleOutsideClick
+    );
+
+    document.addEventListener(
+      "keydown",
+      handleEscape
+    );
+
+    return () => {
+      document.removeEventListener(
+        "mousedown",
+        handleOutsideClick
+      );
+
+      document.removeEventListener(
+        "keydown",
+        handleEscape
+      );
+    };
+  }, []);
+
+  function handleSelect(
+    option
+  ) {
+    onChange(
+      option.value
+    );
+
+    setIsOpen(false);
+  }
+
+  return (
+    <div
+      ref={dropdownRef}
+      style={
+        alertDropdownWrapStyle
+      }
+    >
+      <button
+        type="button"
+        aria-label={
+          ariaLabel
+        }
+        aria-haspopup="listbox"
+        aria-expanded={
+          isOpen
+        }
+        onClick={() =>
+          setIsOpen(
+            (current) =>
+              !current
+          )
+        }
+        style={{
+          ...alertDropdownTriggerStyle,
+
+          ...(isOpen
+            ? alertDropdownTriggerOpenStyle
+            : {}),
+        }}
+      >
+        <Icon
+          size={17}
+          style={
+            alertDropdownIconStyle
+          }
+        />
+
+        <span
+          style={
+            alertDropdownSelectedTextStyle
+          }
+        >
+          {
+            selectedOption?.label
+          }
+        </span>
+
+        <ChevronDown
+          size={16}
+          style={{
+            ...alertDropdownChevronStyle,
+
+            transform:
+              isOpen
+                ? "rotate(180deg)"
+                : "rotate(0deg)",
+          }}
+        />
+      </button>
+
+      {isOpen && (
+        <div
+          role="listbox"
+          style={
+            alertDropdownMenuStyle
+          }
+        >
+          {options.map(
+            (option) => {
+              const isSelected =
+                option.value ===
+                value;
+
+              return (
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={
+                    isSelected
+                  }
+                  key={
+                    option.value
+                  }
+                  onClick={() =>
+                    handleSelect(
+                      option
+                    )
+                  }
+                  style={{
+                    ...alertDropdownItemStyle,
+
+                    ...(isSelected
+                      ? alertDropdownItemActiveStyle
+                      : {}),
+                  }}
+                >
+                  <span>
+                    {
+                      option.label
+                    }
+                  </span>
+
+                  {isSelected && (
+                    <Check
+                      size={15}
+                      style={{
+                        flexShrink:
+                          0,
+                      }}
+                    />
+                  )}
+                </button>
+              );
+            }
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================
    PAGE
 ========================================================= */
 
@@ -860,47 +1129,56 @@ export default function AlertsPage() {
   const [
     alerts,
     setAlerts,
-  ] = useState([]);
+  ] =
+    useState([]);
 
   const [
     tanks,
     setTanks,
-  ] = useState([]);
+  ] =
+    useState([]);
 
   const [
     searchTerm,
     setSearchTerm,
-  ] = useState("");
+  ] =
+    useState("");
 
   const [
     severityFilter,
     setSeverityFilter,
-  ] = useState("all");
+  ] =
+    useState("all");
 
   const [
     statusFilter,
     setStatusFilter,
-  ] = useState("all");
+  ] =
+    useState("all");
 
   const [
     categoryFilter,
     setCategoryFilter,
-  ] = useState("all");
+  ] =
+    useState("all");
 
   const [
     alertsPage,
     setAlertsPage,
-  ] = useState(1);
+  ] =
+    useState(1);
 
   const [
     isLoading,
     setIsLoading,
-  ] = useState(true);
+  ] =
+    useState(true);
 
   const [
     lastUpdated,
     setLastUpdated,
-  ] = useState(null);
+  ] =
+    useState(null);
 
   /* =======================================================
      LOAD
@@ -1204,8 +1482,10 @@ export default function AlertsPage() {
 
   const paginatedAlerts =
     filteredAlerts.slice(
-      (currentAlertPage -
-        1) *
+      (
+        currentAlertPage -
+        1
+      ) *
         ALERTS_PER_PAGE,
 
       currentAlertPage *
@@ -1214,10 +1494,12 @@ export default function AlertsPage() {
 
   const showingStart =
     filteredAlerts.length ===
-    0
+      0
       ? 0
-      : (currentAlertPage -
-          1) *
+      : (
+          currentAlertPage -
+          1
+        ) *
           ALERTS_PER_PAGE +
         1;
 
@@ -1276,7 +1558,9 @@ export default function AlertsPage() {
 
         resolved,
       };
-    }, [enrichedAlerts]);
+    }, [
+      enrichedAlerts,
+    ]);
 
   /* =======================================================
      CATEGORY COUNTS
@@ -1306,7 +1590,9 @@ export default function AlertsPage() {
           (item) =>
             item.count > 0
         );
-    }, [enrichedAlerts]);
+    }, [
+      enrichedAlerts,
+    ]);
 
   /* =======================================================
      PRIORITY ALERT
@@ -1333,7 +1619,9 @@ export default function AlertsPage() {
               a.date || 0
             )
         )[0] || null;
-    }, [enrichedAlerts]);
+    }, [
+      enrichedAlerts,
+    ]);
 
   /* =======================================================
      LOADING
@@ -1342,7 +1630,6 @@ export default function AlertsPage() {
   if (isLoading) {
     return (
       <section className="cray-alert-loading">
-
         <Loader2
           className="spin-icon"
           size={34}
@@ -1366,15 +1653,12 @@ export default function AlertsPage() {
 
   return (
     <div className="cray-alerts-page">
-
       {/* ===============================================
           HERO
       ================================================ */}
 
       <section className="cray-alerts-hero">
-
         <div>
-
           <p className="dashboard-eyebrow">
             Alerts
           </p>
@@ -1392,7 +1676,6 @@ export default function AlertsPage() {
           </p>
 
           <div className="cray-alert-actions">
-
             <button
               type="button"
               className="dashboard-primary-button"
@@ -1419,17 +1702,14 @@ export default function AlertsPage() {
 
         <div
           className={`cray-alert-hero-card ${
-            summary.critical >
-            0
+            summary.critical > 0
               ? "danger"
-              : summary.open >
-                  0
+              : summary.open > 0
                 ? "warning"
                 : "success"
           }`}
         >
-          {summary.critical >
-          0 ? (
+          {summary.critical > 0 ? (
             <Siren
               size={35}
             />
@@ -1440,18 +1720,15 @@ export default function AlertsPage() {
           )}
 
           <strong>
-            {summary.critical >
-            0
+            {summary.critical > 0
               ? summary.critical
               : summary.open}
           </strong>
 
           <span>
-            {summary.critical >
-            0
+            {summary.critical > 0
               ? "Urgent alerts"
-              : summary.open >
-                  0
+              : summary.open > 0
                 ? "Open alerts"
                 : "No open alerts"}
           </span>
@@ -1463,15 +1740,15 @@ export default function AlertsPage() {
       ================================================ */}
 
       <section className="cray-alert-summary-grid">
-
         <SummaryCard
           icon={Bell}
           label="Open Alerts"
-          value={summary.open}
+          value={
+            summary.open
+          }
           helper="Still needs review"
           tone={
-            summary.open >
-            0
+            summary.open > 0
               ? "warning"
               : "default"
           }
@@ -1517,13 +1794,10 @@ export default function AlertsPage() {
       ================================================ */}
 
       <section className="cray-alert-overview-grid">
-
         {/* PRIORITY */}
 
         <article className="cray-alert-panel">
-
           <div className="cray-alert-panel-heading">
-
             <div>
               <p className="dashboard-eyebrow">
                 Priority
@@ -1541,9 +1815,7 @@ export default function AlertsPage() {
 
           {latestCritical ? (
             <div className="cray-priority-alert">
-
               <div className="cray-priority-top">
-
                 <b
                   className={`cray-alert-severity ${latestCritical.severity}`}
                 >
@@ -1560,15 +1832,18 @@ export default function AlertsPage() {
               </div>
 
               <strong>
-                {latestCritical.title}
+                {
+                  latestCritical.title
+                }
               </strong>
 
               <p>
-                {latestCritical.message}
+                {
+                  latestCritical.message
+                }
               </p>
 
               <div className="cray-priority-tank">
-
                 <Droplets
                   size={16}
                 />
@@ -1582,7 +1857,6 @@ export default function AlertsPage() {
             </div>
           ) : (
             <div className="cray-alert-empty-small">
-
               <ShieldCheck
                 size={30}
               />
@@ -1604,9 +1878,7 @@ export default function AlertsPage() {
         {/* CATEGORY */}
 
         <article className="cray-alert-panel">
-
           <div className="cray-alert-panel-heading">
-
             <div>
               <p className="dashboard-eyebrow">
                 Alert Types
@@ -1625,7 +1897,6 @@ export default function AlertsPage() {
           {categoryCounts.length ===
           0 ? (
             <div className="cray-alert-empty-small">
-
               <Bell
                 size={28}
               />
@@ -1643,7 +1914,6 @@ export default function AlertsPage() {
             </div>
           ) : (
             <div className="cray-alert-category-list">
-
               {categoryCounts.map(
                 (category) => {
                   const Icon =
@@ -1658,7 +1928,6 @@ export default function AlertsPage() {
                         category.value
                       }
                     >
-
                       <span>
                         <Icon
                           size={18}
@@ -1695,12 +1964,23 @@ export default function AlertsPage() {
           FILTERS
       ================================================ */}
 
-      <section className="cray-alert-toolbar">
-
-        <div className="cray-alert-search">
-
+      <section
+        className="cray-alert-toolbar"
+        style={
+          alertToolbarStyle
+        }
+      >
+        <div
+          className="cray-alert-search"
+          style={
+            alertSearchStyle
+          }
+        >
           <Search
             size={18}
+            style={
+              alertSearchIconStyle
+            }
           />
 
           <input
@@ -1709,124 +1989,64 @@ export default function AlertsPage() {
             value={
               searchTerm
             }
-            onChange={(
-              event
-            ) =>
+            onChange={(event) =>
               setSearchTerm(
                 event.target.value
               )
             }
+            style={
+              alertSearchInputStyle
+            }
           />
         </div>
 
-        <label className="cray-alert-filter">
+        <AlertFilterDropdown
+          ariaLabel="Filter alerts by priority"
+          icon={
+            AlertTriangle
+          }
+          value={
+            severityFilter
+          }
+          options={
+            severityOptions
+          }
+          onChange={
+            setSeverityFilter
+          }
+        />
 
-          <AlertTriangle
-            size={18}
-          />
+        <AlertFilterDropdown
+          ariaLabel="Filter alerts by status"
+          icon={
+            Clock3
+          }
+          value={
+            statusFilter
+          }
+          options={
+            alertStatusOptions
+          }
+          onChange={
+            setStatusFilter
+          }
+        />
 
-          <select
-            value={
-              severityFilter
-            }
-            onChange={(
-              event
-            ) =>
-              setSeverityFilter(
-                event.target.value
-              )
-            }
-          >
-            <option value="all">
-              All Priority
-            </option>
-
-            <option value="critical">
-              Urgent
-            </option>
-
-            <option value="warning">
-              Needs Checking
-            </option>
-
-            <option value="info">
-              Information
-            </option>
-
-            <option value="normal">
-              Good
-            </option>
-          </select>
-        </label>
-
-        <label className="cray-alert-filter">
-
-          <Clock3
-            size={18}
-          />
-
-          <select
-            value={
-              statusFilter
-            }
-            onChange={(
-              event
-            ) =>
-              setStatusFilter(
-                event.target.value
-              )
-            }
-          >
-            <option value="all">
-              All Status
-            </option>
-
-            <option value="open">
-              Open
-            </option>
-
-            <option value="resolved">
-              Handled
-            </option>
-          </select>
-        </label>
-
-        <label className="cray-alert-filter">
-
-          <Filter
-            size={18}
-          />
-
-          <select
-            value={
-              categoryFilter
-            }
-            onChange={(
-              event
-            ) =>
-              setCategoryFilter(
-                event.target.value
-              )
-            }
-          >
-            {categoryOptions.map(
-              (option) => (
-                <option
-                  key={
-                    option.value
-                  }
-                  value={
-                    option.value
-                  }
-                >
-                  {
-                    option.label
-                  }
-                </option>
-              )
-            )}
-          </select>
-        </label>
+        <AlertFilterDropdown
+          ariaLabel="Filter alerts by category"
+          icon={
+            Filter
+          }
+          value={
+            categoryFilter
+          }
+          options={
+            categoryOptions
+          }
+          onChange={
+            setCategoryFilter
+          }
+        />
       </section>
 
       {/* ===============================================
@@ -1836,7 +2056,6 @@ export default function AlertsPage() {
       {filteredAlerts.length ===
       0 ? (
         <section className="cray-alert-empty">
-
           <Bell
             size={34}
           />
@@ -1852,15 +2071,12 @@ export default function AlertsPage() {
           </p>
         </section>
       ) : (
-
         /* =============================================
             ALERT LIST
         ============================================== */
 
         <section className="cray-alert-list-card">
-
           <div className="cray-alert-list-title">
-
             <div>
               <span>
                 Alert History
@@ -1884,7 +2100,6 @@ export default function AlertsPage() {
           </div>
 
           <div className="cray-alert-list">
-
             {paginatedAlerts.map(
               (item) => {
                 const Icon =
@@ -1913,7 +2128,6 @@ export default function AlertsPage() {
                       item.index
                     }
                   >
-
                     <div
                       className={`cray-alert-icon ${item.severity}`}
                     >
@@ -1923,9 +2137,7 @@ export default function AlertsPage() {
                     </div>
 
                     <div className="cray-alert-content">
-
                       <div className="cray-alert-card-top">
-
                         <div>
                           <strong>
                             {
@@ -1941,7 +2153,6 @@ export default function AlertsPage() {
                         </div>
 
                         <div className="cray-alert-chip-row">
-
                           <b
                             className={`cray-alert-severity ${item.severity}`}
                           >
@@ -1961,11 +2172,12 @@ export default function AlertsPage() {
                       </div>
 
                       <p>
-                        {item.message}
+                        {
+                          item.message
+                        }
                       </p>
 
                       <div className="cray-alert-meta">
-
                         <span>
                           <Droplets
                             size={14}
@@ -2001,7 +2213,6 @@ export default function AlertsPage() {
           {/* PAGINATION */}
 
           <div className="cray-alert-pagination">
-
             <span>
               Showing{" "}
               {showingStart}-
@@ -2012,7 +2223,6 @@ export default function AlertsPage() {
             </span>
 
             <div>
-
               <button
                 type="button"
                 disabled={
@@ -2068,3 +2278,315 @@ export default function AlertsPage() {
     </div>
   );
 }
+
+/* =========================================================
+   MINIMAL THEME-AWARE ALERT FILTER UI
+========================================================= */
+
+const alertToolbarStyle = {
+  display:
+    "grid",
+
+  gridTemplateColumns:
+    "minmax(260px, 1fr) repeat(3, minmax(160px, 190px))",
+
+  alignItems:
+    "center",
+
+  gap:
+    "10px",
+
+  overflow:
+    "visible",
+
+  position:
+    "relative",
+
+  zIndex:
+    12,
+};
+
+const alertSearchStyle = {
+  height:
+    "48px",
+
+  minHeight:
+    "48px",
+
+  display:
+    "flex",
+
+  alignItems:
+    "center",
+
+  gap:
+    "9px",
+
+  padding:
+    "0 14px",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  border:
+    "1px solid var(--ct-border, var(--border, #e5e4e7))",
+
+  borderRadius:
+    "12px",
+
+  background:
+    "var(--ct-surface, var(--bg, #ffffff))",
+
+  boxShadow:
+    "var(--ct-shadow-soft, 0 4px 14px rgba(15, 23, 42, 0.04))",
+};
+
+const alertSearchIconStyle = {
+  flexShrink:
+    0,
+
+  color:
+    "var(--ct-muted, var(--text, #64748b))",
+};
+
+const alertSearchInputStyle = {
+  width:
+    "100%",
+
+  minWidth:
+    0,
+
+  padding:
+    0,
+
+  border:
+    "none",
+
+  outline:
+    "none",
+
+  background:
+    "transparent",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  font:
+    "inherit",
+
+  fontSize:
+    "0.82rem",
+};
+
+const alertDropdownWrapStyle = {
+  position:
+    "relative",
+
+  minWidth:
+    0,
+};
+
+const alertDropdownTriggerStyle = {
+  width:
+    "100%",
+
+  height:
+    "48px",
+
+  display:
+    "flex",
+
+  alignItems:
+    "center",
+
+  gap:
+    "8px",
+
+  padding:
+    "0 13px",
+
+  border:
+    "1px solid var(--ct-border, var(--border, #e5e4e7))",
+
+  borderRadius:
+    "12px",
+
+  background:
+    "var(--ct-surface, var(--bg, #ffffff))",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  boxShadow:
+    "var(--ct-shadow-soft, 0 4px 14px rgba(15, 23, 42, 0.04))",
+
+  font:
+    "inherit",
+
+  fontSize:
+    "0.8rem",
+
+  fontWeight:
+    600,
+
+  cursor:
+    "pointer",
+
+  textAlign:
+    "left",
+
+  transition:
+    "background 150ms ease, border-color 150ms ease, box-shadow 150ms ease",
+};
+
+const alertDropdownTriggerOpenStyle = {
+  borderColor:
+    "var(--ct-brand, #00b8a9)",
+
+  background:
+    "var(--ct-surface-strong, var(--bg, #ffffff))",
+
+  boxShadow:
+    "0 0 0 3px rgba(0, 217, 199, 0.08)",
+};
+
+const alertDropdownIconStyle = {
+  flexShrink:
+    0,
+
+  color:
+    "var(--ct-brand, #00b8a9)",
+};
+
+const alertDropdownSelectedTextStyle = {
+  minWidth:
+    0,
+
+  overflow:
+    "hidden",
+
+  textOverflow:
+    "ellipsis",
+
+  whiteSpace:
+    "nowrap",
+};
+
+const alertDropdownChevronStyle = {
+  marginLeft:
+    "auto",
+
+  flexShrink:
+    0,
+
+  color:
+    "var(--ct-muted, var(--text, #64748b))",
+
+  opacity:
+    0.8,
+
+  transition:
+    "transform 160ms ease",
+};
+
+const alertDropdownMenuStyle = {
+  position:
+    "absolute",
+
+  top:
+    "calc(100% + 6px)",
+
+  left:
+    0,
+
+  right:
+    0,
+
+  zIndex:
+    120,
+
+  padding:
+    "5px",
+
+  border:
+    "1px solid var(--ct-border, var(--border, #e5e4e7))",
+
+  borderRadius:
+    "12px",
+
+  background:
+    "var(--ct-surface-strong, var(--bg, #ffffff))",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  boxShadow:
+    "0 14px 32px rgba(15, 23, 42, 0.14)",
+
+  overflow:
+    "hidden",
+
+  backdropFilter:
+    "blur(18px)",
+};
+
+const alertDropdownItemStyle = {
+  width:
+    "100%",
+
+  minHeight:
+    "38px",
+
+  display:
+    "flex",
+
+  alignItems:
+    "center",
+
+  justifyContent:
+    "space-between",
+
+  gap:
+    "10px",
+
+  padding:
+    "0 10px",
+
+  border:
+    "none",
+
+  borderRadius:
+    "8px",
+
+  background:
+    "transparent",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  font:
+    "inherit",
+
+  fontSize:
+    "0.78rem",
+
+  fontWeight:
+    500,
+
+  cursor:
+    "pointer",
+
+  textAlign:
+    "left",
+};
+
+const alertDropdownItemActiveStyle = {
+  background:
+    "var(--ct-brand-soft, var(--accent-bg, rgba(0, 217, 199, 0.10)))",
+
+  color:
+    "var(--ct-brand, var(--accent, #008f83))",
+
+  fontWeight:
+    700,
+};

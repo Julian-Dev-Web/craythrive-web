@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   Activity,
   AlertTriangle,
   BarChart3,
+  Check,
   CheckCircle2,
+  ChevronDown,
   DollarSign,
   Download,
   Droplets,
@@ -1082,6 +1084,206 @@ function DonutStat({
           total
         )}
       </small>
+    </div>
+  );
+}
+
+/* =========================================================
+   MINIMAL THEME-AWARE DROPDOWN
+========================================================= */
+
+function ReportFilterDropdown({
+  icon: Icon,
+  value,
+  options,
+  onChange,
+  ariaLabel,
+}) {
+  const [
+    isOpen,
+    setIsOpen,
+  ] = useState(false);
+
+  const dropdownRef =
+    useRef(null);
+
+  const selectedOption =
+    options.find(
+      (option) =>
+        option.value === value
+    ) ||
+    options[0];
+
+  useEffect(() => {
+    function handleOutsideClick(
+      event
+    ) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(
+          event.target
+        )
+      ) {
+        setIsOpen(false);
+      }
+    }
+
+    function handleEscape(event) {
+      if (
+        event.key === "Escape"
+      ) {
+        setIsOpen(false);
+      }
+    }
+
+    document.addEventListener(
+      "mousedown",
+      handleOutsideClick
+    );
+
+    document.addEventListener(
+      "keydown",
+      handleEscape
+    );
+
+    return () => {
+      document.removeEventListener(
+        "mousedown",
+        handleOutsideClick
+      );
+
+      document.removeEventListener(
+        "keydown",
+        handleEscape
+      );
+    };
+  }, []);
+
+  function handleSelect(option) {
+    onChange(
+      option.value
+    );
+
+    setIsOpen(false);
+  }
+
+  return (
+    <div
+      ref={dropdownRef}
+      style={
+        reportDropdownWrapStyle
+      }
+    >
+      <button
+        type="button"
+        aria-label={
+          ariaLabel
+        }
+        aria-haspopup="listbox"
+        aria-expanded={
+          isOpen
+        }
+        onClick={() =>
+          setIsOpen(
+            (current) =>
+              !current
+          )
+        }
+        style={{
+          ...reportDropdownTriggerStyle,
+
+          ...(isOpen
+            ? reportDropdownTriggerOpenStyle
+            : {}),
+        }}
+      >
+        <Icon
+          size={17}
+          style={
+            reportDropdownIconStyle
+          }
+        />
+
+        <span
+          style={
+            reportDropdownSelectedTextStyle
+          }
+        >
+          {
+            selectedOption?.label
+          }
+        </span>
+
+        <ChevronDown
+          size={16}
+          style={{
+            ...reportDropdownChevronStyle,
+
+            transform:
+              isOpen
+                ? "rotate(180deg)"
+                : "rotate(0deg)",
+          }}
+        />
+      </button>
+
+      {isOpen && (
+        <div
+          role="listbox"
+          style={
+            reportDropdownMenuStyle
+          }
+        >
+          {options.map(
+            (option) => {
+              const isSelected =
+                option.value ===
+                value;
+
+              return (
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={
+                    isSelected
+                  }
+                  key={
+                    option.value
+                  }
+                  onClick={() =>
+                    handleSelect(
+                      option
+                    )
+                  }
+                  style={{
+                    ...reportDropdownItemStyle,
+
+                    ...(isSelected
+                      ? reportDropdownItemActiveStyle
+                      : {}),
+                  }}
+                >
+                  <span>
+                    {
+                      option.label
+                    }
+                  </span>
+
+                  {isSelected && (
+                    <Check
+                      size={15}
+                      style={{
+                        flexShrink:
+                          0,
+                      }}
+                    />
+                  )}
+                </button>
+              );
+            }
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -2356,7 +2558,6 @@ export default function ReportsPage() {
   if (isLoading) {
     return (
       <section className="cray-report-loading">
-
         <Loader2
           className="spin-icon"
           size={34}
@@ -2381,13 +2582,11 @@ export default function ReportsPage() {
 
   return (
     <div className="cray-reports-page">
-
       {/* ===============================================
           HERO
       ================================================ */}
 
       <section className="cray-reports-hero">
-
         <div>
           <p className="dashboard-eyebrow">
             Reports
@@ -2406,7 +2605,6 @@ export default function ReportsPage() {
           </p>
 
           <div className="cray-report-actions">
-
             <button
               type="button"
               className="dashboard-primary-button"
@@ -2432,7 +2630,6 @@ export default function ReportsPage() {
         </div>
 
         <div className="cray-report-hero-card">
-
           <FileText
             size={34}
           />
@@ -2458,7 +2655,6 @@ export default function ReportsPage() {
       ================================================ */}
 
       <section className="cray-report-tabs">
-
         <button
           type="button"
           className={
@@ -2514,83 +2710,80 @@ export default function ReportsPage() {
           EXPORT / TANK SELECTOR
       ================================================ */}
 
-      <section className="cray-report-exportbar">
-
+      <section
+        className="cray-report-exportbar"
+        style={
+          reportExportBarStyle
+        }
+      >
         {activeReport ===
           "tanks" && (
-          <label
-            title="Choose which tank to include in the report"
-          >
-            <Droplets
-              size={18}
-            />
+          <ReportFilterDropdown
+            ariaLabel="Choose which tank to include in the report"
+            icon={Droplets}
+            value={
+              selectedTankId
+            }
+            options={[
+              {
+                value:
+                  "all",
 
-            <select
-              value={
-                selectedTankId
-              }
-              onChange={(
-                event
-              ) =>
-                setSelectedTankId(
-                  event.target.value
-                )
-              }
-            >
-              <option value="all">
-                All Tanks
-              </option>
+                label:
+                  "All Tanks",
+              },
 
-              {tankOptions.map(
-                (option) => (
-                  <option
-                    key={
-                      option.id
-                    }
-                    value={
-                      option.id
-                    }
-                  >
-                    {
-                      option.name
-                    }
-                  </option>
-                )
-              )}
-            </select>
-          </label>
+              ...tankOptions.map(
+                (option) => ({
+                  value:
+                    option.id,
+
+                  label:
+                    option.name,
+                })
+              ),
+            ]}
+            onChange={
+              setSelectedTankId
+            }
+          />
         )}
 
-        <label>
-          <FileText
-            size={18}
-          />
+        <ReportFilterDropdown
+          ariaLabel="Choose report export scope"
+          icon={FileText}
+          value={
+            exportScope
+          }
+          options={[
+            {
+              value:
+                "tanks",
 
-          <select
-            value={
-              exportScope
-            }
-            onChange={(
-              event
-            ) =>
-              setExportScope(
-                event.target.value
-              )
-            }
-          >
-            <option value="tanks">
-              Tank Report Only
-            </option>
+              label:
+                "Tank Report Only",
+            },
 
-            <option value="market">
-              Marketplace Report Only
-            </option>
+            {
+              value:
+                "market",
 
-            <option value="both">
-              Tank + Marketplace
-            </option>
-          </select>
-        </label>
+              label:
+                "Marketplace Report Only",
+            },
+
+            {
+              value:
+                "both",
+
+              label:
+                "Tank + Marketplace",
+            },
+          ]}
+          onChange={
+            setExportScope
+          }
+        />
 
         <button
           type="button"
@@ -2626,13 +2819,10 @@ export default function ReportsPage() {
       {activeReport ===
       "tanks" ? (
         <>
-
           {/* SELECTED TANK LABEL */}
 
           <section className="cray-report-panel">
-
             <div className="cray-report-panel-heading">
-
               <div>
                 <p className="dashboard-eyebrow">
                   Report For
@@ -2677,7 +2867,6 @@ export default function ReportsPage() {
           {/* SUMMARY */}
 
           <section className="cray-report-summary-grid">
-
             <SummaryCard
               icon={Droplets}
               label={
@@ -2745,13 +2934,10 @@ export default function ReportsPage() {
           {/* ANALYTICS */}
 
           <section className="cray-report-grid">
-
             {/* WATER OVERVIEW */}
 
             <article className="cray-report-panel">
-
               <div className="cray-report-panel-heading">
-
                 <div>
                   <p className="dashboard-eyebrow">
                     Water Overview
@@ -2771,7 +2957,6 @@ export default function ReportsPage() {
               </div>
 
               <div className="cray-report-metric-grid">
-
                 <div>
                   <Thermometer
                     size={20}
@@ -2855,9 +3040,7 @@ export default function ReportsPage() {
             {/* CONDITION GRAPH */}
 
             <article className="cray-report-panel">
-
               <div className="cray-report-panel-heading">
-
                 <div>
                   <p className="dashboard-eyebrow">
                     Condition Breakdown
@@ -2874,7 +3057,6 @@ export default function ReportsPage() {
               </div>
 
               <div className="cray-report-bars">
-
                 {tankBars.map(
                   (item) => (
                     <BarRow
@@ -2902,9 +3084,7 @@ export default function ReportsPage() {
             {/* READING HEALTH */}
 
             <article className="cray-report-panel cray-report-wide">
-
               <div className="cray-report-panel-heading">
-
                 <div>
                   <p className="dashboard-eyebrow">
                     Reading Health
@@ -2921,7 +3101,6 @@ export default function ReportsPage() {
               </div>
 
               <div className="cray-report-donut-grid">
-
                 <DonutStat
                   label="Good"
                   value={
@@ -2960,9 +3139,7 @@ export default function ReportsPage() {
             {/* RECENT ACTIVITY */}
 
             <article className="cray-report-panel cray-report-wide">
-
               <div className="cray-report-panel-heading">
-
                 <div>
                   <p className="dashboard-eyebrow">
                     Recent Activity
@@ -2982,11 +3159,9 @@ export default function ReportsPage() {
               </div>
 
               <div className="cray-report-list">
-
                 {recentTankRecords.length ===
                 0 ? (
                   <div className="cray-report-empty-small">
-
                     <CheckCircle2
                       size={28}
                     />
@@ -3069,7 +3244,6 @@ export default function ReportsPage() {
           ============================================== */}
 
           <section className="cray-report-summary-grid">
-
             <SummaryCard
               icon={
                 ShoppingBag
@@ -3117,11 +3291,8 @@ export default function ReportsPage() {
           {/* MARKET ANALYTICS */}
 
           <section className="cray-report-grid">
-
             <article className="cray-report-panel">
-
               <div className="cray-report-panel-heading">
-
                 <div>
                   <p className="dashboard-eyebrow">
                     Sales
@@ -3138,7 +3309,6 @@ export default function ReportsPage() {
               </div>
 
               <div className="cray-report-sales-card">
-
                 <strong>
                   {formatPeso(
                     marketAnalytics.totalSales
@@ -3159,9 +3329,7 @@ export default function ReportsPage() {
             </article>
 
             <article className="cray-report-panel">
-
               <div className="cray-report-panel-heading">
-
                 <div>
                   <p className="dashboard-eyebrow">
                     Marketplace Activity
@@ -3178,7 +3346,6 @@ export default function ReportsPage() {
               </div>
 
               <div className="cray-report-bars">
-
                 {marketBars.map(
                   (item) => (
                     <BarRow
@@ -3204,9 +3371,7 @@ export default function ReportsPage() {
             </article>
 
             <article className="cray-report-panel cray-report-wide">
-
               <div className="cray-report-panel-heading">
-
                 <div>
                   <p className="dashboard-eyebrow">
                     Order Status
@@ -3223,7 +3388,6 @@ export default function ReportsPage() {
               </div>
 
               <div className="cray-report-donut-grid">
-
                 <DonutStat
                   label="Successful"
                   value={
@@ -3260,9 +3424,7 @@ export default function ReportsPage() {
             </article>
 
             <article className="cray-report-panel cray-report-wide">
-
               <div className="cray-report-panel-heading">
-
                 <div>
                   <p className="dashboard-eyebrow">
                     Recent Activity
@@ -3279,11 +3441,9 @@ export default function ReportsPage() {
               </div>
 
               <div className="cray-report-list">
-
                 {recentMarketRecords.length ===
                 0 ? (
                   <div className="cray-report-empty-small">
-
                     <ShoppingBag
                       size={28}
                     />
@@ -3342,3 +3502,237 @@ export default function ReportsPage() {
     </div>
   );
 }
+
+/* =========================================================
+   MINIMAL THEME-AWARE REPORT FILTER UI
+========================================================= */
+
+const reportExportBarStyle = {
+  overflow:
+    "visible",
+
+  position:
+    "relative",
+
+  zIndex:
+    12,
+};
+
+const reportDropdownWrapStyle = {
+  position:
+    "relative",
+
+  minWidth:
+    0,
+};
+
+const reportDropdownTriggerStyle = {
+  width:
+    "100%",
+
+  minWidth:
+    "180px",
+
+  height:
+    "46px",
+
+  display:
+    "flex",
+
+  alignItems:
+    "center",
+
+  gap:
+    "8px",
+
+  padding:
+    "0 12px",
+
+  border:
+    "1px solid var(--ct-border, var(--border, #e5e4e7))",
+
+  borderRadius:
+    "12px",
+
+  background:
+    "var(--ct-surface, var(--bg, #ffffff))",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  boxShadow:
+    "var(--ct-shadow-soft, 0 4px 14px rgba(15, 23, 42, 0.04))",
+
+  font:
+    "inherit",
+
+  fontSize:
+    "0.8rem",
+
+  fontWeight:
+    600,
+
+  cursor:
+    "pointer",
+
+  textAlign:
+    "left",
+
+  transition:
+    "background 150ms ease, border-color 150ms ease, box-shadow 150ms ease",
+};
+
+const reportDropdownTriggerOpenStyle = {
+  borderColor:
+    "var(--ct-brand, #00b8a9)",
+
+  background:
+    "var(--ct-surface-strong, var(--bg, #ffffff))",
+
+  boxShadow:
+    "0 0 0 3px rgba(0, 217, 199, 0.08)",
+};
+
+const reportDropdownIconStyle = {
+  flexShrink:
+    0,
+
+  color:
+    "var(--ct-brand, #00b8a9)",
+};
+
+const reportDropdownSelectedTextStyle = {
+  minWidth:
+    0,
+
+  overflow:
+    "hidden",
+
+  textOverflow:
+    "ellipsis",
+
+  whiteSpace:
+    "nowrap",
+};
+
+const reportDropdownChevronStyle = {
+  marginLeft:
+    "auto",
+
+  flexShrink:
+    0,
+
+  color:
+    "var(--ct-muted, var(--text, #64748b))",
+
+  opacity:
+    0.8,
+
+  transition:
+    "transform 160ms ease",
+};
+
+const reportDropdownMenuStyle = {
+  position:
+    "absolute",
+
+  top:
+    "calc(100% + 6px)",
+
+  left:
+    0,
+
+  right:
+    0,
+
+  zIndex:
+    120,
+
+  padding:
+    "5px",
+
+  maxHeight:
+    "260px",
+
+  overflowY:
+    "auto",
+
+  border:
+    "1px solid var(--ct-border, var(--border, #e5e4e7))",
+
+  borderRadius:
+    "12px",
+
+  background:
+    "var(--ct-surface-strong, var(--bg, #ffffff))",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  boxShadow:
+    "0 14px 32px rgba(15, 23, 42, 0.14)",
+
+  backdropFilter:
+    "blur(18px)",
+};
+
+const reportDropdownItemStyle = {
+  width:
+    "100%",
+
+  minHeight:
+    "38px",
+
+  display:
+    "flex",
+
+  alignItems:
+    "center",
+
+  justifyContent:
+    "space-between",
+
+  gap:
+    "10px",
+
+  padding:
+    "0 10px",
+
+  border:
+    "none",
+
+  borderRadius:
+    "8px",
+
+  background:
+    "transparent",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  font:
+    "inherit",
+
+  fontSize:
+    "0.78rem",
+
+  fontWeight:
+    500,
+
+  cursor:
+    "pointer",
+
+  textAlign:
+    "left",
+};
+
+const reportDropdownItemActiveStyle = {
+  background:
+    "var(--ct-brand-soft, var(--accent-bg, rgba(0, 217, 199, 0.10)))",
+
+  color:
+    "var(--ct-brand, var(--accent, #008f83))",
+
+  fontWeight:
+    700,
+};

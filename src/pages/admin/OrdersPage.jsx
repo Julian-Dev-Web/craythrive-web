@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import {
   ArrowLeft,
+  Check,
   CheckCircle2,
+  ChevronDown,
   Clock3,
   DollarSign,
   Filter,
@@ -43,6 +45,56 @@ const userFilterColumns = [
 ];
 
 const ORDERS_PER_PAGE = 10;
+
+const orderStatusOptions = [
+  {
+    value: "all",
+    label: "All Status",
+  },
+  {
+    value: "pending",
+    label: "Pending",
+  },
+  {
+    value: "confirmed",
+    label: "Confirmed",
+  },
+  {
+    value: "paid",
+    label: "Paid",
+  },
+  {
+    value: "delivering",
+    label: "Delivering",
+  },
+  {
+    value: "completed",
+    label: "Completed",
+  },
+  {
+    value: "cancelled",
+    label: "Cancelled",
+  },
+];
+
+const orderSortOptions = [
+  {
+    value: "newest",
+    label: "Newest First",
+  },
+  {
+    value: "oldest",
+    label: "Oldest First",
+  },
+  {
+    value: "highest",
+    label: "Highest Amount",
+  },
+  {
+    value: "lowest",
+    label: "Lowest Amount",
+  },
+];
 
 /* =========================================================
    GENERAL HELPERS
@@ -421,6 +473,7 @@ async function fetchRows(
 
   return {
     rows: [],
+
     tableUsed:
       tableNames[0],
   };
@@ -463,6 +516,193 @@ function SummaryCard({
 }
 
 /* =========================================================
+   MINIMAL THEME-AWARE DROPDOWN
+========================================================= */
+
+function OrderFilterDropdown({
+  icon: Icon,
+  value,
+  options,
+  onChange,
+  ariaLabel,
+}) {
+  const [
+    isOpen,
+    setIsOpen,
+  ] =
+    useState(false);
+
+  const dropdownRef =
+    useRef(null);
+
+  const selectedOption =
+    options.find(
+      (option) =>
+        option.value === value
+    ) || options[0];
+
+  useEffect(() => {
+    function handleOutsideClick(
+      event
+    ) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(
+          event.target
+        )
+      ) {
+        setIsOpen(false);
+      }
+    }
+
+    function handleEscape(
+      event
+    ) {
+      if (
+        event.key === "Escape"
+      ) {
+        setIsOpen(false);
+      }
+    }
+
+    document.addEventListener(
+      "mousedown",
+      handleOutsideClick
+    );
+
+    document.addEventListener(
+      "keydown",
+      handleEscape
+    );
+
+    return () => {
+      document.removeEventListener(
+        "mousedown",
+        handleOutsideClick
+      );
+
+      document.removeEventListener(
+        "keydown",
+        handleEscape
+      );
+    };
+  }, []);
+
+  function handleSelect(option) {
+    onChange(
+      option.value
+    );
+
+    setIsOpen(false);
+  }
+
+  return (
+    <div
+      ref={dropdownRef}
+      style={orderDropdownWrapStyle}
+    >
+      <button
+        type="button"
+        aria-label={ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        onClick={() =>
+          setIsOpen(
+            (current) =>
+              !current
+          )
+        }
+        style={{
+          ...orderDropdownTriggerStyle,
+
+          ...(isOpen
+            ? orderDropdownTriggerOpenStyle
+            : {}),
+        }}
+      >
+        <Icon
+          size={17}
+          style={orderDropdownIconStyle}
+        />
+
+        <span
+          style={orderDropdownSelectedTextStyle}
+        >
+          {selectedOption?.label}
+        </span>
+
+        <ChevronDown
+          size={16}
+          style={{
+            ...orderDropdownChevronStyle,
+
+            transform:
+              isOpen
+                ? "rotate(180deg)"
+                : "rotate(0deg)",
+          }}
+        />
+      </button>
+
+      {isOpen && (
+        <div
+          role="listbox"
+          style={orderDropdownMenuStyle}
+        >
+          {options.map(
+            (option) => {
+              const isSelected =
+                option.value ===
+                value;
+
+              return (
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={
+                    isSelected
+                  }
+                  key={
+                    option.value
+                  }
+                  onClick={() =>
+                    handleSelect(
+                      option
+                    )
+                  }
+                  style={{
+                    ...orderDropdownItemStyle,
+
+                    ...(isSelected
+                      ? orderDropdownItemActiveStyle
+                      : {}),
+                  }}
+                >
+                  <span>
+                    {
+                      option.label
+                    }
+                  </span>
+
+                  {isSelected && (
+                    <Check
+                      size={15}
+                      style={{
+                        flexShrink: 0,
+                      }}
+                    />
+                  )}
+                </button>
+              );
+            }
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================
    PAGE
 ========================================================= */
 
@@ -470,37 +710,44 @@ export default function OrdersPage() {
   const [
     orders,
     setOrders,
-  ] = useState([]);
+  ] =
+    useState([]);
 
   const [
     searchTerm,
     setSearchTerm,
-  ] = useState("");
+  ] =
+    useState("");
 
   const [
     statusFilter,
     setStatusFilter,
-  ] = useState("all");
+  ] =
+    useState("all");
 
   const [
     sortMode,
     setSortMode,
-  ] = useState("newest");
+  ] =
+    useState("newest");
 
   const [
     currentPage,
     setCurrentPage,
-  ] = useState(1);
+  ] =
+    useState(1);
 
   const [
     isLoading,
     setIsLoading,
-  ] = useState(true);
+  ] =
+    useState(true);
 
   const [
     lastUpdated,
     setLastUpdated,
-  ] = useState(null);
+  ] =
+    useState(null);
 
   /* =======================================================
      LOAD
@@ -793,7 +1040,9 @@ export default function OrdersPage() {
 
         totalSales,
       };
-    }, [enrichedOrders]);
+    }, [
+      enrichedOrders,
+    ]);
 
   /* =======================================================
      PAGINATION
@@ -816,8 +1065,10 @@ export default function OrdersPage() {
 
   const paginatedOrders =
     filteredOrders.slice(
-      (safeCurrentPage -
-        1) *
+      (
+        safeCurrentPage -
+        1
+      ) *
         ORDERS_PER_PAGE,
 
       safeCurrentPage *
@@ -826,10 +1077,12 @@ export default function OrdersPage() {
 
   const showingStart =
     filteredOrders.length ===
-    0
+      0
       ? 0
-      : (safeCurrentPage -
-          1) *
+      : (
+          safeCurrentPage -
+          1
+        ) *
           ORDERS_PER_PAGE +
         1;
 
@@ -837,6 +1090,7 @@ export default function OrdersPage() {
     Math.min(
       safeCurrentPage *
         ORDERS_PER_PAGE,
+
       filteredOrders.length
     );
 
@@ -847,7 +1101,6 @@ export default function OrdersPage() {
   if (isLoading) {
     return (
       <section className="cray-orders-loading">
-
         <Loader2
           className="spin-icon"
           size={34}
@@ -858,8 +1111,7 @@ export default function OrdersPage() {
         </h3>
 
         <p>
-          Getting your latest
-          marketplace transactions.
+          Getting your latest marketplace transactions.
         </p>
       </section>
     );
@@ -871,15 +1123,12 @@ export default function OrdersPage() {
 
   return (
     <div className="cray-orders-page">
-
       {/* ===============================================
           HERO
       ================================================ */}
 
       <section className="cray-orders-hero">
-
         <div>
-
           <Link
             to="/admin/marketplace"
             className="cray-orders-back"
@@ -896,20 +1145,16 @@ export default function OrdersPage() {
           </p>
 
           <h2>
-            Keep track of buyer
-            requests and sales.
+            Keep track of buyer requests and sales.
           </h2>
 
           <p>
-            Review pending orders,
-            deliveries, completed
-            transactions, and
-            cancellations without
+            Review pending orders, deliveries, completed
+            transactions, and cancellations without
             unnecessary technical details.
           </p>
 
           <div className="cray-orders-actions">
-
             <button
               type="button"
               className="dashboard-primary-button"
@@ -935,7 +1180,6 @@ export default function OrdersPage() {
         </div>
 
         <div className="cray-orders-hero-card">
-
           <PackageCheck
             size={34}
           />
@@ -955,7 +1199,6 @@ export default function OrdersPage() {
       ================================================ */}
 
       <section className="cray-orders-summary-grid">
-
         <SummaryCard
           icon={Clock3}
           label="Needs Action"
@@ -964,8 +1207,7 @@ export default function OrdersPage() {
           }
           helper="Pending buyer requests"
           tone={
-            summary.pending >
-            0
+            summary.pending > 0
               ? "warning"
               : "default"
           }
@@ -1006,11 +1248,24 @@ export default function OrdersPage() {
           FILTERS
       ================================================ */}
 
-      <section className="cray-orders-toolbar">
-
-        <div className="cray-orders-search">
-
-          <Search size={18} />
+      <section
+        className="cray-orders-toolbar"
+        style={
+          orderToolbarStyle
+        }
+      >
+        <div
+          className="cray-orders-search"
+          style={
+            orderSearchStyle
+          }
+        >
+          <Search
+            size={18}
+            style={
+              orderSearchIconStyle
+            }
+          />
 
           <input
             type="search"
@@ -1018,99 +1273,44 @@ export default function OrdersPage() {
             value={
               searchTerm
             }
-            onChange={(
-              event
-            ) =>
+            onChange={(event) =>
               setSearchTerm(
                 event.target.value
               )
             }
+            style={
+              orderSearchInputStyle
+            }
           />
         </div>
 
-        <label className="cray-orders-filter">
+        <OrderFilterDropdown
+          ariaLabel="Filter orders by status"
+          icon={Filter}
+          value={
+            statusFilter
+          }
+          options={
+            orderStatusOptions
+          }
+          onChange={
+            setStatusFilter
+          }
+        />
 
-          <Filter
-            size={18}
-          />
-
-          <select
-            value={
-              statusFilter
-            }
-            onChange={(
-              event
-            ) =>
-              setStatusFilter(
-                event.target.value
-              )
-            }
-          >
-            <option value="all">
-              All Status
-            </option>
-
-            <option value="pending">
-              Pending
-            </option>
-
-            <option value="confirmed">
-              Confirmed
-            </option>
-
-            <option value="paid">
-              Paid
-            </option>
-
-            <option value="delivering">
-              Delivering
-            </option>
-
-            <option value="completed">
-              Completed
-            </option>
-
-            <option value="cancelled">
-              Cancelled
-            </option>
-          </select>
-        </label>
-
-        <label className="cray-orders-filter">
-
-          <ShoppingBag
-            size={18}
-          />
-
-          <select
-            value={
-              sortMode
-            }
-            onChange={(
-              event
-            ) =>
-              setSortMode(
-                event.target.value
-              )
-            }
-          >
-            <option value="newest">
-              Newest First
-            </option>
-
-            <option value="oldest">
-              Oldest First
-            </option>
-
-            <option value="highest">
-              Highest Amount
-            </option>
-
-            <option value="lowest">
-              Lowest Amount
-            </option>
-          </select>
-        </label>
+        <OrderFilterDropdown
+          ariaLabel="Sort marketplace orders"
+          icon={ShoppingBag}
+          value={
+            sortMode
+          }
+          options={
+            orderSortOptions
+          }
+          onChange={
+            setSortMode
+          }
+        />
       </section>
 
       {/* ===============================================
@@ -1120,7 +1320,6 @@ export default function OrdersPage() {
       {filteredOrders.length ===
       0 ? (
         <section className="cray-orders-empty">
-
           <PackageCheck
             size={34}
           />
@@ -1130,21 +1329,17 @@ export default function OrdersPage() {
           </h3>
 
           <p>
-            Try changing your search
-            or filters. New marketplace
-            orders will appear here.
+            Try changing your search or filters.
+            New marketplace orders will appear here.
           </p>
         </section>
       ) : (
-
         /* =============================================
             TABLE
         ============================================== */
 
         <section className="cray-orders-table-card">
-
           <div className="cray-orders-table-title">
-
             <div>
               <span>
                 Order History
@@ -1168,7 +1363,6 @@ export default function OrdersPage() {
           </div>
 
           <div className="cray-orders-table-head">
-
             <span>
               Order
             </span>
@@ -1195,7 +1389,6 @@ export default function OrdersPage() {
           </div>
 
           <div className="cray-orders-table-body">
-
             {paginatedOrders.map(
               (item) => {
                 const order =
@@ -1225,11 +1418,11 @@ export default function OrdersPage() {
                       item.index
                     }
                   >
-
                     <span data-label="Order">
-
                       <strong>
-                        {item.title}
+                        {
+                          item.title
+                        }
                       </strong>
 
                       {note && (
@@ -1244,11 +1437,12 @@ export default function OrdersPage() {
                     </span>
 
                     <span data-label="Quantity">
-                      {quantity}
+                      {
+                        quantity
+                      }
                     </span>
 
                     <span data-label="Total">
-
                       <strong>
                         {formatPeso(
                           item.total
@@ -1257,7 +1451,6 @@ export default function OrdersPage() {
                     </span>
 
                     <span data-label="Status">
-
                       <b
                         className={`cray-order-status ${item.status}`}
                       >
@@ -1281,7 +1474,6 @@ export default function OrdersPage() {
           {/* PAGINATION */}
 
           <div className="cray-orders-pagination">
-
             <span>
               Showing{" "}
               {showingStart}-
@@ -1292,7 +1484,6 @@ export default function OrdersPage() {
             </span>
 
             <div>
-
               <button
                 type="button"
                 disabled={
@@ -1318,7 +1509,9 @@ export default function OrdersPage() {
                   safeCurrentPage
                 }{" "}
                 of{" "}
-                {totalPages}
+                {
+                  totalPages
+                }
               </strong>
 
               <button
@@ -1348,7 +1541,6 @@ export default function OrdersPage() {
 
       {summary.cancelled > 0 && (
         <div className="cray-orders-cancelled-note">
-
           <XCircle
             size={17}
           />
@@ -1365,3 +1557,317 @@ export default function OrdersPage() {
     </div>
   );
 }
+
+/* =========================================================
+   MINIMAL THEME-AWARE ORDER FILTER UI
+========================================================= */
+
+const orderToolbarStyle = {
+  display: "grid",
+
+  gridTemplateColumns:
+    "minmax(260px, 1fr) minmax(170px, 200px) minmax(170px, 200px)",
+
+  alignItems:
+    "center",
+
+  gap:
+    "10px",
+
+  overflow:
+    "visible",
+
+  position:
+    "relative",
+
+  zIndex:
+    12,
+};
+
+const orderSearchStyle = {
+  height:
+    "48px",
+
+  minHeight:
+    "48px",
+
+  display:
+    "flex",
+
+  alignItems:
+    "center",
+
+  gap:
+    "9px",
+
+  padding:
+    "0 14px",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  border:
+    "1px solid var(--ct-border, var(--border, #e5e4e7))",
+
+  borderRadius:
+    "12px",
+
+  background:
+    "var(--ct-surface, var(--bg, #ffffff))",
+
+  boxShadow:
+    "var(--ct-shadow-soft, 0 4px 14px rgba(15, 23, 42, 0.04))",
+};
+
+const orderSearchIconStyle = {
+  flexShrink:
+    0,
+
+  color:
+    "var(--ct-muted, var(--text, #64748b))",
+};
+
+const orderSearchInputStyle = {
+  width:
+    "100%",
+
+  minWidth:
+    0,
+
+  padding:
+    0,
+
+  border:
+    "none",
+
+  outline:
+    "none",
+
+  background:
+    "transparent",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  font:
+    "inherit",
+
+  fontSize:
+    "0.82rem",
+};
+
+const orderDropdownWrapStyle = {
+  position:
+    "relative",
+
+  minWidth:
+    0,
+};
+
+const orderDropdownTriggerStyle = {
+  width:
+    "100%",
+
+  height:
+    "48px",
+
+  display:
+    "flex",
+
+  alignItems:
+    "center",
+
+  gap:
+    "8px",
+
+  padding:
+    "0 13px",
+
+  border:
+    "1px solid var(--ct-border, var(--border, #e5e4e7))",
+
+  borderRadius:
+    "12px",
+
+  background:
+    "var(--ct-surface, var(--bg, #ffffff))",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  boxShadow:
+    "var(--ct-shadow-soft, 0 4px 14px rgba(15, 23, 42, 0.04))",
+
+  font:
+    "inherit",
+
+  fontSize:
+    "0.8rem",
+
+  fontWeight:
+    600,
+
+  cursor:
+    "pointer",
+
+  textAlign:
+    "left",
+
+  transition:
+    "background 150ms ease, border-color 150ms ease, box-shadow 150ms ease",
+};
+
+const orderDropdownTriggerOpenStyle = {
+  borderColor:
+    "var(--ct-brand, #00b8a9)",
+
+  background:
+    "var(--ct-surface-strong, var(--bg, #ffffff))",
+
+  boxShadow:
+    "0 0 0 3px rgba(0, 217, 199, 0.08)",
+};
+
+const orderDropdownIconStyle = {
+  flexShrink:
+    0,
+
+  color:
+    "var(--ct-brand, #00b8a9)",
+};
+
+const orderDropdownSelectedTextStyle = {
+  minWidth:
+    0,
+
+  overflow:
+    "hidden",
+
+  textOverflow:
+    "ellipsis",
+
+  whiteSpace:
+    "nowrap",
+};
+
+const orderDropdownChevronStyle = {
+  marginLeft:
+    "auto",
+
+  flexShrink:
+    0,
+
+  color:
+    "var(--ct-muted, var(--text, #64748b))",
+
+  opacity:
+    0.8,
+
+  transition:
+    "transform 160ms ease",
+};
+
+const orderDropdownMenuStyle = {
+  position:
+    "absolute",
+
+  top:
+    "calc(100% + 6px)",
+
+  left:
+    0,
+
+  right:
+    0,
+
+  zIndex:
+    120,
+
+  padding:
+    "5px",
+
+  maxHeight:
+    "260px",
+
+  overflowY:
+    "auto",
+
+  border:
+    "1px solid var(--ct-border, var(--border, #e5e4e7))",
+
+  borderRadius:
+    "12px",
+
+  background:
+    "var(--ct-surface-strong, var(--bg, #ffffff))",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  boxShadow:
+    "0 14px 32px rgba(15, 23, 42, 0.14)",
+
+  backdropFilter:
+    "blur(18px)",
+};
+
+const orderDropdownItemStyle = {
+  width:
+    "100%",
+
+  minHeight:
+    "38px",
+
+  display:
+    "flex",
+
+  alignItems:
+    "center",
+
+  justifyContent:
+    "space-between",
+
+  gap:
+    "10px",
+
+  padding:
+    "0 10px",
+
+  border:
+    "none",
+
+  borderRadius:
+    "8px",
+
+  background:
+    "transparent",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  font:
+    "inherit",
+
+  fontSize:
+    "0.78rem",
+
+  fontWeight:
+    500,
+
+  cursor:
+    "pointer",
+
+  textAlign:
+    "left",
+};
+
+const orderDropdownItemActiveStyle = {
+  background:
+    "var(--ct-brand-soft, var(--accent-bg, rgba(0, 217, 199, 0.10)))",
+
+  color:
+    "var(--ct-brand, var(--accent, #008f83))",
+
+  fontWeight:
+    700,
+};
