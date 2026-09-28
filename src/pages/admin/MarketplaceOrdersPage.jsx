@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import {
   AlertTriangle,
   ArrowLeft,
+  Check,
   CheckCircle2,
+  ChevronDown,
   Clock3,
   Filter,
   Loader2,
@@ -56,6 +58,52 @@ const listingUserColumns = [
 ];
 
 const ORDERS_PER_PAGE = 10;
+
+const orderStatusFilterOptions = [
+  {
+    value: "all",
+    label: "All Status",
+  },
+  {
+    value: "pending",
+    label: "Pending",
+  },
+  {
+    value: "confirmed",
+    label: "Confirmed",
+  },
+  {
+    value: "completed",
+    label: "Completed",
+  },
+  {
+    value: "paid",
+    label: "Paid",
+  },
+  {
+    value: "cancelled",
+    label: "Cancelled",
+  },
+];
+
+const orderRoleFilterOptions = [
+  {
+    value: "all",
+    label: "All Transactions",
+  },
+  {
+    value: "buyer",
+    label: "Buying",
+  },
+  {
+    value: "seller",
+    label: "Selling",
+  },
+  {
+    value: "linked",
+    label: "Related",
+  },
+];
 
 /* =========================================================
    HELPERS
@@ -567,6 +615,209 @@ function OrderSummaryCard({
 }
 
 /* =========================================================
+   MINIMAL THEME-AWARE DROPDOWN
+========================================================= */
+
+function MarketplaceOrderFilterDropdown({
+  icon: Icon,
+  value,
+  options,
+  onChange,
+  ariaLabel,
+}) {
+  const [
+    isOpen,
+    setIsOpen,
+  ] =
+    useState(false);
+
+  const dropdownRef =
+    useRef(null);
+
+  const selectedOption =
+    options.find(
+      (option) =>
+        option.value === value
+    ) ||
+    options[0];
+
+  useEffect(() => {
+    function handleOutsideClick(
+      event
+    ) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(
+          event.target
+        )
+      ) {
+        setIsOpen(false);
+      }
+    }
+
+    function handleEscape(event) {
+      if (
+        event.key === "Escape"
+      ) {
+        setIsOpen(false);
+      }
+    }
+
+    document.addEventListener(
+      "mousedown",
+      handleOutsideClick
+    );
+
+    document.addEventListener(
+      "keydown",
+      handleEscape
+    );
+
+    return () => {
+      document.removeEventListener(
+        "mousedown",
+        handleOutsideClick
+      );
+
+      document.removeEventListener(
+        "keydown",
+        handleEscape
+      );
+    };
+  }, []);
+
+  function handleSelect(option) {
+    onChange(
+      option.value
+    );
+
+    setIsOpen(false);
+  }
+
+  return (
+    <div
+      ref={
+        dropdownRef
+      }
+      style={
+        marketOrderDropdownWrapStyle
+      }
+    >
+      <button
+        type="button"
+        aria-label={
+          ariaLabel
+        }
+        aria-haspopup="listbox"
+        aria-expanded={
+          isOpen
+        }
+        onClick={() =>
+          setIsOpen(
+            (current) =>
+              !current
+          )
+        }
+        style={{
+          ...marketOrderDropdownTriggerStyle,
+
+          ...(isOpen
+            ? marketOrderDropdownTriggerOpenStyle
+            : {}),
+        }}
+      >
+        <Icon
+          size={17}
+          style={
+            marketOrderDropdownIconStyle
+          }
+        />
+
+        <span
+          style={
+            marketOrderDropdownSelectedTextStyle
+          }
+        >
+          {
+            selectedOption?.label
+          }
+        </span>
+
+        <ChevronDown
+          size={16}
+          style={{
+            ...marketOrderDropdownChevronStyle,
+
+            transform:
+              isOpen
+                ? "rotate(180deg)"
+                : "rotate(0deg)",
+          }}
+        />
+      </button>
+
+      {isOpen && (
+        <div
+          role="listbox"
+          style={
+            marketOrderDropdownMenuStyle
+          }
+        >
+          {options.map(
+            (option) => {
+              const isSelected =
+                option.value ===
+                value;
+
+              return (
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={
+                    isSelected
+                  }
+                  key={
+                    option.value
+                  }
+                  onClick={() =>
+                    handleSelect(
+                      option
+                    )
+                  }
+                  style={{
+                    ...marketOrderDropdownItemStyle,
+
+                    ...(isSelected
+                      ? marketOrderDropdownItemActiveStyle
+                      : {}),
+                  }}
+                >
+                  <span>
+                    {
+                      option.label
+                    }
+                  </span>
+
+                  {isSelected && (
+                    <Check
+                      size={15}
+                      style={{
+                        flexShrink:
+                          0,
+                      }}
+                    />
+                  )}
+                </button>
+              );
+            }
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================
    PAGE
 ========================================================= */
 
@@ -574,47 +825,56 @@ export default function MarketplaceOrdersPage() {
   const [
     orders,
     setOrders,
-  ] = useState([]);
+  ] =
+    useState([]);
 
   const [
     listingMap,
     setListingMap,
-  ] = useState({});
+  ] =
+    useState({});
 
   const [
     authUserId,
     setAuthUserId,
-  ] = useState("");
+  ] =
+    useState("");
 
   const [
     searchTerm,
     setSearchTerm,
-  ] = useState("");
+  ] =
+    useState("");
 
   const [
     statusFilter,
     setStatusFilter,
-  ] = useState("all");
+  ] =
+    useState("all");
 
   const [
     roleFilter,
     setRoleFilter,
-  ] = useState("all");
+  ] =
+    useState("all");
 
   const [
     currentPage,
     setCurrentPage,
-  ] = useState(1);
+  ] =
+    useState(1);
 
   const [
     isLoading,
     setIsLoading,
-  ] = useState(true);
+  ] =
+    useState(true);
 
   const [
     lastUpdated,
     setLastUpdated,
-  ] = useState(null);
+  ] =
+    useState(null);
 
   /* =======================================================
      LOAD
@@ -906,8 +1166,10 @@ export default function MarketplaceOrdersPage() {
 
   const paginatedOrders =
     filteredOrders.slice(
-      (safeCurrentPage -
-        1) *
+      (
+        safeCurrentPage -
+        1
+      ) *
         ORDERS_PER_PAGE,
 
       safeCurrentPage *
@@ -918,8 +1180,10 @@ export default function MarketplaceOrdersPage() {
     filteredOrders.length ===
     0
       ? 0
-      : (safeCurrentPage -
-          1) *
+      : (
+          safeCurrentPage -
+          1
+        ) *
           ORDERS_PER_PAGE +
         1;
 
@@ -927,6 +1191,7 @@ export default function MarketplaceOrdersPage() {
     Math.min(
       safeCurrentPage *
         ORDERS_PER_PAGE,
+
       filteredOrders.length
     );
 
@@ -936,15 +1201,12 @@ export default function MarketplaceOrdersPage() {
 
   return (
     <div className="modern-orders-page">
-
       {/* ===============================================
           HERO
       ================================================ */}
 
       <section className="modern-orders-hero">
-
         <div>
-
           <Link
             to="/admin/marketplace"
             className="modern-orders-back"
@@ -973,7 +1235,6 @@ export default function MarketplaceOrdersPage() {
           </p>
 
           <div className="modern-orders-actions">
-
             <button
               type="button"
               className="dashboard-primary-button"
@@ -1009,13 +1270,14 @@ export default function MarketplaceOrdersPage() {
         </div>
 
         <div className="modern-orders-hero-card">
-
           <PackageCheck
             size={34}
           />
 
           <strong>
-            {stats.total}
+            {
+              stats.total
+            }
           </strong>
 
           <span>
@@ -1029,12 +1291,14 @@ export default function MarketplaceOrdersPage() {
       ================================================ */}
 
       <section className="modern-orders-summary-grid">
-
         <OrderSummaryCard
-          icon={Clock3}
+          icon={
+            Clock3
+          }
           label="Pending"
           value={
-            stats.pending || 0
+            stats.pending ||
+            0
           }
           helper="Waiting for action"
           tone="warning"
@@ -1046,19 +1310,23 @@ export default function MarketplaceOrdersPage() {
           }
           label="Confirmed"
           value={
-            stats.confirmed || 0
+            stats.confirmed ||
+            0
           }
           helper="Approved transactions"
           tone="success"
         />
 
         <OrderSummaryCard
-          icon={Wallet}
+          icon={
+            Wallet
+          }
           label="Completed"
           value={
             (stats.completed ||
               0) +
-            (stats.paid || 0)
+            (stats.paid ||
+              0)
           }
           helper="Finished transactions"
         />
@@ -1081,12 +1349,23 @@ export default function MarketplaceOrdersPage() {
           FILTER
       ================================================ */}
 
-      <section className="modern-orders-toolbar">
-
-        <label className="modern-orders-search">
-
+      <section
+        className="modern-orders-toolbar"
+        style={
+          marketOrderToolbarStyle
+        }
+      >
+        <div
+          className="modern-orders-search"
+          style={
+            marketOrderSearchStyle
+          }
+        >
           <Search
             size={18}
+            style={
+              marketOrderSearchIconStyle
+            }
           />
 
           <input
@@ -1094,96 +1373,49 @@ export default function MarketplaceOrdersPage() {
             value={
               searchTerm
             }
-            onChange={(
-              event
-            ) =>
+            onChange={(event) =>
               setSearchTerm(
                 event.target.value
               )
             }
             placeholder="Search listing or customer..."
+            style={
+              marketOrderSearchInputStyle
+            }
           />
-        </label>
+        </div>
 
-        <label className="modern-orders-filter">
+        <MarketplaceOrderFilterDropdown
+          ariaLabel="Filter marketplace orders by status"
+          icon={
+            Filter
+          }
+          value={
+            statusFilter
+          }
+          options={
+            orderStatusFilterOptions
+          }
+          onChange={
+            setStatusFilter
+          }
+        />
 
-          <Filter
-            size={18}
-          />
-
-          <select
-            value={
-              statusFilter
-            }
-            onChange={(
-              event
-            ) =>
-              setStatusFilter(
-                event.target.value
-              )
-            }
-          >
-            <option value="all">
-              All Status
-            </option>
-
-            <option value="pending">
-              Pending
-            </option>
-
-            <option value="confirmed">
-              Confirmed
-            </option>
-
-            <option value="completed">
-              Completed
-            </option>
-
-            <option value="paid">
-              Paid
-            </option>
-
-            <option value="cancelled">
-              Cancelled
-            </option>
-          </select>
-        </label>
-
-        <label className="modern-orders-filter">
-
-          <UserRound
-            size={18}
-          />
-
-          <select
-            value={
-              roleFilter
-            }
-            onChange={(
-              event
-            ) =>
-              setRoleFilter(
-                event.target.value
-              )
-            }
-          >
-            <option value="all">
-              All Transactions
-            </option>
-
-            <option value="buyer">
-              Buying
-            </option>
-
-            <option value="seller">
-              Selling
-            </option>
-
-            <option value="linked">
-              Related
-            </option>
-          </select>
-        </label>
+        <MarketplaceOrderFilterDropdown
+          ariaLabel="Filter marketplace orders by transaction type"
+          icon={
+            UserRound
+          }
+          value={
+            roleFilter
+          }
+          options={
+            orderRoleFilterOptions
+          }
+          onChange={
+            setRoleFilter
+          }
+        />
       </section>
 
       {/* ===============================================
@@ -1192,7 +1424,6 @@ export default function MarketplaceOrdersPage() {
 
       {isLoading ? (
         <section className="modern-orders-empty">
-
           <Loader2
             className="spin-icon"
             size={30}
@@ -1210,7 +1441,6 @@ export default function MarketplaceOrdersPage() {
       ) : filteredOrders.length ===
         0 ? (
         <section className="modern-orders-empty">
-
           <ShoppingBag
             size={34}
           />
@@ -1227,15 +1457,12 @@ export default function MarketplaceOrdersPage() {
           </p>
         </section>
       ) : (
-
         /* =============================================
             ORDERS TABLE
         ============================================== */
 
         <section className="modern-orders-table-card">
-
           <div className="modern-orders-table-title">
-
             <div>
               <span>
                 Transaction History
@@ -1259,7 +1486,6 @@ export default function MarketplaceOrdersPage() {
           </div>
 
           <div className="modern-orders-table-head">
-
             <span>
               Listing
             </span>
@@ -1294,7 +1520,6 @@ export default function MarketplaceOrdersPage() {
           </div>
 
           <div className="modern-orders-table-body">
-
             {paginatedOrders.map(
               (
                 order,
@@ -1319,14 +1544,14 @@ export default function MarketplaceOrdersPage() {
                 return (
                   <div
                     className="modern-orders-table-row"
-                    key={getOrderId(
-                      order,
-                      index
-                    )}
+                    key={
+                      getOrderId(
+                        order,
+                        index
+                      )
+                    }
                   >
-
                     <span data-label="Listing">
-
                       <strong>
                         {getListingTitle(
                           order,
@@ -1336,13 +1561,14 @@ export default function MarketplaceOrdersPage() {
 
                       {note && (
                         <small>
-                          {note}
+                          {
+                            note
+                          }
                         </small>
                       )}
                     </span>
 
                     <span data-label="Type">
-
                       <b
                         className={`modern-order-role ${role}`}
                       >
@@ -1353,28 +1579,24 @@ export default function MarketplaceOrdersPage() {
                     </span>
 
                     <span data-label="Buyer">
-
                       {getBuyerLabel(
                         order
                       )}
                     </span>
 
                     <span data-label="Seller">
-
                       {getSellerLabel(
                         order
                       )}
                     </span>
 
                     <span data-label="Quantity">
-
                       {getOrderQuantity(
                         order
                       )}
                     </span>
 
                     <span data-label="Total">
-
                       <strong>
                         {formatPrice(
                           getOrderTotal(
@@ -1385,7 +1607,6 @@ export default function MarketplaceOrdersPage() {
                     </span>
 
                     <span data-label="Status">
-
                       <b
                         className={`modern-order-status ${status}`}
                       >
@@ -1396,7 +1617,6 @@ export default function MarketplaceOrdersPage() {
                     </span>
 
                     <span data-label="Date">
-
                       {formatDate(
                         order.created_at ||
                           order.updated_at
@@ -1411,7 +1631,6 @@ export default function MarketplaceOrdersPage() {
           {/* PAGINATION */}
 
           <div className="modern-orders-pagination">
-
             <span>
               Showing{" "}
               {showingStart}-
@@ -1422,7 +1641,6 @@ export default function MarketplaceOrdersPage() {
             </span>
 
             <div>
-
               <button
                 type="button"
                 disabled={
@@ -1448,7 +1666,9 @@ export default function MarketplaceOrdersPage() {
                   safeCurrentPage
                 }{" "}
                 of{" "}
-                {totalPages}
+                {
+                  totalPages
+                }
               </strong>
 
               <button
@@ -1476,3 +1696,327 @@ export default function MarketplaceOrdersPage() {
     </div>
   );
 }
+
+/* =========================================================
+   MINIMAL THEME-AWARE MARKETPLACE ORDER FILTER UI
+========================================================= */
+
+const marketOrderToolbarStyle = {
+  display:
+    "flex",
+
+  alignItems:
+    "center",
+
+  flexWrap:
+    "wrap",
+
+  gap:
+    "10px",
+
+  overflow:
+    "visible",
+
+  position:
+    "relative",
+
+  zIndex:
+    12,
+};
+
+const marketOrderSearchStyle = {
+  flex:
+    "1 1 280px",
+
+  minWidth:
+    "220px",
+
+  height:
+    "48px",
+
+  minHeight:
+    "48px",
+
+  display:
+    "flex",
+
+  alignItems:
+    "center",
+
+  gap:
+    "9px",
+
+  padding:
+    "0 14px",
+
+  border:
+    "1px solid var(--ct-border, var(--border, #e5e4e7))",
+
+  borderRadius:
+    "12px",
+
+  background:
+    "var(--ct-surface, var(--bg, #ffffff))",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  boxShadow:
+    "var(--ct-shadow-soft, 0 4px 14px rgba(15, 23, 42, 0.04))",
+};
+
+const marketOrderSearchIconStyle = {
+  flexShrink:
+    0,
+
+  color:
+    "var(--ct-muted, var(--text, #64748b))",
+};
+
+const marketOrderSearchInputStyle = {
+  width:
+    "100%",
+
+  minWidth:
+    0,
+
+  padding:
+    0,
+
+  border:
+    "none",
+
+  outline:
+    "none",
+
+  background:
+    "transparent",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  font:
+    "inherit",
+
+  fontSize:
+    "0.82rem",
+};
+
+const marketOrderDropdownWrapStyle = {
+  position:
+    "relative",
+
+  flex:
+    "0 1 190px",
+
+  minWidth:
+    "165px",
+};
+
+const marketOrderDropdownTriggerStyle = {
+  width:
+    "100%",
+
+  height:
+    "48px",
+
+  display:
+    "flex",
+
+  alignItems:
+    "center",
+
+  gap:
+    "8px",
+
+  padding:
+    "0 13px",
+
+  border:
+    "1px solid var(--ct-border, var(--border, #e5e4e7))",
+
+  borderRadius:
+    "12px",
+
+  background:
+    "var(--ct-surface, var(--bg, #ffffff))",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  boxShadow:
+    "var(--ct-shadow-soft, 0 4px 14px rgba(15, 23, 42, 0.04))",
+
+  font:
+    "inherit",
+
+  fontSize:
+    "0.8rem",
+
+  fontWeight:
+    600,
+
+  cursor:
+    "pointer",
+
+  textAlign:
+    "left",
+
+  transition:
+    "background 150ms ease, border-color 150ms ease, box-shadow 150ms ease",
+};
+
+const marketOrderDropdownTriggerOpenStyle = {
+  borderColor:
+    "var(--ct-brand, #00b8a9)",
+
+  background:
+    "var(--ct-surface-strong, var(--bg, #ffffff))",
+
+  boxShadow:
+    "0 0 0 3px rgba(0, 217, 199, 0.08)",
+};
+
+const marketOrderDropdownIconStyle = {
+  flexShrink:
+    0,
+
+  color:
+    "var(--ct-brand, #00b8a9)",
+};
+
+const marketOrderDropdownSelectedTextStyle = {
+  minWidth:
+    0,
+
+  overflow:
+    "hidden",
+
+  textOverflow:
+    "ellipsis",
+
+  whiteSpace:
+    "nowrap",
+};
+
+const marketOrderDropdownChevronStyle = {
+  marginLeft:
+    "auto",
+
+  flexShrink:
+    0,
+
+  color:
+    "var(--ct-muted, var(--text, #64748b))",
+
+  opacity:
+    0.8,
+
+  transition:
+    "transform 160ms ease",
+};
+
+const marketOrderDropdownMenuStyle = {
+  position:
+    "absolute",
+
+  top:
+    "calc(100% + 6px)",
+
+  left:
+    0,
+
+  right:
+    0,
+
+  zIndex:
+    120,
+
+  padding:
+    "5px",
+
+  maxHeight:
+    "260px",
+
+  overflowY:
+    "auto",
+
+  border:
+    "1px solid var(--ct-border, var(--border, #e5e4e7))",
+
+  borderRadius:
+    "12px",
+
+  background:
+    "var(--ct-surface-strong, var(--bg, #ffffff))",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  boxShadow:
+    "0 14px 32px rgba(15, 23, 42, 0.14)",
+
+  backdropFilter:
+    "blur(18px)",
+};
+
+const marketOrderDropdownItemStyle = {
+  width:
+    "100%",
+
+  minHeight:
+    "38px",
+
+  display:
+    "flex",
+
+  alignItems:
+    "center",
+
+  justifyContent:
+    "space-between",
+
+  gap:
+    "10px",
+
+  padding:
+    "0 10px",
+
+  border:
+    "none",
+
+  borderRadius:
+    "8px",
+
+  background:
+    "transparent",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  font:
+    "inherit",
+
+  fontSize:
+    "0.78rem",
+
+  fontWeight:
+    500,
+
+  cursor:
+    "pointer",
+
+  textAlign:
+    "left",
+};
+
+const marketOrderDropdownItemActiveStyle = {
+  background:
+    "var(--ct-brand-soft, var(--accent-bg, rgba(0, 217, 199, 0.10)))",
+
+  color:
+    "var(--ct-brand, var(--accent, #008f83))",
+
+  fontWeight:
+    700,
+};
