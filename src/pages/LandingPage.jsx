@@ -17,13 +17,49 @@ import {
   ShoppingBag,
   Smartphone,
 } from "lucide-react";
+
 import { APP_INFO } from "../constants/theme";
 
-const APK_DOWNLOAD_URL = "https://github.com/Julian-Dev-Web/craythrive-web/releases/tag/apk-v1";
+/*
+|--------------------------------------------------------------------------
+| ANDROID APK
+|--------------------------------------------------------------------------
+|
+| IMPORTANT:
+|
+| Every GitHub release should contain an asset named EXACTLY:
+|
+| craythrive.apk
+|
+| Example release tags:
+|
+| v1.0.1
+| v1.0.2
+| v1.0.3
+|
+| The website does NOT need to be changed for every new APK.
+| GitHub /latest/download automatically points to the newest
+| published release containing craythrive.apk.
+|
+*/
 
-// >>> EDIT THESE TWO VALUES WITH YOUR REAL CONTACT INFO <<<
+const APK_DOWNLOAD_URL =
+  "https://github.com/Julian-Dev-Web/craythrive-web/releases/latest/download/craythrive.apk";
+
+/*
+|--------------------------------------------------------------------------
+| CONTACT
+|--------------------------------------------------------------------------
+*/
+
 const CONTACT_EMAIL = "Craythrivesupport@gmail.com";
 const CONTACT_PHONE = "+63 935 819 6510";
+
+/*
+|--------------------------------------------------------------------------
+| PREVIEW STATS
+|--------------------------------------------------------------------------
+*/
 
 const previewStats = [
   {
@@ -42,6 +78,12 @@ const previewStats = [
     value: "Crayfish Only",
   },
 ];
+
+/*
+|--------------------------------------------------------------------------
+| FEATURES
+|--------------------------------------------------------------------------
+*/
 
 const features = [
   {
@@ -74,7 +116,18 @@ const features = [
   },
 ];
 
-function ImageWithFallback({ src, alt, className, fallbackText }) {
+/*
+|--------------------------------------------------------------------------
+| IMAGE WITH FALLBACK
+|--------------------------------------------------------------------------
+*/
+
+function ImageWithFallback({
+  src,
+  alt,
+  className,
+  fallbackText,
+}) {
   const [failed, setFailed] = useState(false);
 
   if (failed) {
@@ -95,6 +148,12 @@ function ImageWithFallback({ src, alt, className, fallbackText }) {
   );
 }
 
+/*
+|--------------------------------------------------------------------------
+| BELL ICON
+|--------------------------------------------------------------------------
+*/
+
 function BellIcon() {
   return (
     <svg
@@ -111,6 +170,7 @@ function BellIcon() {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+
       <path
         d="M10 20C10.4 20.6 11.1 21 12 21C12.9 21 13.6 20.6 14 20"
         stroke="currentColor"
@@ -121,18 +181,31 @@ function BellIcon() {
   );
 }
 
-function FooterContactIcon({ icon: Icon, label, value }) {
+/*
+|--------------------------------------------------------------------------
+| FOOTER CONTACT
+|--------------------------------------------------------------------------
+*/
+
+function FooterContactIcon({
+  icon: Icon,
+  label,
+  value,
+}) {
   const [isHovering, setIsHovering] = useState(false);
   const [justCopied, setJustCopied] = useState(false);
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(value);
+
       setJustCopied(true);
-      window.setTimeout(() => setJustCopied(false), 1600);
+
+      window.setTimeout(() => {
+        setJustCopied(false);
+      }, 1600);
     } catch {
-      // Clipboard API unavailable (very old browser or non-HTTPS) — the
-      // tooltip already shows the value on hover, so it's still visible.
+      // Clipboard unavailable.
     }
   };
 
@@ -148,43 +221,95 @@ function FooterContactIcon({ icon: Icon, label, value }) {
       onClick={handleCopy}
     >
       <Icon size={18} />
-      <span className={`footer-icon-tip ${isHovering ? "is-visible" : ""}`}>
+
+      <span
+        className={`footer-icon-tip ${
+          isHovering ? "is-visible" : ""
+        }`}
+      >
         {justCopied ? "Copied!" : value}
       </span>
     </button>
   );
 }
 
+/*
+|--------------------------------------------------------------------------
+| LANDING PAGE
+|--------------------------------------------------------------------------
+*/
+
 export default function LandingPage() {
   const [scrollY, setScrollY] = useState(0);
-  const [pointer, setPointer] = useState({ x: 0, y: 0 });
+
+  const [pointer, setPointer] = useState({
+    x: 0,
+    y: 0,
+  });
 
   useEffect(() => {
-    const handleScroll = () => setScrollY(window.scrollY);
+    const handleScroll = () => {
+      setScrollY(window.scrollY);
+    };
 
     const handlePointerMove = (event) => {
-      const x = (event.clientX / window.innerWidth - 0.5) * 2;
-      const y = (event.clientY / window.innerHeight - 0.5) * 2;
-      setPointer({ x, y });
+      const x =
+        (event.clientX / window.innerWidth - 0.5) * 2;
+
+      const y =
+        (event.clientY / window.innerHeight - 0.5) * 2;
+
+      setPointer({
+        x,
+        y,
+      });
     };
 
     handleScroll();
 
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    window.addEventListener("pointermove", handlePointerMove, {
+    window.addEventListener("scroll", handleScroll, {
       passive: true,
     });
 
+    window.addEventListener(
+      "pointermove",
+      handlePointerMove,
+      {
+        passive: true,
+      }
+    );
+
     return () => {
       window.removeEventListener("scroll", handleScroll);
-      window.removeEventListener("pointermove", handlePointerMove);
+
+      window.removeEventListener(
+        "pointermove",
+        handlePointerMove
+      );
     };
   }, []);
 
+  /*
+  |--------------------------------------------------------------------------
+  | PHONE ANIMATION
+  |--------------------------------------------------------------------------
+  */
+
   const phoneOneStyle = useMemo(() => {
-    const rotateX = Math.max(-7, Math.min(7, pointer.y * -5));
-    const rotateY = Math.max(-12, Math.min(12, pointer.x * 8));
-    const translateY = Math.max(-40, scrollY * -0.04);
+    const rotateX = Math.max(
+      -7,
+      Math.min(7, pointer.y * -5)
+    );
+
+    const rotateY = Math.max(
+      -12,
+      Math.min(12, pointer.x * 8)
+    );
+
+    const translateY = Math.max(
+      -40,
+      scrollY * -0.04
+    );
 
     return {
       transform: `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateY(${translateY}px)`,
@@ -192,9 +317,20 @@ export default function LandingPage() {
   }, [pointer, scrollY]);
 
   const phoneTwoStyle = useMemo(() => {
-    const rotateX = Math.max(-6, Math.min(6, pointer.y * -3));
-    const rotateY = Math.max(-10, Math.min(10, pointer.x * 5));
-    const translateY = Math.max(-28, scrollY * -0.025);
+    const rotateX = Math.max(
+      -6,
+      Math.min(6, pointer.y * -3)
+    );
+
+    const rotateY = Math.max(
+      -10,
+      Math.min(10, pointer.x * 5)
+    );
+
+    const translateY = Math.max(
+      -28,
+      scrollY * -0.025
+    );
 
     return {
       transform: `perspective(1000px) rotateX(${rotateX}deg) rotateY(${
@@ -205,12 +341,18 @@ export default function LandingPage() {
 
   return (
     <main className="app-landing">
+      {/* ================================================================
+          HERO
+      ================================================================= */}
+
       <section id="home" className="hero-app-section">
         <div className="hero-grid-bg" />
         <div className="hero-orb hero-orb-one" />
         <div className="hero-orb hero-orb-two" />
         <div className="hero-circle hero-circle-one" />
         <div className="hero-circle hero-circle-two" />
+
+        {/* NAVBAR */}
 
         <nav className="app-navbar">
           <Link to="/" className="app-brand">
@@ -222,6 +364,7 @@ export default function LandingPage() {
                 fallbackText="CT"
               />
             </span>
+
             <span>{APP_INFO.name}</span>
           </Link>
 
@@ -229,14 +372,25 @@ export default function LandingPage() {
             <a href="#home">Home</a>
             <a href="#features">Features</a>
             <a href="#details">Details</a>
-            <a href={APK_DOWNLOAD_URL} download className="nav-login-pill">
+
+            <a
+              href={APK_DOWNLOAD_URL}
+              className="nav-login-pill"
+              aria-label="Download CrayThrive Android APK"
+            >
               Get App
             </a>
-            <Link to="/login" className="nav-login-pill">
+
+            <Link
+              to="/login"
+              className="nav-login-pill"
+            >
               Login
             </Link>
           </div>
         </nav>
+
+        {/* HERO CONTENT */}
 
         <div className="app-hero-content">
           <div className="app-hero-copy">
@@ -246,18 +400,26 @@ export default function LandingPage() {
             </h1>
 
             <p>
-              CrayThrive helps users monitor crayfish tanks, check water
-              quality, track ammonia readings, manage alerts, and access
+              CrayThrive helps users monitor crayfish
+              tanks, check water quality, track ammonia
+              readings, manage alerts, and access
               crayfish-only marketplace records.
             </p>
 
             <div className="hero-buttons">
-              <a href={APK_DOWNLOAD_URL} download className="store-button">
+              <a
+                href={APK_DOWNLOAD_URL}
+                className="store-button"
+                aria-label="Download CrayThrive Android APK"
+              >
                 <Download size={18} />
                 Get Our Mobile App
               </a>
 
-              <a href="#features" className="learn-button">
+              <a
+                href="#features"
+                className="learn-button"
+              >
                 Learn More
                 <ArrowRight size={18} />
               </a>
@@ -268,8 +430,12 @@ export default function LandingPage() {
                 const Icon = item.icon;
 
                 return (
-                  <div className="hero-mini-stat" key={item.label}>
+                  <div
+                    className="hero-mini-stat"
+                    key={item.label}
+                  >
                     <Icon size={20} />
+
                     <div>
                       <strong>{item.value}</strong>
                       <span>{item.label}</span>
@@ -280,12 +446,18 @@ export default function LandingPage() {
             </div>
           </div>
 
+          {/* PHONE SHOWCASE */}
+
           <div className="phone-showcase">
             <div className="phone-back-glow" />
 
-            <div className="phone-float phone-float-main" style={phoneOneStyle}>
+            <div
+              className="phone-float phone-float-main"
+              style={phoneOneStyle}
+            >
               <div className="phone phone-main">
                 <div className="phone-speaker" />
+
                 <div className="phone-screen">
                   <ImageWithFallback
                     src="/mobile-dashboard.png"
@@ -303,6 +475,7 @@ export default function LandingPage() {
             >
               <div className="phone phone-secondary">
                 <div className="phone-speaker small" />
+
                 <div className="phone-screen">
                   <ImageWithFallback
                     src="/mobile-welcome.png"
@@ -321,28 +494,46 @@ export default function LandingPage() {
 
             <div className="floating-card floating-card-two">
               <BellIcon />
-              <span> alerts</span>
+              <span>alerts</span>
             </div>
           </div>
         </div>
       </section>
 
-      <section id="features" className="app-section features-app-section">
+      {/* ================================================================
+          FEATURES
+      ================================================================= */}
+
+      <section
+        id="features"
+        className="app-section features-app-section"
+      >
         <div className="section-heading">
           <span>Features</span>
-          <h2>Everything needed for tank care and records management.</h2>
+
+          <h2>
+            Everything needed for tank care and records
+            management.
+          </h2>
+
           <p>
-            The mobile app focuses on daily tank use, while the web dashboard
-            gives deeper visibility for monitoring, reports, seller records, and
-            marketplace activity.
+            The mobile app focuses on daily tank use,
+            while the web dashboard gives deeper
+            visibility for monitoring, reports, seller
+            records, and marketplace activity.
           </p>
         </div>
 
         <div className="feature-app-grid">
           {features.map((feature, index) => {
             const Icon = feature.icon;
-            const lift = Math.max(0, scrollY - 520) * 0.018;
-            const rotate = (index % 2 === 0 ? 1 : -1) * Math.min(5, lift);
+
+            const lift =
+              Math.max(0, scrollY - 520) * 0.018;
+
+            const rotate =
+              (index % 2 === 0 ? 1 : -1) *
+              Math.min(5, lift);
 
             return (
               <article
@@ -357,7 +548,9 @@ export default function LandingPage() {
                 <div className="feature-app-icon">
                   <Icon size={26} />
                 </div>
+
                 <h3>{feature.title}</h3>
+
                 <p>{feature.description}</p>
               </article>
             );
@@ -365,14 +558,30 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section id="details" className="app-section details-section">
+      {/* ================================================================
+          DETAILS
+      ================================================================= */}
+
+      <section
+        id="details"
+        className="app-section details-section"
+      >
         <div className="details-copy">
-          <span className="section-label">Dashboard Side</span>
-          <h2>Built for the website and mobile app ecosystem.</h2>
+          <span className="section-label">
+            Dashboard Side
+          </span>
+
+          <h2>
+            Built for the website and mobile app
+            ecosystem.
+          </h2>
+
           <p>
-            The web dashboard will handle tank monitoring reports, alerts,
-            marketplace records, reservations, seller profiles, analytics, and
-            threshold settings while using the same Supabase database as the
+            The web dashboard will handle tank
+            monitoring reports, alerts, marketplace
+            records, reservations, seller profiles,
+            analytics, and threshold settings while
+            using the same Supabase database as the
             mobile application.
           </p>
 
@@ -381,21 +590,28 @@ export default function LandingPage() {
               <Database size={22} />
               <span>Shared Supabase database</span>
             </div>
+
             <div>
               <LockKeyhole size={22} />
               <span>Protected login access</span>
             </div>
+
             <div>
               <LineChart size={22} />
               <span>Reports and analytics ready</span>
             </div>
           </div>
 
-          <Link to="/login" className="details-login-button">
+          <Link
+            to="/login"
+            className="details-login-button"
+          >
             Continue to Login
             <ArrowRight size={18} />
           </Link>
         </div>
+
+        {/* DASHBOARD PREVIEW */}
 
         <div className="details-dashboard-card">
           <div className="dashboard-card-header">
@@ -404,6 +620,7 @@ export default function LandingPage() {
               <span />
               <span />
             </div>
+
             <strong>CrayThrive Web</strong>
           </div>
 
@@ -419,16 +636,19 @@ export default function LandingPage() {
               <strong>Tank Reports</strong>
               <span>Sensor trends</span>
             </div>
+
             <div>
               <AlertTriangle size={22} />
               <strong>Alerts</strong>
               <span>Active warnings</span>
             </div>
+
             <div>
               <ShoppingBag size={22} />
               <strong>Orders</strong>
               <span>Reservations</span>
             </div>
+
             <div>
               <BarChart3 size={22} />
               <strong>Analytics</strong>
@@ -438,26 +658,50 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section id="download" className="bottom-cta-app">
+      {/* ================================================================
+          DOWNLOAD
+      ================================================================= */}
+
+      <section
+        id="download"
+        className="bottom-cta-app"
+      >
         <MonitorCog size={42} />
-        <h2>Get the CrayThrive Android app.</h2>
+
+        <h2>
+          Get the CrayThrive Android app.
+        </h2>
+
         <p>
-          Download the Android APK to monitor tanks, view readings, manage
-          marketplace activity, and connect with the CrayThrive web dashboard.
+          Download the Android APK to monitor tanks,
+          view readings, manage marketplace activity,
+          and connect with the CrayThrive web
+          dashboard.
         </p>
 
         <div className="hero-buttons">
-          <a href={APK_DOWNLOAD_URL} download className="store-button">
+          <a
+            href={APK_DOWNLOAD_URL}
+            className="store-button"
+            aria-label="Download CrayThrive Android APK"
+          >
             <Download size={18} />
             Download Android APK
           </a>
 
-          <Link to="/login" className="learn-button">
+          <Link
+            to="/login"
+            className="learn-button"
+          >
             Login to Web
             <ArrowRight size={18} />
           </Link>
         </div>
       </section>
+
+      {/* ================================================================
+          FOOTER
+      ================================================================= */}
 
       <footer className="app-footer">
         <div className="footer-brand-app">
@@ -478,11 +722,22 @@ export default function LandingPage() {
 
         <div className="footer-right-group">
           <div className="footer-contact-icons">
-            <FooterContactIcon icon={Mail} label="Email" value={CONTACT_EMAIL} />
-            <FooterContactIcon icon={Phone} label="Phone" value={CONTACT_PHONE} />
+            <FooterContactIcon
+              icon={Mail}
+              label="Email"
+              value={CONTACT_EMAIL}
+            />
+
+            <FooterContactIcon
+              icon={Phone}
+              label="Phone"
+              value={CONTACT_PHONE}
+            />
           </div>
 
-          <p>© 2026 CrayThrive. All rights reserved.</p>
+          <p>
+            © 2026 CrayThrive. All rights reserved.
+          </p>
         </div>
       </footer>
     </main>

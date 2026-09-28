@@ -1,329 +1,1278 @@
 // src/utils/thresholdEvaluation.js
 //
-// Compares live sensor readings against the SAME threshold values the user
-// configures on the Threshold Settings page (Supabase `threshold_settings`
-// table, with a localStorage fallback) so "safe range" means the same thing
-// everywhere in the dashboard.
+// CrayThrive threshold evaluation + reference guidance.
+//
+// IMPORTANT DESIGN:
+//
+// 1. ACTIVE THRESHOLDS
+//    These are the values actually used by CrayThrive when classifying
+//    readings. They come from Supabase `threshold_settings` when available.
+//
+// 2. RESEARCH / REFERENCE GUIDANCE
+//    These values are informational references shown to the user.
+//    They DO NOT automatically overwrite active thresholds.
+//
+// 3. EXPERT / SURVEY RECOMMENDATIONS
+//    These remain empty until actual validation/survey results exist.
+//
+// 4. CALIBRATION-SPECIFIC PARAMETERS
+//    Turbidity voltage and water-level centimetres depend on CrayThrive's
+//    physical sensor/tank calibration. They must not be presented as
+//    universal biological limits.
 
-import { isSupabaseConfigured, supabase } from "../lib/supabase";
-import { toNumberOrNull } from "./sensorReadingUtils";
+import {
+  isSupabaseConfigured,
+  supabase,
+} from "../lib/supabase";
 
-const STORAGE_KEY = "craythrive_threshold_settings";
-const TABLE_NAME = "threshold_settings";
+import {
+  toNumberOrNull,
+} from "./sensorReadingUtils";
+
+const STORAGE_KEY =
+  "craythrive_threshold_settings";
+
+const TABLE_NAME =
+  "threshold_settings";
+
+/*
+|--------------------------------------------------------------------------
+| ACTIVE / FALLBACK THRESHOLDS
+|--------------------------------------------------------------------------
+|
+| These are operational CrayThrive fallback values.
+|
+| They are NOT automatically described as "research-backed".
+|
+| Supabase values override these when the logged-in user has saved
+| threshold settings.
+|
+| NOTE:
+| `turbidityMax` is kept as the existing database/property name for
+| compatibility, although CrayThrive currently treats the voltage as a
+| CLEAR-MINIMUM style threshold: higher voltage = clearer water.
+|
+*/
 
 export const DEFAULT_THRESHOLDS = {
   temperatureMin: 20,
   temperatureMax: 30,
+
   phMin: 6.5,
   phMax: 8.5,
-  turbidityMax: 40,
-  waterLevelMin: 35,
+
+  // Legacy property name kept for DB compatibility.
+  // Operational meaning:
+  // minimum sensor voltage used as a clear-water reference.
+  turbidityMax: 2.5,
+
+  // Prototype tank operational threshold.
+  // This is tank/sensor-calibration specific.
+  waterLevelMin: 4.5,
+
   ammoniaMax: 0.25,
 };
 
-function numberOrDefault(value, fallback) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
+/*
+|--------------------------------------------------------------------------
+| RESEARCH / REFERENCE GUIDANCE
+|--------------------------------------------------------------------------
+|
+| This information is for DISPLAY and EDUCATIONAL guidance.
+|
+| It must remain separate from DEFAULT_THRESHOLDS because:
+|
+| - a literature value is not automatically the user's active threshold;
+| - turbidity voltage depends on sensor calibration;
+| - water depth depends on the physical tank;
+| - ammonia measurements can represent different analytes/methods;
+| - future expert/survey recommendations must come from actual collected
+|   validation data, not fabricated values.
+|
+*/
+
+export const THRESHOLD_REFERENCE_GUIDANCE = {
+  temperature: {
+    key: "temperature",
+
+    title: "Water Temperature",
+
+    unit: "°C",
+
+    referenceType: "research",
+
+    referenceLabel:
+      "Research-backed reference",
+
+    primary: {
+      min: 26,
+      max: 29,
+
+      label:
+        "Optimal growth range",
+
+      source:
+        "Business Queensland — Redclaw crayfish aquaculture",
+
+      sourceType:
+        "Government aquaculture guidance",
+    },
+
+    supporting: {
+      min: 20,
+      max: 32,
+
+      label:
+        "Published safe physiological range",
+
+      source:
+        "Recent Cherax quadricarinatus culture study",
+
+      sourceType:
+        "Peer-reviewed study",
+    },
+
+    explanation:
+      "Published guidance distinguishes an optimal growth range from a broader tolerated or managed range. CrayThrive should show these values as references rather than automatically replacing the user's active threshold.",
+
+    surveyRecommendation:
+      null,
+
+    surveyStatus:
+      "Pending actual expert/validation results",
+  },
+
+  ph: {
+    key: "ph",
+
+    title: "pH Level",
+
+    unit: "pH",
+
+    referenceType: "research",
+
+    referenceLabel:
+      "Research-backed reference",
+
+    primary: {
+      min: 7.0,
+      max: 8.5,
+
+      label:
+        "Ideal range for redclaw",
+
+      source:
+        "Business Queensland — Redclaw crayfish aquaculture",
+
+      sourceType:
+        "Government aquaculture guidance",
+    },
+
+    supporting: {
+      min: 7.0,
+      max: 8.5,
+
+      label:
+        "Published safe physiological range",
+
+      source:
+        "Recent Cherax quadricarinatus culture study",
+
+      sourceType:
+        "Peer-reviewed study",
+    },
+
+    explanation:
+      "The published references consistently place redclaw pH around 7.0–8.5. The active CrayThrive value may still be configured separately by the user.",
+
+    surveyRecommendation:
+      null,
+
+    surveyStatus:
+      "Pending actual expert/validation results",
+  },
+
+  turbidity: {
+    key: "turbidity",
+
+    title: "Water Clarity / Turbidity",
+
+    unit: "V",
+
+    referenceType:
+      "sensor-calibration",
+
+    referenceLabel:
+      "Prototype calibration",
+
+    primary: null,
+
+    supporting: null,
+
+    explanation:
+      "CrayThrive's turbidity module currently evaluates an analog sensor voltage where higher voltage generally represents clearer water. Published aquaculture studies normally report turbidity using other units or water-clarity methods, so the CrayThrive voltage threshold must be treated as a prototype sensor-calibration value rather than a universal crayfish biological limit.",
+
+    calibrationNote:
+      "Use the actual DFRobot sensor calibration and CrayThrive prototype testing when setting this value.",
+
+    surveyRecommendation:
+      null,
+
+    surveyStatus:
+      "Pending actual expert/validation results",
+  },
+
+  waterLevel: {
+    key: "waterLevel",
+
+    title: "Water Level",
+
+    unit: "cm",
+
+    referenceType:
+      "tank-calibration",
+
+    referenceLabel:
+      "Tank-specific calibration",
+
+    primary: null,
+
+    supporting: null,
+
+    explanation:
+      "A universal centimetre threshold is not appropriate because the reading depends on the physical tank height, ultrasonic sensor position, and CrayThrive water-level calibration.",
+
+    calibrationNote:
+      "Use the actual CrayThrive tank dimensions and ultrasonic calibration for the operational water-level threshold.",
+
+    surveyRecommendation:
+      null,
+
+    surveyStatus:
+      "Pending actual expert/validation results",
+  },
+
+  ammonia: {
+    key: "ammonia",
+
+    title: "Ammonia",
+
+    unit: "mg/L",
+
+    referenceType:
+      "research-with-measurement-caveat",
+
+    referenceLabel:
+      "Research-backed reference",
+
+    primary: {
+      max: 0.05,
+
+      comparison: "<",
+
+      label:
+        "Aquaculture management reference",
+
+      source:
+        "Business Queensland — Redclaw crayfish aquaculture",
+
+      sourceType:
+        "Government aquaculture guidance",
+    },
+
+    supporting: {
+      max: 0.5,
+
+      comparison: "<",
+
+      unit: "mg/L NH4+-N",
+
+      label:
+        "Published study safe range",
+
+      source:
+        "Recent Cherax quadricarinatus culture study",
+
+      sourceType:
+        "Peer-reviewed study",
+    },
+
+    explanation:
+      "Ammonia values must be interpreted with the measurement method. Published references may describe total ammonia, ammonia nitrogen, or NH4+-N differently. CrayThrive must not present one literature number as directly equivalent to the phone test-strip result until the strip's analyte and scale are confirmed.",
+
+    measurementWarning:
+      "Confirm the ammonia test-strip measurement type before using a literature value as an automatic operational limit.",
+
+    surveyRecommendation:
+      null,
+
+    surveyStatus:
+      "Pending actual expert/validation results",
+  },
+};
+
+/*
+|--------------------------------------------------------------------------
+| REFERENCE HELPERS
+|--------------------------------------------------------------------------
+*/
+
+export function getThresholdReference(
+  parameter
+) {
+  const key =
+    normalizeReferenceKey(
+      parameter
+    );
+
+  if (!key) {
+    return null;
+  }
+
+  return (
+    THRESHOLD_REFERENCE_GUIDANCE[
+      key
+    ] || null
+  );
 }
 
-function normalizeThresholds(data) {
-  if (!data) return DEFAULT_THRESHOLDS;
+export function getAllThresholdReferences() {
+  return Object.values(
+    THRESHOLD_REFERENCE_GUIDANCE
+  );
+}
 
-  const source = data.thresholds || data.safe_thresholds || data;
+function normalizeReferenceKey(
+  value
+) {
+  const key =
+    String(
+      value || ""
+    )
+      .trim()
+      .toLowerCase()
+      .replace(
+        /\s+/g,
+        "_"
+      )
+      .replace(
+        /-/g,
+        "_"
+      );
+
+  if (
+    key ===
+      "temperature" ||
+    key ===
+      "temperaturemin" ||
+    key ===
+      "temperature_min" ||
+    key ===
+      "temperaturemax" ||
+    key ===
+      "temperature_max" ||
+    key === "temp"
+  ) {
+    return "temperature";
+  }
+
+  if (
+    key === "ph" ||
+    key ===
+      "phmin" ||
+    key ===
+      "ph_min" ||
+    key ===
+      "phmax" ||
+    key ===
+      "ph_max" ||
+    key ===
+      "ph_level"
+  ) {
+    return "ph";
+  }
+
+  if (
+    key ===
+      "turbidity" ||
+    key ===
+      "turbiditymax" ||
+    key ===
+      "turbidity_max" ||
+    key ===
+      "water_clarity"
+  ) {
+    return "turbidity";
+  }
+
+  if (
+    key ===
+      "waterlevel" ||
+    key ===
+      "water_level" ||
+    key ===
+      "waterlevelmin" ||
+    key ===
+      "water_level_min" ||
+    key ===
+      "water_depth"
+  ) {
+    return "waterLevel";
+  }
+
+  if (
+    key ===
+      "ammonia" ||
+    key ===
+      "ammoniamax" ||
+    key ===
+      "ammonia_max"
+  ) {
+    return "ammonia";
+  }
+
+  return null;
+}
+
+/*
+|--------------------------------------------------------------------------
+| THRESHOLD NORMALIZATION
+|--------------------------------------------------------------------------
+*/
+
+function numberOrDefault(
+  value,
+  fallback
+) {
+  const parsed =
+    Number(
+      value
+    );
+
+  return Number.isFinite(
+    parsed
+  )
+    ? parsed
+    : fallback;
+}
+
+export function normalizeThresholds(
+  data
+) {
+  if (!data) {
+    return {
+      ...DEFAULT_THRESHOLDS,
+    };
+  }
+
+  const source =
+    data.thresholds ||
+    data.safe_thresholds ||
+    data;
 
   return {
-    temperatureMin: numberOrDefault(
-      source.temperatureMin ?? source.temperature_min,
-      DEFAULT_THRESHOLDS.temperatureMin
-    ),
-    temperatureMax: numberOrDefault(
-      source.temperatureMax ?? source.temperature_max,
-      DEFAULT_THRESHOLDS.temperatureMax
-    ),
-    phMin: numberOrDefault(source.phMin ?? source.ph_min, DEFAULT_THRESHOLDS.phMin),
-    phMax: numberOrDefault(source.phMax ?? source.ph_max, DEFAULT_THRESHOLDS.phMax),
-    turbidityMax: numberOrDefault(
-      source.turbidityMax ?? source.turbidity_max,
-      DEFAULT_THRESHOLDS.turbidityMax
-    ),
-    waterLevelMin: numberOrDefault(
-      source.waterLevelMin ?? source.water_level_min,
-      DEFAULT_THRESHOLDS.waterLevelMin
-    ),
-    ammoniaMax: numberOrDefault(
-      source.ammoniaMax ?? source.ammonia_max,
-      DEFAULT_THRESHOLDS.ammoniaMax
-    ),
+    temperatureMin:
+      numberOrDefault(
+        source.temperatureMin ??
+          source.temperature_min,
+        DEFAULT_THRESHOLDS
+          .temperatureMin
+      ),
+
+    temperatureMax:
+      numberOrDefault(
+        source.temperatureMax ??
+          source.temperature_max,
+        DEFAULT_THRESHOLDS
+          .temperatureMax
+      ),
+
+    phMin:
+      numberOrDefault(
+        source.phMin ??
+          source.ph_min,
+        DEFAULT_THRESHOLDS
+          .phMin
+      ),
+
+    phMax:
+      numberOrDefault(
+        source.phMax ??
+          source.ph_max,
+        DEFAULT_THRESHOLDS
+          .phMax
+      ),
+
+    turbidityMax:
+      numberOrDefault(
+        source.turbidityMax ??
+          source.turbidity_max,
+        DEFAULT_THRESHOLDS
+          .turbidityMax
+      ),
+
+    waterLevelMin:
+      numberOrDefault(
+        source.waterLevelMin ??
+          source.water_level_min,
+        DEFAULT_THRESHOLDS
+          .waterLevelMin
+      ),
+
+    ammoniaMax:
+      numberOrDefault(
+        source.ammoniaMax ??
+          source.ammonia_max,
+        DEFAULT_THRESHOLDS
+          .ammoniaMax
+      ),
   };
 }
 
+/*
+|--------------------------------------------------------------------------
+| LOCAL STORAGE
+|--------------------------------------------------------------------------
+*/
+
 export function getLocalThresholds() {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const saved =
+      localStorage.getItem(
+        STORAGE_KEY
+      );
 
-    if (!saved) return DEFAULT_THRESHOLDS;
+    if (!saved) {
+      return {
+        ...DEFAULT_THRESHOLDS,
+      };
+    }
 
+    const parsed =
+      JSON.parse(
+        saved
+      );
+
+    return normalizeThresholds(
+      parsed
+    );
+  } catch {
     return {
       ...DEFAULT_THRESHOLDS,
-      ...JSON.parse(saved),
     };
-  } catch {
-    return DEFAULT_THRESHOLDS;
   }
 }
 
-/**
- * Loads the thresholds that should currently apply: the logged-in user's
- * saved Supabase row when available, otherwise the localStorage copy /
- * hard defaults. Mirrors the same lookup ThresholdSettingsPage.jsx uses so
- * both pages always agree on what "safe" means.
- */
+/*
+|--------------------------------------------------------------------------
+| LOAD ACTIVE THRESHOLDS
+|--------------------------------------------------------------------------
+|
+| Priority:
+|
+| 1. Logged-in user's Supabase threshold_settings row
+| 2. Browser localStorage copy
+| 3. Hard fallback defaults
+|
+*/
+
 export async function loadActiveThresholds() {
-  if (!isSupabaseConfigured || !supabase) {
+  if (
+    !isSupabaseConfigured ||
+    !supabase
+  ) {
     return getLocalThresholds();
   }
 
   try {
-    const { data: sessionData } = await supabase.auth.getSession();
-    const userId = sessionData?.session?.user?.id;
+    const {
+      data: sessionData,
+      error: sessionError,
+    } =
+      await supabase.auth.getSession();
+
+    if (sessionError) {
+      console.log(
+        "LOAD ACTIVE THRESHOLDS SESSION ERROR:",
+        sessionError
+      );
+
+      return getLocalThresholds();
+    }
+
+    const userId =
+      sessionData?.session
+        ?.user?.id;
 
     if (!userId) {
       return getLocalThresholds();
     }
 
-    const { data, error } = await supabase
-      .from(TABLE_NAME)
-      .select("*")
-      .eq("user_id", userId)
-      .maybeSingle();
+    const {
+      data,
+      error,
+    } =
+      await supabase
+        .from(
+          TABLE_NAME
+        )
+        .select("*")
+        .eq(
+          "user_id",
+          userId
+        )
+        .maybeSingle();
 
-    if (error || !data) {
+    if (
+      error ||
+      !data
+    ) {
+      if (error) {
+        console.log(
+          "LOAD ACTIVE THRESHOLDS DB ERROR:",
+          error
+        );
+      }
+
       return getLocalThresholds();
     }
 
-    return normalizeThresholds(data);
-  } catch {
+    const normalized =
+      normalizeThresholds(
+        data
+      );
+
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify(
+          normalized
+        )
+      );
+    } catch {
+      // Local cache failure must not prevent Supabase values from loading.
+    }
+
+    return normalized;
+  } catch (error) {
+    console.log(
+      "LOAD ACTIVE THRESHOLDS ERROR:",
+      error
+    );
+
     return getLocalThresholds();
   }
 }
 
-/**
- * Checks one reading's raw numeric values against the active thresholds.
- *
- * Returns both:
- *  - `issues`: a flat list, for the overall safe-range banner.
- *  - `parameters`: a per-parameter breakdown ({ temperature, ph, turbidity,
- *    waterLevel, ammonia }), each with { severity, label, hasValue }, so
- *    individual metric cards can show the SAME verdict as the banner
- *    instead of a separate hardcoded status.
- *
- * Ammonia is special-cased: it comes from a separate mobile test-strip scan
- * (ammonia_readings table), not the continuous sensor stream, so a tank
- * that simply hasn't been scanned yet is NOT an "issue" — it's a neutral
- * "No Scan Yet" state that does not affect isSafe.
- *
- * Note on turbidity: the sensor reports a VOLTAGE where higher = clearer
- * water (see getTurbidityStatusFromVoltage in sensorReadingUtils.js), while
- * the Threshold Settings UI describes turbidityMax as a "maximum dirty
- * water" value — the two don't share the same scale/direction. Rather than
- * silently guess, turbidity here is flagged using its already-computed
- * status label (anything other than "Clear" counts as an issue) instead of
- * a raw numeric comparison. Worth normalizing later so turbidityMax means
- * the same thing in both places.
- */
+/*
+|--------------------------------------------------------------------------
+| SAFETY EVALUATION
+|--------------------------------------------------------------------------
+|
+| Checks a tank reading using the ACTIVE CrayThrive thresholds.
+|
+| This function intentionally does NOT compare readings directly against
+| the research reference object above.
+|
+| Why?
+|
+| Research guidance = informational / supporting reference
+| Active threshold  = actual operational value selected by the user/system
+|
+*/
+
 export function evaluateReadingSafety(
-  { temperature, ph, turbidityStatus, waterDepth, ammonia },
-  thresholds = DEFAULT_THRESHOLDS
+  {
+    temperature,
+    ph,
+    turbidityStatus,
+    waterDepth,
+    ammonia,
+  },
+  thresholds =
+    DEFAULT_THRESHOLDS
 ) {
+  const active =
+    normalizeThresholds(
+      thresholds
+    );
+
   const issues = [];
+
   const parameters = {};
 
-  /* ---------------- TEMPERATURE ---------------- */
+  /*
+  |--------------------------------------------------------------------------
+  | TEMPERATURE
+  |--------------------------------------------------------------------------
+  */
 
-  const temp = toNumberOrNull(temperature);
+  const temp =
+    toNumberOrNull(
+      temperature
+    );
 
-  if (temp === null) {
+  if (
+    temp === null
+  ) {
     parameters.temperature = {
-      severity: "no-data",
-      label: "No Reading",
-      hasValue: false,
+      severity:
+        "no-data",
+
+      label:
+        "No Reading",
+
+      hasValue:
+        false,
     };
-  } else if (temp < thresholds.temperatureMin) {
+  } else if (
+    temp <
+    active.temperatureMin
+  ) {
     parameters.temperature = {
-      severity: "critical",
-      label: "Below Safe Min",
-      hasValue: true,
+      severity:
+        "critical",
+
+      label:
+        "Below Active Min",
+
+      hasValue:
+        true,
     };
 
     issues.push({
-      key: "temperature",
-      label: "Temperature",
-      message: `${temp.toFixed(1)}°C is below the safe minimum (${thresholds.temperatureMin}°C)`,
+      key:
+        "temperature",
+
+      label:
+        "Temperature",
+
+      message:
+        `${temp.toFixed(
+          1
+        )}°C is below the active minimum ` +
+        `(${active.temperatureMin}°C)`,
     });
-  } else if (temp > thresholds.temperatureMax) {
+  } else if (
+    temp >
+    active.temperatureMax
+  ) {
     parameters.temperature = {
-      severity: "critical",
-      label: "Above Safe Max",
-      hasValue: true,
+      severity:
+        "critical",
+
+      label:
+        "Above Active Max",
+
+      hasValue:
+        true,
     };
 
     issues.push({
-      key: "temperature",
-      label: "Temperature",
-      message: `${temp.toFixed(1)}°C is above the safe maximum (${thresholds.temperatureMax}°C)`,
+      key:
+        "temperature",
+
+      label:
+        "Temperature",
+
+      message:
+        `${temp.toFixed(
+          1
+        )}°C is above the active maximum ` +
+        `(${active.temperatureMax}°C)`,
     });
   } else {
     parameters.temperature = {
-      severity: "normal",
-      label: "Within Range",
-      hasValue: true,
+      severity:
+        "normal",
+
+      label:
+        "Within Active Range",
+
+      hasValue:
+        true,
     };
   }
 
-  /* ---------------- PH ---------------- */
+  /*
+  |--------------------------------------------------------------------------
+  | pH
+  |--------------------------------------------------------------------------
+  */
 
-  const phValue = toNumberOrNull(ph);
+  const phValue =
+    toNumberOrNull(
+      ph
+    );
 
-  if (phValue === null) {
+  if (
+    phValue === null
+  ) {
     parameters.ph = {
-      severity: "no-data",
-      label: "No Reading",
-      hasValue: false,
+      severity:
+        "no-data",
+
+      label:
+        "No Reading",
+
+      hasValue:
+        false,
     };
-  } else if (phValue < thresholds.phMin) {
+  } else if (
+    phValue <
+    active.phMin
+  ) {
     parameters.ph = {
-      severity: "critical",
-      label: "Below Safe Min",
-      hasValue: true,
+      severity:
+        "critical",
+
+      label:
+        "Below Active Min",
+
+      hasValue:
+        true,
     };
 
     issues.push({
-      key: "ph",
-      label: "pH Level",
-      message: `${phValue.toFixed(2)} is below the safe minimum (${thresholds.phMin})`,
+      key:
+        "ph",
+
+      label:
+        "pH Level",
+
+      message:
+        `${phValue.toFixed(
+          2
+        )} is below the active minimum ` +
+        `(${active.phMin})`,
     });
-  } else if (phValue > thresholds.phMax) {
+  } else if (
+    phValue >
+    active.phMax
+  ) {
     parameters.ph = {
-      severity: "critical",
-      label: "Above Safe Max",
-      hasValue: true,
+      severity:
+        "critical",
+
+      label:
+        "Above Active Max",
+
+      hasValue:
+        true,
     };
 
     issues.push({
-      key: "ph",
-      label: "pH Level",
-      message: `${phValue.toFixed(2)} is above the safe maximum (${thresholds.phMax})`,
+      key:
+        "ph",
+
+      label:
+        "pH Level",
+
+      message:
+        `${phValue.toFixed(
+          2
+        )} is above the active maximum ` +
+        `(${active.phMax})`,
     });
   } else {
     parameters.ph = {
-      severity: "normal",
-      label: "Within Range",
-      hasValue: true,
+      severity:
+        "normal",
+
+      label:
+        "Within Active Range",
+
+      hasValue:
+        true,
     };
   }
 
-  /* ---------------- TURBIDITY ---------------- */
+  /*
+  |--------------------------------------------------------------------------
+  | TURBIDITY
+  |--------------------------------------------------------------------------
+  |
+  | The current dashboard receives an already-computed turbidity status.
+  |
+  | We continue using that status rather than comparing the raw voltage here
+  | because older parts of the system use `turbidityMax` with inconsistent
+  | naming/direction.
+  |
+  | Later, once all firmware/web/mobile naming is normalized, this can use:
+  |
+  |   turbidityVoltage >= clearMinimumVoltage
+  |
+  | directly.
+  |
+  */
 
-  const cleanTurbidityStatus = String(turbidityStatus || "").toLowerCase();
+  const cleanTurbidityStatus =
+    String(
+      turbidityStatus ||
+        ""
+    )
+      .trim()
+      .toLowerCase();
 
-  if (!cleanTurbidityStatus || cleanTurbidityStatus === "no reading") {
+  if (
+    !cleanTurbidityStatus ||
+    cleanTurbidityStatus ===
+      "no reading" ||
+    cleanTurbidityStatus ===
+      "no_reading" ||
+    cleanTurbidityStatus ===
+      "no data" ||
+    cleanTurbidityStatus ===
+      "no_data"
+  ) {
     parameters.turbidity = {
-      severity: "no-data",
-      label: "No Reading",
-      hasValue: false,
+      severity:
+        "no-data",
+
+      label:
+        "No Reading",
+
+      hasValue:
+        false,
     };
-  } else if (cleanTurbidityStatus === "clear") {
+  } else if (
+    cleanTurbidityStatus ===
+    "clear"
+  ) {
     parameters.turbidity = {
-      severity: "normal",
-      label: "Within Range",
-      hasValue: true,
+      severity:
+        "normal",
+
+      label:
+        "Clear",
+
+      hasValue:
+        true,
     };
   } else {
     parameters.turbidity = {
-      severity: "critical",
-      label: "Needs Attention",
-      hasValue: true,
+      severity:
+        "critical",
+
+      label:
+        "Needs Attention",
+
+      hasValue:
+        true,
     };
 
     issues.push({
-      key: "turbidity",
-      label: "Water Clarity",
-      message: `Water clarity is currently "${turbidityStatus}" — expected Clear`,
+      key:
+        "turbidity",
+
+      label:
+        "Water Clarity",
+
+      message:
+        `Water clarity is currently "${turbidityStatus}". ` +
+        `CrayThrive currently expects the sensor status to be Clear.`,
     });
   }
 
-  /* ---------------- WATER LEVEL ---------------- */
+  /*
+  |--------------------------------------------------------------------------
+  | WATER LEVEL
+  |--------------------------------------------------------------------------
+  |
+  | waterLevelMin is an operational tank calibration value.
+  |
+  | Do not describe it as a universal biological safe depth.
+  |
+  */
 
-  const waterValue = toNumberOrNull(waterDepth);
+  const waterValue =
+    toNumberOrNull(
+      waterDepth
+    );
 
-  if (waterValue === null) {
+  if (
+    waterValue ===
+    null
+  ) {
     parameters.waterLevel = {
-      severity: "no-data",
-      label: "No Reading",
-      hasValue: false,
+      severity:
+        "no-data",
+
+      label:
+        "No Reading",
+
+      hasValue:
+        false,
     };
-  } else if (waterValue < thresholds.waterLevelMin) {
+  } else if (
+    waterValue <
+    active.waterLevelMin
+  ) {
     parameters.waterLevel = {
-      severity: "critical",
-      label: "Below Safe Min",
-      hasValue: true,
+      severity:
+        "critical",
+
+      label:
+        "Below Active Min",
+
+      hasValue:
+        true,
     };
 
     issues.push({
-      key: "waterLevel",
-      label: "Water Level",
-      message: `${waterValue.toFixed(1)} cm is below the safe minimum (${thresholds.waterLevelMin} cm)`,
+      key:
+        "waterLevel",
+
+      label:
+        "Water Level",
+
+      message:
+        `${waterValue.toFixed(
+          1
+        )} cm is below the active tank minimum ` +
+        `(${active.waterLevelMin} cm)`,
     });
   } else {
     parameters.waterLevel = {
-      severity: "normal",
-      label: "Within Range",
-      hasValue: true,
+      severity:
+        "normal",
+
+      label:
+        "Within Active Range",
+
+      hasValue:
+        true,
     };
   }
 
-  /* ---------------- AMMONIA ----------------
-     Special case: no scan yet is a NEUTRAL state, not an issue, and does
-     not count toward hasAnyData / isSafe either way. */
+  /*
+  |--------------------------------------------------------------------------
+  | AMMONIA
+  |--------------------------------------------------------------------------
+  |
+  | Special case:
+  |
+  | The mobile phone test-strip scan is not a continuous IoT sensor.
+  |
+  | No scan yet = neutral.
+  |
+  | It does NOT automatically make the whole tank unsafe.
+  |
+  */
 
-  const ammoniaValue = toNumberOrNull(ammonia);
+  const ammoniaValue =
+    toNumberOrNull(
+      ammonia
+    );
 
-  if (ammoniaValue === null) {
+  if (
+    ammoniaValue ===
+    null
+  ) {
     parameters.ammonia = {
-      severity: "neutral",
-      label: "No Scan Yet",
-      hasValue: false,
+      severity:
+        "neutral",
+
+      label:
+        "No Scan Yet",
+
+      hasValue:
+        false,
     };
-  } else if (ammoniaValue > thresholds.ammoniaMax) {
+  } else if (
+    ammoniaValue >
+    active.ammoniaMax
+  ) {
     parameters.ammonia = {
-      severity: "critical",
-      label: "Above Safe Max",
-      hasValue: true,
+      severity:
+        "critical",
+
+      label:
+        "Above Active Max",
+
+      hasValue:
+        true,
     };
 
     issues.push({
-      key: "ammonia",
-      label: "Ammonia",
-      message: `${ammoniaValue} mg/L is above the safe maximum (${thresholds.ammoniaMax} mg/L)`,
+      key:
+        "ammonia",
+
+      label:
+        "Ammonia",
+
+      message:
+        `${formatNumber(
+          ammoniaValue
+        )} mg/L is above the active maximum ` +
+        `(${formatNumber(
+          active.ammoniaMax
+        )} mg/L)`,
     });
   } else {
     parameters.ammonia = {
-      severity: "normal",
-      label: "Within Range",
-      hasValue: true,
+      severity:
+        "normal",
+
+      label:
+        "Within Active Range",
+
+      hasValue:
+        true,
     };
   }
+
+  /*
+  |--------------------------------------------------------------------------
+  | FINAL STATUS
+  |--------------------------------------------------------------------------
+  |
+  | Ammonia does not count toward hasAnyData when no scan exists.
+  |
+  */
+
+  const hasTurbidityData =
+    Boolean(
+      cleanTurbidityStatus &&
+        cleanTurbidityStatus !==
+          "no reading" &&
+        cleanTurbidityStatus !==
+          "no_reading" &&
+        cleanTurbidityStatus !==
+          "no data" &&
+        cleanTurbidityStatus !==
+          "no_data"
+    );
 
   const hasAnyData =
     temp !== null ||
     phValue !== null ||
-    Boolean(cleanTurbidityStatus) ||
+    hasTurbidityData ||
     waterValue !== null;
 
   return {
-    isSafe: hasAnyData && issues.length === 0,
-    hasData: hasAnyData,
+    isSafe:
+      hasAnyData &&
+      issues.length === 0,
+
+    hasData:
+      hasAnyData,
+
     issues,
+
     parameters,
+
+    activeThresholds:
+      active,
   };
+}
+
+/*
+|--------------------------------------------------------------------------
+| DISPLAY HELPERS
+|--------------------------------------------------------------------------
+*/
+
+export function formatResearchReference(
+  parameter
+) {
+  const reference =
+    getThresholdReference(
+      parameter
+    );
+
+  if (!reference) {
+    return "No reference available";
+  }
+
+  const primary =
+    reference.primary;
+
+  if (
+    !primary
+  ) {
+    return reference.referenceLabel;
+  }
+
+  const unit =
+    primary.unit ||
+    reference.unit ||
+    "";
+
+  if (
+    Number.isFinite(
+      Number(
+        primary.min
+      )
+    ) &&
+    Number.isFinite(
+      Number(
+        primary.max
+      )
+    )
+  ) {
+    return `${formatNumber(
+      primary.min
+    )}–${formatNumber(
+      primary.max
+    )}${unit ? ` ${unit}` : ""}`;
+  }
+
+  if (
+    Number.isFinite(
+      Number(
+        primary.max
+      )
+    )
+  ) {
+    const comparison =
+      primary.comparison ||
+      "<=";
+
+    return `${comparison}${formatNumber(
+      primary.max
+    )}${unit ? ` ${unit}` : ""}`;
+  }
+
+  return reference.referenceLabel;
+}
+
+function formatNumber(
+  value
+) {
+  const number =
+    Number(
+      value
+    );
+
+  if (
+    !Number.isFinite(
+      number
+    )
+  ) {
+    return "—";
+  }
+
+  if (
+    Number.isInteger(
+      number
+    )
+  ) {
+    return String(
+      number
+    );
+  }
+
+  return number
+    .toFixed(
+      2
+    )
+    .replace(
+      /0+$/,
+      ""
+    )
+    .replace(
+      /\.$/,
+      ""
+    );
 }
