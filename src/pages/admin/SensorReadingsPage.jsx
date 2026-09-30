@@ -1134,20 +1134,6 @@ export default function SensorReadingsPage() {
 
   useEffect(() => {
     loadReadings();
-
-    const refreshTimer =
-      window.setInterval(
-        () => {
-          loadReadings();
-        },
-        10000
-      );
-
-    return () => {
-      window.clearInterval(
-        refreshTimer
-      );
-    };
   }, []);
 
   useEffect(() => {
