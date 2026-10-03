@@ -35,7 +35,7 @@ import {
   supabase,
 } from "../../lib/supabase";
 
-import "../../styles/marketplacePage.css";
+import "../../styles/marketplace.css";
 
 /* =========================================================
    CONFIG
