@@ -4,6 +4,7 @@ import {
   Activity,
   AlertTriangle,
   BarChart3,
+  CalendarDays,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -92,7 +93,7 @@ const userFilterColumns = [
 ========================================================= */
 
 function clean(value) {
-  return String(value || "").trim();
+  return String(value ?? "").trim();
 }
 
 function lower(value) {
@@ -148,11 +149,7 @@ function formatDate(value) {
 
   const date = new Date(value);
 
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
+  if (Number.isNaN(date.getTime())) {
     return "No date";
   }
 
@@ -165,6 +162,29 @@ function formatDate(value) {
   });
 }
 
+function formatDateOnly(value) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(
+    `${value}T00:00:00`
+  );
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toLocaleDateString(
+    "en-PH",
+    {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }
+  );
+}
+
 function formatShortTime(value) {
   if (!value) {
     return "";
@@ -172,11 +192,7 @@ function formatShortTime(value) {
 
   const date = new Date(value);
 
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
+  if (Number.isNaN(date.getTime())) {
     return "";
   }
 
@@ -184,6 +200,94 @@ function formatShortTime(value) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function isWithinDateRange(
+  value,
+  fromDate,
+  toDate
+) {
+  if (!fromDate && !toDate) {
+    return true;
+  }
+
+  if (!value) {
+    return false;
+  }
+
+  const recordDate = new Date(value);
+
+  if (
+    Number.isNaN(
+      recordDate.getTime()
+    )
+  ) {
+    return false;
+  }
+
+  const recordTime =
+    recordDate.getTime();
+
+  if (fromDate) {
+    const start =
+      new Date(
+        `${fromDate}T00:00:00`
+      ).getTime();
+
+    if (recordTime < start) {
+      return false;
+    }
+  }
+
+  if (toDate) {
+    const end =
+      new Date(
+        `${toDate}T23:59:59.999`
+      ).getTime();
+
+    if (recordTime > end) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function getDateRangeLabel(
+  fromDate,
+  toDate
+) {
+  if (
+    fromDate &&
+    toDate &&
+    fromDate === toDate
+  ) {
+    return formatDateOnly(
+      fromDate
+    );
+  }
+
+  if (fromDate && toDate) {
+    return `${formatDateOnly(
+      fromDate
+    )} - ${formatDateOnly(
+      toDate
+    )}`;
+  }
+
+  if (fromDate) {
+    return `From ${formatDateOnly(
+      fromDate
+    )}`;
+  }
+
+  if (toDate) {
+    return `Up to ${formatDateOnly(
+      toDate
+    )}`;
+  }
+
+  return "All Dates";
 }
 
 function getValue(
@@ -208,9 +312,15 @@ function safeFilePart(value) {
   return (
     clean(value)
       .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "") ||
-    "tank"
+      .replace(
+        /[^a-z0-9]+/g,
+        "-"
+      )
+      .replace(
+        /^-+|-+$/g,
+        ""
+      ) ||
+    "report"
   );
 }
 
@@ -218,29 +328,67 @@ function safeFilePart(value) {
    SENSOR STATUS
 ========================================================= */
 
-function getStatusSeverity(statuses) {
-  const joined = statuses
-    .map(normalizeStatusText)
-    .join(" ");
+function getStatusSeverity(
+  statuses
+) {
+  const joined =
+    statuses
+      .map(
+        normalizeStatusText
+      )
+      .join(" ");
 
   if (
-    joined.includes("critical") ||
-    joined.includes("danger") ||
-    joined.includes("unsafe") ||
-    joined.includes("high ph") ||
-    joined.includes("low ph") ||
-    joined.includes("warm") ||
-    joined.includes("cold")
+    joined.includes(
+      "critical"
+    ) ||
+    joined.includes(
+      "sensor error"
+    ) ||
+    joined.includes(
+      "danger"
+    ) ||
+    joined.includes(
+      "unsafe"
+    ) ||
+    joined.includes(
+      "high ph"
+    ) ||
+    joined.includes(
+      "low ph"
+    ) ||
+    joined.includes(
+      "warm"
+    ) ||
+    joined.includes(
+      "cold"
+    )
   ) {
     return "critical";
   }
 
   if (
-    joined.includes("warning") ||
-    joined.includes("dirty") ||
-    joined.includes("slightly") ||
-    joined.includes("needs") ||
-    joined.includes("moderate")
+    joined.includes(
+      "warning"
+    ) ||
+    joined.includes(
+      "dirty"
+    ) ||
+    joined.includes(
+      "slightly"
+    ) ||
+    joined.includes(
+      "needs"
+    ) ||
+    joined.includes(
+      "moderate"
+    ) ||
+    joined.includes(
+      "low acidic"
+    ) ||
+    joined.includes(
+      "high alkaline"
+    )
   ) {
     return "warning";
   }
@@ -252,10 +400,13 @@ function getOverallReadingStatus(
   normalizedReading
 ) {
   return getStatusSeverity([
-    normalizedReading.temperatureStatus,
+    normalizedReading
+      .temperatureStatus,
     normalizedReading.phStatus,
-    normalizedReading.turbidityStatus,
-    normalizedReading.waterStatus,
+    normalizedReading
+      .turbidityStatus,
+    normalizedReading
+      .waterStatus,
   ]);
 }
 
@@ -278,16 +429,20 @@ function averageFromNormalized(
   items,
   key
 ) {
-  const values = items
-    .map((item) =>
-      toNumberOrNull(
-        item.normalized[key]
+  const values =
+    items
+      .map(
+        (item) =>
+          toNumberOrNull(
+            item.normalized[
+              key
+            ]
+          )
       )
-    )
-    .filter(
-      (value) =>
-        value !== null
-    );
+      .filter(
+        (value) =>
+          value !== null
+      );
 
   if (!values.length) {
     return "N/A";
@@ -295,13 +450,17 @@ function averageFromNormalized(
 
   const total =
     values.reduce(
-      (sum, value) =>
+      (
+        sum,
+        value
+      ) =>
         sum + value,
       0
     );
 
   return (
-    total / values.length
+    total /
+    values.length
   ).toFixed(2);
 }
 
@@ -309,68 +468,96 @@ function averageFromNormalized(
    MARKET STATUS
 ========================================================= */
 
-function getMarketStatus(row) {
+function getMarketStatus(
+  row
+) {
   const raw =
     normalizeStatusText(
       row?.status ||
-        row?.listing_status ||
-        row?.order_status ||
-        row?.payment_status ||
-        row?.reservation_status ||
-        row?.availability ||
+        row
+          ?.listing_status ||
+        row
+          ?.order_status ||
+        row
+          ?.payment_status ||
+        row
+          ?.reservation_status ||
+        row
+          ?.availability ||
         ""
     );
 
   if (
-    raw.includes("complete")
+    raw.includes(
+      "complete"
+    )
   ) {
     return "completed";
   }
 
   if (
-    raw.includes("confirm")
+    raw.includes(
+      "confirm"
+    )
   ) {
     return "confirmed";
   }
 
   if (
-    raw.includes("paid")
+    raw.includes(
+      "paid"
+    )
   ) {
     return "paid";
   }
 
   if (
-    raw.includes("sold")
+    raw.includes(
+      "sold"
+    )
   ) {
     return "sold";
   }
 
   if (
-    raw.includes("cancel")
+    raw.includes(
+      "cancel"
+    )
   ) {
     return "cancelled";
   }
 
   if (
-    raw.includes("reject")
+    raw.includes(
+      "reject"
+    )
   ) {
     return "rejected";
   }
 
   if (
-    raw.includes("pending")
+    raw.includes(
+      "pending"
+    )
   ) {
     return "pending";
   }
 
   if (
-    raw.includes("active") ||
-    raw.includes("available")
+    raw.includes(
+      "active"
+    ) ||
+    raw.includes(
+      "available"
+    )
   ) {
     return "active";
   }
 
-  return raw || "pending";
+  return (
+    raw ||
+    "pending"
+  );
 }
 
 function getFriendlyMarketStatus(
@@ -412,7 +599,9 @@ function getFriendlyMarketStatus(
    ALERT STATUS
 ========================================================= */
 
-function getAlertSeverity(alert) {
+function getAlertSeverity(
+  alert
+) {
   const raw =
     normalizeStatusText(
       alert?.severity ||
@@ -424,21 +613,41 @@ function getAlertSeverity(alert) {
     );
 
   if (
-    raw.includes("critical") ||
-    raw.includes("danger") ||
-    raw.includes("unsafe") ||
-    raw.includes("high ph") ||
-    raw.includes("low ph")
+    raw.includes(
+      "critical"
+    ) ||
+    raw.includes(
+      "danger"
+    ) ||
+    raw.includes(
+      "unsafe"
+    ) ||
+    raw.includes(
+      "high ph"
+    ) ||
+    raw.includes(
+      "low ph"
+    )
   ) {
     return "critical";
   }
 
   if (
-    raw.includes("warning") ||
-    raw.includes("medium") ||
-    raw.includes("dirty") ||
-    raw.includes("low") ||
-    raw.includes("high")
+    raw.includes(
+      "warning"
+    ) ||
+    raw.includes(
+      "medium"
+    ) ||
+    raw.includes(
+      "dirty"
+    ) ||
+    raw.includes(
+      "low"
+    ) ||
+    raw.includes(
+      "high"
+    )
   ) {
     return "warning";
   }
@@ -465,7 +674,9 @@ function getFriendlyAlertSeverity(
    RECORD HELPERS
 ========================================================= */
 
-function getOrderTotal(order) {
+function getOrderTotal(
+  order
+) {
   return getValue(
     order,
     [
@@ -480,7 +691,9 @@ function getOrderTotal(order) {
   );
 }
 
-function getRecordDate(row) {
+function getRecordDate(
+  row
+) {
   return (
     row?.created_at ||
     row?.updated_at ||
@@ -497,10 +710,13 @@ function getMarketTitle(
   return (
     record?.title ||
     record?.product_name ||
-    record?.listing_title ||
+    record
+      ?.listing_title ||
     record?.item_name ||
     record?.name ||
-    `Marketplace Record ${index + 1}`
+    `Marketplace Record ${
+      index + 1
+    }`
   );
 }
 
@@ -508,7 +724,9 @@ function getMarketTitle(
    TANK HELPERS
 ========================================================= */
 
-function getTankKeys(tank) {
+function getTankKeys(
+  tank
+) {
   return [
     tank?.id,
     tank?.tank_id,
@@ -522,12 +740,15 @@ function getTankKeys(tank) {
     .map(String);
 }
 
-function getRecordTankKeys(record) {
+function getRecordTankKeys(
+  record
+) {
   return [
     record?.tank_id,
     record?.tankId,
     record?.tank_uuid,
-    record?.tank_profile_id,
+    record
+      ?.tank_profile_id,
     record?.device_uid,
     record?.device_id,
     record?.iot_device_id,
@@ -559,7 +780,8 @@ function getTankOptionId(
       tank?.tank_id ||
       tank?.uuid ||
       tank?.device_uid ||
-      tank?.iot_device_id ||
+      tank
+        ?.iot_device_id ||
       `tank-${index}`
   );
 }
@@ -572,7 +794,8 @@ function getTankDisplayName(
   const directName =
     record?.tank_name ||
     record?.tank_label ||
-    record?.tank_display_name;
+    record
+      ?.tank_display_name;
 
   if (directName) {
     return directName;
@@ -584,22 +807,28 @@ function getTankDisplayName(
     );
 
   const matchedTank =
-    tanks.find((tank) => {
-      const tankKeys =
-        getTankKeys(
-          tank
-        );
+    tanks.find(
+      (tank) => {
+        const tankKeys =
+          getTankKeys(
+            tank
+          );
 
-      return recordKeys.some(
-        (key) =>
-          tankKeys.includes(
-            key
+        return (
+          recordKeys.some(
+            (key) =>
+              tankKeys.includes(
+                key
+              )
           )
-      );
-    });
+        );
+      }
+    );
 
   if (!matchedTank) {
-    return `Tank ${index + 1}`;
+    return `Tank ${
+      index + 1
+    }`;
   }
 
   return getTankName(
@@ -644,8 +873,10 @@ function recordMatchesTank(
   const recordName =
     lower(
       record?.tank_name ||
-        record?.tank_label ||
-        record?.tank_display_name
+        record
+          ?.tank_label ||
+        record
+          ?.tank_display_name
     );
 
   const tankName =
@@ -656,9 +887,14 @@ function recordMatchesTank(
     );
 
   return (
-    Boolean(recordName) &&
-    Boolean(tankName) &&
-    recordName === tankName
+    Boolean(
+      recordName
+    ) &&
+    Boolean(
+      tankName
+    ) &&
+    recordName ===
+      tankName
   );
 }
 
@@ -671,14 +907,21 @@ function uniqueRows(rows) {
     new Map();
 
   rows.forEach(
-    (row, index) => {
+    (
+      row,
+      index
+    ) => {
       const id =
         row?.id ||
         row?.uuid ||
-        row?.reading_id ||
-        row?.alert_id ||
-        row?.listing_id ||
-        row?.order_id ||
+        row
+          ?.reading_id ||
+        row
+          ?.alert_id ||
+        row
+          ?.listing_id ||
+        row
+          ?.order_id ||
         row?.created_at ||
         `row-${index}`;
 
@@ -700,7 +943,9 @@ function uniqueRows(rows) {
 
 async function getCurrentUserWithRole() {
   const { data } =
-    await supabase.auth.getSession();
+    await supabase
+      .auth
+      .getSession();
 
   const user =
     data?.session?.user;
@@ -718,7 +963,9 @@ async function getCurrentUserWithRole() {
 
   const byId =
     await supabase
-      .from("profiles")
+      .from(
+        "profiles"
+      )
       .select(
         "id,email,role"
       )
@@ -742,7 +989,9 @@ async function getCurrentUserWithRole() {
   ) {
     const byEmail =
       await supabase
-        .from("profiles")
+        .from(
+          "profiles"
+        )
         .select(
           "id,email,role"
         )
@@ -768,15 +1017,18 @@ async function getCurrentUserWithRole() {
 
   return {
     id:
-      user.id || "",
+      user.id ||
+      "",
 
     email:
-      user.email || "",
+      user.email ||
+      "",
 
     role,
 
     isAdmin:
-      role === "admin",
+      role ===
+      "admin",
   };
 }
 
@@ -794,15 +1046,20 @@ async function fetchAdminRows(
   ) {
     const ordered =
       await supabase
-        .from(tableName)
+        .from(
+          tableName
+        )
         .select("*")
         .order(
           "created_at",
           {
-            ascending: false,
+            ascending:
+              false,
           }
         )
-        .limit(limit);
+        .limit(
+          limit
+        );
 
     if (
       !ordered.error &&
@@ -823,9 +1080,13 @@ async function fetchAdminRows(
 
     const plain =
       await supabase
-        .from(tableName)
+        .from(
+          tableName
+        )
         .select("*")
-        .limit(limit);
+        .limit(
+          limit
+        );
 
     if (
       !plain.error &&
@@ -847,6 +1108,7 @@ async function fetchAdminRows(
 
   return {
     rows: [],
+
     tableUsed:
       tableNames[0],
   };
@@ -861,8 +1123,11 @@ async function fetchUserRows(
     const tableName
     of tableNames
   ) {
-    const mergedRows = [];
-    let successful = false;
+    const mergedRows =
+      [];
+
+    let successful =
+      false;
 
     for (
       const column
@@ -870,7 +1135,9 @@ async function fetchUserRows(
     ) {
       const ordered =
         await supabase
-          .from(tableName)
+          .from(
+            tableName
+          )
           .select("*")
           .eq(
             column,
@@ -879,10 +1146,13 @@ async function fetchUserRows(
           .order(
             "created_at",
             {
-              ascending: false,
+              ascending:
+                false,
             }
           )
-          .limit(limit);
+          .limit(
+            limit
+          );
 
       if (
         !ordered.error &&
@@ -902,13 +1172,17 @@ async function fetchUserRows(
 
       const plain =
         await supabase
-          .from(tableName)
+          .from(
+            tableName
+          )
           .select("*")
           .eq(
             column,
             userId
           )
-          .limit(limit);
+          .limit(
+            limit
+          );
 
       if (
         !plain.error &&
@@ -940,6 +1214,7 @@ async function fetchUserRows(
 
   return {
     rows: [],
+
     tableUsed:
       tableNames[0],
   };
@@ -967,7 +1242,7 @@ async function fetchRowsByScope(
 }
 
 /* =========================================================
-   COMPONENTS
+   SMALL COMPONENTS
 ========================================================= */
 
 function SummaryCard({
@@ -982,7 +1257,9 @@ function SummaryCard({
       className={`cray-report-summary-card ${tone}`}
     >
       <span>
-        <Icon size={21} />
+        <Icon
+          size={21}
+        />
       </span>
 
       <div>
@@ -1011,7 +1288,10 @@ function BarRow({
   const width =
     max > 0
       ? `${Math.min(
-          (value / max) * 100,
+          (
+            value /
+            max
+          ) * 100,
           100
         )}%`
       : "0%";
@@ -1052,7 +1332,10 @@ function DonutStat({
   const percent =
     total > 0
       ? Math.round(
-          (value / total) *
+          (
+            value /
+            total
+          ) *
             100
         )
       : 0;
@@ -1063,7 +1346,8 @@ function DonutStat({
     >
       <div
         style={{
-          "--percent": `${percent}%`,
+          "--percent":
+            `${percent}%`,
         }}
       >
         <strong>
@@ -1089,7 +1373,7 @@ function DonutStat({
 }
 
 /* =========================================================
-   MINIMAL THEME-AWARE DROPDOWN
+   THEME-AWARE DROPDOWN
 ========================================================= */
 
 function ReportFilterDropdown({
@@ -1102,74 +1386,96 @@ function ReportFilterDropdown({
   const [
     isOpen,
     setIsOpen,
-  ] = useState(false);
+  ] =
+    useState(
+      false
+    );
 
   const dropdownRef =
-    useRef(null);
+    useRef(
+      null
+    );
 
   const selectedOption =
     options.find(
       (option) =>
-        option.value === value
+        option.value ===
+        value
     ) ||
     options[0];
 
-  useEffect(() => {
-    function handleOutsideClick(
-      event
-    ) {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(
-          event.target
-        )
+  useEffect(
+    () => {
+      function handleOutsideClick(
+        event
       ) {
-        setIsOpen(false);
+        if (
+          dropdownRef.current &&
+          !dropdownRef.current.contains(
+            event.target
+          )
+        ) {
+          setIsOpen(
+            false
+          );
+        }
       }
-    }
 
-    function handleEscape(event) {
-      if (
-        event.key === "Escape"
+      function handleEscape(
+        event
       ) {
-        setIsOpen(false);
+        if (
+          event.key ===
+          "Escape"
+        ) {
+          setIsOpen(
+            false
+          );
+        }
       }
-    }
 
-    document.addEventListener(
-      "mousedown",
-      handleOutsideClick
-    );
-
-    document.addEventListener(
-      "keydown",
-      handleEscape
-    );
-
-    return () => {
-      document.removeEventListener(
+      document.addEventListener(
         "mousedown",
         handleOutsideClick
       );
 
-      document.removeEventListener(
+      document.addEventListener(
         "keydown",
         handleEscape
       );
-    };
-  }, []);
 
-  function handleSelect(option) {
+      return () => {
+        document.removeEventListener(
+          "mousedown",
+          handleOutsideClick
+        );
+
+        document.removeEventListener(
+          "keydown",
+          handleEscape
+        );
+      };
+    },
+    []
+  );
+
+  function handleSelect(
+    option
+  ) {
     onChange(
       option.value
     );
 
-    setIsOpen(false);
+    setIsOpen(
+      false
+    );
   }
 
   return (
     <div
-      ref={dropdownRef}
+      ref={
+        dropdownRef
+      }
       style={
         reportDropdownWrapStyle
       }
@@ -1185,7 +1491,9 @@ function ReportFilterDropdown({
         }
         onClick={() =>
           setIsOpen(
-            (current) =>
+            (
+              current
+            ) =>
               !current
           )
         }
@@ -1210,7 +1518,8 @@ function ReportFilterDropdown({
           }
         >
           {
-            selectedOption?.label
+            selectedOption
+              ?.label
           }
         </span>
 
@@ -1235,7 +1544,9 @@ function ReportFilterDropdown({
           }
         >
           {options.map(
-            (option) => {
+            (
+              option
+            ) => {
               const isSelected =
                 option.value ===
                 value;
@@ -1271,7 +1582,9 @@ function ReportFilterDropdown({
 
                   {isSelected && (
                     <Check
-                      size={15}
+                      size={
+                        15
+                      }
                       style={{
                         flexShrink:
                           0,
@@ -1296,55 +1609,107 @@ export default function ReportsPage() {
   const [
     activeReport,
     setActiveReport,
-  ] = useState("tanks");
-
-  const [
-    exportScope,
-    setExportScope,
-  ] = useState("tanks");
+  ] =
+    useState(
+      "tanks"
+    );
 
   const [
     selectedTankId,
     setSelectedTankId,
-  ] = useState("all");
+  ] =
+    useState(
+      "all"
+    );
+
+  const [
+    fromDate,
+    setFromDate,
+  ] =
+    useState(
+      ""
+    );
+
+  const [
+    toDate,
+    setToDate,
+  ] =
+    useState(
+      ""
+    );
 
   const [
     datasets,
     setDatasets,
-  ] = useState({
-    tanks: [],
-    readings: [],
-    alerts: [],
-    listings: [],
-    orders: [],
-  });
+  ] =
+    useState({
+      tanks: [],
+      readings: [],
+      alerts: [],
+      listings: [],
+      orders: [],
+    });
 
   const [
     isLoading,
     setIsLoading,
-  ] = useState(true);
+  ] =
+    useState(
+      true
+    );
+
+  const [
+    isRefreshing,
+    setIsRefreshing,
+  ] =
+    useState(
+      false
+    );
 
   const [
     lastUpdated,
     setLastUpdated,
-  ] = useState(null);
+  ] =
+    useState(
+      null
+    );
 
   /* =======================================================
      LOAD REPORT DATA
   ======================================================= */
 
   const loadReports =
-    async () => {
+    async (
+      showFullLoading =
+        false
+    ) => {
       if (
         !isSupabaseConfigured ||
         !supabase
       ) {
-        setIsLoading(false);
+        setIsLoading(
+          false
+        );
+
+        setIsRefreshing(
+          false
+        );
+
         return;
       }
 
       try {
-        setIsLoading(true);
+        if (
+          showFullLoading
+        ) {
+          setIsLoading(
+            true
+          );
+        } else {
+          setIsRefreshing(
+            true
+          );
+        }
 
         const currentUser =
           await getCurrentUserWithRole();
@@ -1380,25 +1745,25 @@ export default function ReportsPage() {
             fetchRowsByScope(
               tableGroups.readings,
               currentUser,
-              500
+              1000
             ),
 
             fetchRowsByScope(
               tableGroups.alerts,
               currentUser,
-              500
+              1000
             ),
 
             fetchRowsByScope(
               tableGroups.listings,
               currentUser,
-              500
+              1000
             ),
 
             fetchRowsByScope(
               tableGroups.orders,
               currentUser,
-              500
+              1000
             ),
           ]);
 
@@ -1422,213 +1787,423 @@ export default function ReportsPage() {
         setLastUpdated(
           new Date()
         );
-      } catch (error) {
+      } catch (
+        error
+      ) {
         console.error(
           "Reports loading error:",
           error
         );
       } finally {
-        setIsLoading(false);
+        setIsLoading(
+          false
+        );
+
+        setIsRefreshing(
+          false
+        );
       }
     };
 
-  useEffect(() => {
-    loadReports();
-  }, []);
+  useEffect(
+    () => {
+      loadReports(
+        true
+      );
+    },
+    []
+  );
+
+  /* =======================================================
+     DATE CONTROLS
+  ======================================================= */
+
+  const dateRangeLabel =
+    getDateRangeLabel(
+      fromDate,
+      toDate
+    );
+
+  function handleFromDateChange(
+    event
+  ) {
+    const value =
+      event.target.value;
+
+    setFromDate(
+      value
+    );
+
+    if (
+      value &&
+      toDate &&
+      value >
+        toDate
+    ) {
+      setToDate(
+        value
+      );
+    }
+  }
+
+  function handleToDateChange(
+    event
+  ) {
+    const value =
+      event.target.value;
+
+    setToDate(
+      value
+    );
+
+    if (
+      value &&
+      fromDate &&
+      value <
+        fromDate
+    ) {
+      setFromDate(
+        value
+      );
+    }
+  }
+
+  function clearDateRange() {
+    setFromDate(
+      ""
+    );
+
+    setToDate(
+      ""
+    );
+  }
 
   /* =======================================================
      TANK OPTIONS
   ======================================================= */
 
   const tankOptions =
-    useMemo(() => {
-      return datasets.tanks
-        .map(
-          (
-            tank,
-            index
-          ) => ({
-            id:
-              getTankOptionId(
-                tank,
-                index
-              ),
+    useMemo(
+      () => {
+        return datasets
+          .tanks
+          .map(
+            (
+              tank,
+              index
+            ) => ({
+              id:
+                getTankOptionId(
+                  tank,
+                  index
+                ),
 
-            name:
-              getTankName(
-                tank,
-                index
-              ),
+              name:
+                getTankName(
+                  tank,
+                  index
+                ),
 
-            tank,
-          })
-        )
-        .sort((a, b) =>
-          a.name.localeCompare(
-            b.name
+              tank,
+            })
           )
-        );
-    }, [datasets.tanks]);
+          .sort(
+            (
+              a,
+              b
+            ) =>
+              a.name.localeCompare(
+                b.name
+              )
+          );
+      },
+      [
+        datasets.tanks,
+      ]
+    );
 
   const selectedTankOption =
-    useMemo(() => {
-      if (
-        selectedTankId ===
-        "all"
-      ) {
-        return null;
-      }
+    useMemo(
+      () => {
+        if (
+          selectedTankId ===
+          "all"
+        ) {
+          return null;
+        }
 
-      return (
-        tankOptions.find(
-          (option) =>
-            option.id ===
-            selectedTankId
-        ) || null
-      );
-    }, [
-      tankOptions,
-      selectedTankId,
-    ]);
+        return (
+          tankOptions.find(
+            (
+              option
+            ) =>
+              option.id ===
+              selectedTankId
+          ) ||
+          null
+        );
+      },
+      [
+        tankOptions,
+        selectedTankId,
+      ]
+    );
 
   const selectedTank =
-    selectedTankOption?.tank ||
+    selectedTankOption
+      ?.tank ||
     null;
 
   const selectedTankName =
-    selectedTankId === "all"
+    selectedTankId ===
+    "all"
       ? "All Tanks"
-      : selectedTankOption?.name ||
+      : selectedTankOption
+          ?.name ||
         "Selected Tank";
 
-  useEffect(() => {
-    if (
-      selectedTankId !==
-        "all" &&
-      !tankOptions.some(
-        (option) =>
-          option.id ===
-          selectedTankId
-      )
-    ) {
-      setSelectedTankId(
-        "all"
-      );
-    }
-  }, [
-    tankOptions,
-    selectedTankId,
-  ]);
+  useEffect(
+    () => {
+      if (
+        selectedTankId !==
+          "all" &&
+        !tankOptions.some(
+          (
+            option
+          ) =>
+            option.id ===
+            selectedTankId
+        )
+      ) {
+        setSelectedTankId(
+          "all"
+        );
+      }
+    },
+    [
+      tankOptions,
+      selectedTankId,
+    ]
+  );
 
   /* =======================================================
      READINGS
   ======================================================= */
 
   const enrichedReadings =
-    useMemo(() => {
-      return datasets.readings
-        .map(
-          (
-            reading,
-            index
-          ) => {
-            const normalized =
-              normalizeSensorReading(
-                reading
-              );
-
-            const status =
-              getOverallReadingStatus(
-                normalized
-              );
-
-            const name =
-              getTankDisplayName(
-                reading,
-                datasets.tanks,
-                index
-              );
-
-            return {
+    useMemo(
+      () => {
+        return datasets
+          .readings
+          .map(
+            (
               reading,
-              normalized,
-              status,
-              name,
+              index
+            ) => {
+              const normalized =
+                normalizeSensorReading(
+                  reading
+                );
 
-              date:
-                normalized.createdAt ||
-                reading?.timestamp ||
-                reading?.date ||
-                reading?.updated_at,
-            };
-          }
-        )
-        .sort(
-          (a, b) =>
-            new Date(
-              b.date || 0
-            ) -
-            new Date(
-              a.date || 0
-            )
-        );
-    }, [
-      datasets.readings,
-      datasets.tanks,
-    ]);
+              const status =
+                getOverallReadingStatus(
+                  normalized
+                );
+
+              const name =
+                getTankDisplayName(
+                  reading,
+                  datasets.tanks,
+                  index
+                );
+
+              return {
+                reading,
+                normalized,
+                status,
+                name,
+
+                date:
+                  normalized
+                    .createdAt ||
+                  reading
+                    ?.created_at ||
+                  reading
+                    ?.timestamp ||
+                  reading
+                    ?.date ||
+                  reading
+                    ?.updated_at,
+              };
+            }
+          )
+          .sort(
+            (
+              a,
+              b
+            ) =>
+              new Date(
+                b.date ||
+                  0
+              ) -
+              new Date(
+                a.date ||
+                  0
+              )
+          );
+      },
+      [
+        datasets.readings,
+        datasets.tanks,
+      ]
+    );
 
   /* =======================================================
-     SELECTED TANK DATA
+     DATE + TANK SCOPED DATA
   ======================================================= */
 
   const tankReadings =
-    useMemo(() => {
-      if (
-        selectedTankId ===
-        "all" ||
-        !selectedTank
-      ) {
-        return enrichedReadings;
-      }
+    useMemo(
+      () => {
+        let scopedReadings =
+          enrichedReadings;
 
-      return enrichedReadings.filter(
-        (item) =>
-          recordMatchesTank(
-            item.reading,
-            selectedTank
-          )
-      );
-    }, [
-      enrichedReadings,
-      selectedTankId,
-      selectedTank,
-    ]);
+        if (
+          selectedTankId !==
+            "all" &&
+          selectedTank
+        ) {
+          scopedReadings =
+            scopedReadings.filter(
+              (
+                item
+              ) =>
+                recordMatchesTank(
+                  item.reading,
+                  selectedTank
+                )
+            );
+        }
+
+        return scopedReadings.filter(
+          (
+            item
+          ) =>
+            isWithinDateRange(
+              item.date,
+              fromDate,
+              toDate
+            )
+        );
+      },
+      [
+        enrichedReadings,
+        selectedTankId,
+        selectedTank,
+        fromDate,
+        toDate,
+      ]
+    );
 
   const tankAlerts =
-    useMemo(() => {
-      if (
-        selectedTankId ===
-        "all" ||
-        !selectedTank
-      ) {
-        return datasets.alerts;
-      }
+    useMemo(
+      () => {
+        let scopedAlerts =
+          datasets.alerts;
 
-      return datasets.alerts.filter(
-        (alert) =>
-          recordMatchesTank(
-            alert,
-            selectedTank
-          )
-      );
-    }, [
-      datasets.alerts,
-      selectedTankId,
-      selectedTank,
-    ]);
+        if (
+          selectedTankId !==
+            "all" &&
+          selectedTank
+        ) {
+          scopedAlerts =
+            scopedAlerts.filter(
+              (
+                alert
+              ) =>
+                recordMatchesTank(
+                  alert,
+                  selectedTank
+                )
+            );
+        }
+
+        return scopedAlerts.filter(
+          (
+            alert
+          ) =>
+            isWithinDateRange(
+              getRecordDate(
+                alert
+              ),
+              fromDate,
+              toDate
+            )
+        );
+      },
+      [
+        datasets.alerts,
+        selectedTankId,
+        selectedTank,
+        fromDate,
+        toDate,
+      ]
+    );
+
+  const marketListings =
+    useMemo(
+      () => {
+        return datasets
+          .listings
+          .filter(
+            (
+              listing
+            ) =>
+              isWithinDateRange(
+                getRecordDate(
+                  listing
+                ),
+                fromDate,
+                toDate
+              )
+          );
+      },
+      [
+        datasets.listings,
+        fromDate,
+        toDate,
+      ]
+    );
+
+  const marketOrders =
+    useMemo(
+      () => {
+        return datasets
+          .orders
+          .filter(
+            (
+              order
+            ) =>
+              isWithinDateRange(
+                getRecordDate(
+                  order
+                ),
+                fromDate,
+                toDate
+              )
+          );
+      },
+      [
+        datasets.orders,
+        fromDate,
+        toDate,
+      ]
+    );
 
   const latestReading =
-    tankReadings[0] ||
+    tankReadings[
+      0
+    ] ||
     null;
 
   /* =======================================================
@@ -1636,356 +2211,440 @@ export default function ReportsPage() {
   ======================================================= */
 
   const tankAnalytics =
-    useMemo(() => {
-      const normal =
-        tankReadings.filter(
-          (item) =>
-            item.status ===
-            "normal"
-        ).length;
+    useMemo(
+      () => {
+        const normal =
+          tankReadings.filter(
+            (
+              item
+            ) =>
+              item.status ===
+              "normal"
+          ).length;
 
-      const warning =
-        tankReadings.filter(
-          (item) =>
-            item.status ===
-            "warning"
-        ).length;
+        const warning =
+          tankReadings.filter(
+            (
+              item
+            ) =>
+              item.status ===
+              "warning"
+          ).length;
 
-      const critical =
-        tankReadings.filter(
-          (item) =>
-            item.status ===
-            "critical"
-        ).length;
+        const critical =
+          tankReadings.filter(
+            (
+              item
+            ) =>
+              item.status ===
+              "critical"
+          ).length;
 
-      const phWarning =
-        tankReadings.filter(
-          (item) =>
-            [
-              "warning",
-              "critical",
-            ].includes(
-              getStatusSeverity([
-                item.normalized
-                  .phStatus,
-              ])
-            )
-        ).length;
+        const phWarning =
+          tankReadings.filter(
+            (
+              item
+            ) =>
+              [
+                "warning",
+                "critical",
+              ].includes(
+                getStatusSeverity(
+                  [
+                    item
+                      .normalized
+                      .phStatus,
+                  ]
+                )
+              )
+          ).length;
 
-      const waterClarityWarning =
-        tankReadings.filter(
-          (item) =>
-            [
-              "warning",
-              "critical",
-            ].includes(
-              getStatusSeverity([
-                item.normalized
-                  .turbidityStatus,
-              ])
-            )
-        ).length;
+        const waterClarityWarning =
+          tankReadings.filter(
+            (
+              item
+            ) =>
+              [
+                "warning",
+                "critical",
+              ].includes(
+                getStatusSeverity(
+                  [
+                    item
+                      .normalized
+                      .turbidityStatus,
+                  ]
+                )
+              )
+          ).length;
 
-      const alertCritical =
-        tankAlerts.filter(
-          (alert) =>
-            getAlertSeverity(
+        const alertCritical =
+          tankAlerts.filter(
+            (
               alert
-            ) === "critical"
-        ).length;
+            ) =>
+              getAlertSeverity(
+                alert
+              ) ===
+              "critical"
+          ).length;
 
-      return {
-        totalTanks:
-          selectedTankId ===
-          "all"
-            ? datasets.tanks
-                .length
-            : selectedTank
-              ? 1
-              : 0,
+        return {
+          totalTanks:
+            selectedTankId ===
+            "all"
+              ? datasets
+                  .tanks
+                  .length
+              : selectedTank
+                ? 1
+                : 0,
 
-        totalReadings:
-          tankReadings.length,
+          totalReadings:
+            tankReadings
+              .length,
 
-        totalAlerts:
-          tankAlerts.length,
+          totalAlerts:
+            tankAlerts
+              .length,
 
-        normal,
+          normal,
+          warning,
+          critical,
+          alertCritical,
+          phWarning,
+          waterClarityWarning,
 
-        warning,
+          avgTemp:
+            averageFromNormalized(
+              tankReadings,
+              "temperatureValue"
+            ),
 
-        critical,
+          avgWaterLevel:
+            averageFromNormalized(
+              tankReadings,
+              "waterValue"
+            ),
 
-        alertCritical,
+          latestPhStatus:
+            latestReading
+              ?.normalized
+              ?.phStatus ||
+            "No Reading",
 
-        phWarning,
+          latestWaterClarityStatus:
+            latestReading
+              ?.normalized
+              ?.turbidityStatus ||
+            "No Reading",
 
-        waterClarityWarning,
+          latestTemperatureStatus:
+            latestReading
+              ?.normalized
+              ?.temperatureStatus ||
+            "No Reading",
 
-        avgTemp:
-          averageFromNormalized(
-            tankReadings,
-            "temperatureValue"
-          ),
-
-        avgWaterLevel:
-          averageFromNormalized(
-            tankReadings,
-            "waterValue"
-          ),
-
-        latestPhStatus:
-          latestReading
-            ?.normalized
-            ?.phStatus ||
-          "No Reading",
-
-        latestWaterClarityStatus:
-          latestReading
-            ?.normalized
-            ?.turbidityStatus ||
-          "No Reading",
-
-        latestTemperatureStatus:
-          latestReading
-            ?.normalized
-            ?.temperatureStatus ||
-          "No Reading",
-
-        latestWaterStatus:
-          latestReading
-            ?.normalized
-            ?.waterStatus ||
-          "No Reading",
-      };
-    }, [
-      datasets.tanks,
-      selectedTankId,
-      selectedTank,
-      tankReadings,
-      tankAlerts,
-      latestReading,
-    ]);
+          latestWaterStatus:
+            latestReading
+              ?.normalized
+              ?.waterStatus ||
+            "No Reading",
+        };
+      },
+      [
+        datasets.tanks,
+        selectedTankId,
+        selectedTank,
+        tankReadings,
+        tankAlerts,
+        latestReading,
+      ]
+    );
 
   /* =======================================================
      MARKETPLACE ANALYTICS
   ======================================================= */
 
   const marketAnalytics =
-    useMemo(() => {
-      const activeListings =
-        datasets.listings.filter(
-          (listing) =>
-            getMarketStatus(
+    useMemo(
+      () => {
+        const activeListings =
+          marketListings.filter(
+            (
               listing
-            ) === "active"
-        ).length;
-
-      const soldListings =
-        datasets.listings.filter(
-          (listing) =>
-            getMarketStatus(
-              listing
-            ) === "sold"
-        ).length;
-
-      const completedOrders =
-        datasets.orders.filter(
-          (order) =>
-            [
-              "completed",
-              "confirmed",
-              "paid",
-            ].includes(
+            ) =>
               getMarketStatus(
-                order
-              )
-            )
-        );
+                listing
+              ) ===
+              "active"
+          ).length;
 
-      const pendingOrders =
-        datasets.orders.filter(
-          (order) =>
-            getMarketStatus(
+        const soldListings =
+          marketListings.filter(
+            (
+              listing
+            ) =>
+              getMarketStatus(
+                listing
+              ) ===
+              "sold"
+          ).length;
+
+        const completedOrders =
+          marketOrders.filter(
+            (
               order
-            ) === "pending"
-        ).length;
+            ) =>
+              [
+                "completed",
+                "confirmed",
+                "paid",
+              ].includes(
+                getMarketStatus(
+                  order
+                )
+              )
+          );
 
-      const cancelledOrders =
-        datasets.orders.filter(
-          (order) =>
-            [
-              "cancelled",
-              "rejected",
-            ].includes(
+        const pendingOrders =
+          marketOrders.filter(
+            (
+              order
+            ) =>
               getMarketStatus(
                 order
+              ) ===
+              "pending"
+          ).length;
+
+        const cancelledOrders =
+          marketOrders.filter(
+            (
+              order
+            ) =>
+              [
+                "cancelled",
+                "rejected",
+              ].includes(
+                getMarketStatus(
+                  order
+                )
               )
-            )
-        ).length;
+          ).length;
 
-      const totalSales =
-        completedOrders.reduce(
-          (sum, order) =>
-            sum +
-            Number(
-              getOrderTotal(
-                order
-              ) || 0
-            ),
+        const totalSales =
+          completedOrders.reduce(
+            (
+              sum,
+              order
+            ) =>
+              sum +
+              Number(
+                getOrderTotal(
+                  order
+                ) ||
+                  0
+              ),
+            0
+          );
+
+        const completionRate =
+          marketOrders
+            .length >
           0
-        );
+            ? Math.round(
+                (
+                  completedOrders
+                    .length /
+                  marketOrders
+                    .length
+                ) *
+                  100
+              )
+            : 0;
 
-      const completionRate =
-        datasets.orders.length >
-        0
-          ? Math.round(
-              (completedOrders.length /
-                datasets.orders
-                  .length) *
-                100
-            )
-          : 0;
+        return {
+          totalListings:
+            marketListings
+              .length,
 
-      return {
-        totalListings:
-          datasets.listings.length,
+          activeListings,
 
-        activeListings,
+          soldListings,
 
-        soldListings,
+          totalOrders:
+            marketOrders
+              .length,
 
-        totalOrders:
-          datasets.orders.length,
+          completedOrders:
+            completedOrders
+              .length,
 
-        completedOrders:
-          completedOrders.length,
+          pendingOrders,
 
-        pendingOrders,
+          cancelledOrders,
 
-        cancelledOrders,
+          totalSales,
 
-        totalSales,
-
-        completionRate,
-      };
-    }, [
-      datasets.listings,
-      datasets.orders,
-    ]);
+          completionRate,
+        };
+      },
+      [
+        marketListings,
+        marketOrders,
+      ]
+    );
 
   /* =======================================================
      GRAPH DATA
   ======================================================= */
 
-  const tankBars = [
-    {
-      label:
-        "Good readings",
-      value:
-        tankAnalytics.normal,
-      tone:
-        "success",
-    },
+  const tankBars =
+    [
+      {
+        label:
+          "Good readings",
 
-    {
-      label:
-        "Needs checking",
-      value:
-        tankAnalytics.warning,
-      tone:
-        "warning",
-    },
+        value:
+          tankAnalytics
+            .normal,
 
-    {
-      label:
-        "Urgent readings",
-      value:
-        tankAnalytics.critical,
-      tone:
-        "danger",
-    },
+        tone:
+          "success",
+      },
 
-    {
-      label:
-        "pH issues",
-      value:
-        tankAnalytics.phWarning,
-      tone:
-        "warning",
-    },
+      {
+        label:
+          "Needs checking",
 
-    {
-      label:
-        "Water clarity issues",
-      value:
-        tankAnalytics.waterClarityWarning,
-      tone:
-        "warning",
-    },
+        value:
+          tankAnalytics
+            .warning,
 
-    {
-      label:
-        "Urgent alerts",
-      value:
-        tankAnalytics.alertCritical,
-      tone:
-        "danger",
-    },
-  ];
+        tone:
+          "warning",
+      },
 
-  const marketBars = [
-    {
-      label:
-        "Available listings",
-      value:
-        marketAnalytics.activeListings,
-      tone:
-        "success",
-    },
+      {
+        label:
+          "Urgent readings",
 
-    {
-      label:
-        "Sold listings",
-      value:
-        marketAnalytics.soldListings,
-      tone:
-        "default",
-    },
+        value:
+          tankAnalytics
+            .critical,
 
-    {
-      label:
-        "Completed orders",
-      value:
-        marketAnalytics.completedOrders,
-      tone:
-        "success",
-    },
+        tone:
+          "danger",
+      },
 
-    {
-      label:
-        "Pending orders",
-      value:
-        marketAnalytics.pendingOrders,
-      tone:
-        "warning",
-    },
+      {
+        label:
+          "pH issues",
 
-    {
-      label:
-        "Cancelled orders",
-      value:
-        marketAnalytics.cancelledOrders,
-      tone:
-        "danger",
-    },
-  ];
+        value:
+          tankAnalytics
+            .phWarning,
+
+        tone:
+          "warning",
+      },
+
+      {
+        label:
+          "Water clarity issues",
+
+        value:
+          tankAnalytics
+            .waterClarityWarning,
+
+        tone:
+          "warning",
+      },
+
+      {
+        label:
+          "Urgent alerts",
+
+        value:
+          tankAnalytics
+            .alertCritical,
+
+        tone:
+          "danger",
+      },
+    ];
+
+  const marketBars =
+    [
+      {
+        label:
+          "Available listings",
+
+        value:
+          marketAnalytics
+            .activeListings,
+
+        tone:
+          "success",
+      },
+
+      {
+        label:
+          "Sold listings",
+
+        value:
+          marketAnalytics
+            .soldListings,
+
+        tone:
+          "default",
+      },
+
+      {
+        label:
+          "Completed orders",
+
+        value:
+          marketAnalytics
+            .completedOrders,
+
+        tone:
+          "success",
+      },
+
+      {
+        label:
+          "Pending orders",
+
+        value:
+          marketAnalytics
+            .pendingOrders,
+
+        tone:
+          "warning",
+      },
+
+      {
+        label:
+          "Cancelled orders",
+
+        value:
+          marketAnalytics
+            .cancelledOrders,
+
+        tone:
+          "danger",
+      },
+    ];
 
   const maxTankBar =
     Math.max(
       1,
       ...tankBars.map(
-        (item) =>
+        (
+          item
+        ) =>
           item.value
       )
     );
@@ -1994,7 +2653,9 @@ export default function ReportsPage() {
     Math.max(
       1,
       ...marketBars.map(
-        (item) =>
+        (
+          item
+        ) =>
           item.value
       )
     );
@@ -2004,388 +2665,445 @@ export default function ReportsPage() {
   ======================================================= */
 
   const recentTankRecords =
-    useMemo(() => {
-      const alerts =
-        tankAlerts.map(
-          (
-            alert,
-            index
-          ) => ({
-            type:
-              "Alert",
+    useMemo(
+      () => {
+        const alerts =
+          tankAlerts.map(
+            (
+              alert,
+              index
+            ) => ({
+              type:
+                "Alert",
 
-            title:
-              alert?.title ||
-              alert?.alert_title ||
-              alert
-                ?.notification_title ||
-              alert?.type ||
-              `Alert ${index + 1}`,
-
-            tankName:
-              getTankDisplayName(
-                alert,
-                datasets.tanks,
-                index
-              ),
-
-            status:
-              getAlertSeverity(
+              title:
                 alert
-              ),
-
-            date:
-              getRecordDate(
+                  ?.title ||
                 alert
-              ),
-          })
-        );
+                  ?.alert_title ||
+                alert
+                  ?.notification_title ||
+                alert
+                  ?.type ||
+                `Alert ${
+                  index +
+                  1
+                }`,
 
-      const readings =
-        tankReadings.map(
-          (item) => ({
-            type:
-              "Water Reading",
+              tankName:
+                getTankDisplayName(
+                  alert,
+                  datasets.tanks,
+                  index
+                ),
 
-            title:
-              item.name,
+              status:
+                getAlertSeverity(
+                  alert
+                ),
 
-            tankName:
-              item.name,
+              date:
+                getRecordDate(
+                  alert
+                ),
+            })
+          );
 
-            status:
-              item.status,
+        const readings =
+          tankReadings.map(
+            (
+              item
+            ) => ({
+              type:
+                "Water Reading",
 
-            date:
-              item.date,
+              title:
+                item.name,
 
-            ph:
-              item.normalized
-                .phStatus,
+              tankName:
+                item.name,
 
-            waterClarity:
-              item.normalized
-                .turbidityStatus,
-          })
-        );
+              status:
+                item.status,
 
-      return [
-        ...alerts,
-        ...readings,
+              date:
+                item.date,
+
+              ph:
+                item
+                  .normalized
+                  .phStatus,
+
+              waterClarity:
+                item
+                  .normalized
+                  .turbidityStatus,
+            })
+          );
+
+        return [
+          ...alerts,
+          ...readings,
+        ]
+          .sort(
+            (
+              a,
+              b
+            ) =>
+              new Date(
+                b.date ||
+                  0
+              ) -
+              new Date(
+                a.date ||
+                  0
+              )
+          )
+          .slice(
+            0,
+            6
+          );
+      },
+      [
+        tankAlerts,
+        tankReadings,
+        datasets.tanks,
       ]
-        .sort(
-          (a, b) =>
-            new Date(
-              b.date || 0
-            ) -
-            new Date(
-              a.date || 0
-            )
-        )
-        .slice(0, 6);
-    }, [
-      tankAlerts,
-      tankReadings,
-      datasets.tanks,
-    ]);
+    );
 
   /* =======================================================
      RECENT MARKETPLACE RECORDS
   ======================================================= */
 
   const recentMarketRecords =
-    useMemo(() => {
-      return [
-        ...datasets.orders,
-        ...datasets.listings,
+    useMemo(
+      () => {
+        return [
+          ...marketOrders,
+          ...marketListings,
+        ]
+          .map(
+            (
+              record,
+              index
+            ) => ({
+              title:
+                getMarketTitle(
+                  record,
+                  index
+                ),
+
+              status:
+                getMarketStatus(
+                  record
+                ),
+
+              date:
+                getRecordDate(
+                  record
+                ),
+            })
+          )
+          .sort(
+            (
+              a,
+              b
+            ) =>
+              new Date(
+                b.date ||
+                  0
+              ) -
+              new Date(
+                a.date ||
+                  0
+              )
+          )
+          .slice(
+            0,
+            6
+          );
+      },
+      [
+        marketOrders,
+        marketListings,
       ]
-        .map(
-          (
-            record,
-            index
-          ) => ({
-            title:
-              getMarketTitle(
-                record,
-                index
-              ),
-
-            status:
-              getMarketStatus(
-                record
-              ),
-
-            date:
-              getRecordDate(
-                record
-              ),
-          })
-        )
-        .sort(
-          (a, b) =>
-            new Date(
-              b.date || 0
-            ) -
-            new Date(
-              a.date || 0
-            )
-        )
-        .slice(0, 6);
-    }, [
-      datasets.orders,
-      datasets.listings,
-    ]);
+    );
 
   /* =======================================================
      EXPORT — TANK REPORT
   ======================================================= */
 
   const tankExportRows =
-    useMemo(() => {
-      const readingRows =
-        tankReadings.map(
-          (
-            item,
-            index
-          ) => ({
-            Type:
-              "Water Reading",
+    useMemo(
+      () => {
+        const readingRows =
+          tankReadings.map(
+            (
+              item,
+              index
+            ) => ({
+              Type:
+                "Water Reading",
 
-            Tank:
-              item.name ||
-              `Tank ${index + 1}`,
+              Tank:
+                item.name ||
+                `Tank ${
+                  index +
+                  1
+                }`,
 
-            Temperature:
-              item.normalized
-                .temperatureLabel,
+              Temperature:
+                item
+                  .normalized
+                  .temperatureLabel,
 
-            "Temperature Condition":
-              formatFriendlyText(
-                item.normalized
-                  .temperatureStatus
-              ),
+              "Temperature Condition":
+                formatFriendlyText(
+                  item
+                    .normalized
+                    .temperatureStatus
+                ),
 
-            "pH Condition":
-              formatFriendlyText(
-                item.normalized
-                  .phStatus
-              ),
+              "pH Condition":
+                formatFriendlyText(
+                  item
+                    .normalized
+                    .phStatus
+                ),
 
-            "Water Clarity":
-              formatFriendlyText(
-                item.normalized
-                  .turbidityStatus
-              ),
+              "Water Clarity":
+                formatFriendlyText(
+                  item
+                    .normalized
+                    .turbidityStatus
+                ),
 
-            "Water Level":
-              item.normalized
-                .waterLabel,
+              "Water Level":
+                item
+                  .normalized
+                  .waterLabel,
 
-            "Water Level Condition":
-              formatFriendlyText(
-                item.normalized
-                  .waterStatus
-              ),
+              "Water Level Condition":
+                formatFriendlyText(
+                  item
+                    .normalized
+                    .waterStatus
+                ),
 
-            "Overall Condition":
-              getFriendlyReadingStatus(
-                item.status
-              ),
+              "Overall Condition":
+                getFriendlyReadingStatus(
+                  item.status
+                ),
 
-            Date:
-              formatDate(
-                item.date
-              ),
-          })
-        );
+              Date:
+                formatDate(
+                  item.date
+                ),
+            })
+          );
 
-      const alertRows =
-        tankAlerts.map(
-          (
-            alert,
-            index
-          ) => ({
-            Type:
-              "Alert",
+        const alertRows =
+          tankAlerts.map(
+            (
+              alert,
+              index
+            ) => ({
+              Type:
+                "Alert",
 
-            Tank:
-              getTankDisplayName(
-                alert,
-                datasets.tanks,
-                index
-              ),
+              Tank:
+                getTankDisplayName(
+                  alert,
+                  datasets.tanks,
+                  index
+                ),
 
-            Name:
-              alert?.title ||
-              alert?.alert_title ||
-              alert
-                ?.notification_title ||
-              alert?.type ||
-              `Alert ${index + 1}`,
+              Name:
+                alert
+                  ?.title ||
+                alert
+                  ?.alert_title ||
+                alert
+                  ?.notification_title ||
+                alert
+                  ?.type ||
+                `Alert ${
+                  index +
+                  1
+                }`,
 
-            Priority:
-              getFriendlyAlertSeverity(
-                getAlertSeverity(
+              Priority:
+                getFriendlyAlertSeverity(
+                  getAlertSeverity(
+                    alert
+                  )
+                ),
+
+              Status:
+                formatFriendlyText(
                   alert
-                )
-              ),
+                    ?.status ||
+                    alert
+                      ?.alert_status ||
+                    "Open"
+                ),
 
-            Status:
-              formatFriendlyText(
-                alert?.status ||
-                  alert
-                    ?.alert_status ||
-                  "Open"
-              ),
+              Message:
+                alert
+                  ?.message ||
+                alert
+                  ?.description ||
+                alert
+                  ?.body ||
+                "N/A",
 
-            Message:
-              alert?.message ||
-              alert?.description ||
-              alert?.body ||
-              "N/A",
+              Date:
+                formatDate(
+                  getRecordDate(
+                    alert
+                  )
+                ),
+            })
+          );
 
-            Date:
-              formatDate(
-                getRecordDate(
-                  alert
-                )
-              ),
-          })
-        );
-
-      return [
-        ...readingRows,
-        ...alertRows,
-      ];
-    }, [
-      tankReadings,
-      tankAlerts,
-      datasets.tanks,
-    ]);
+        return [
+          ...readingRows,
+          ...alertRows,
+        ];
+      },
+      [
+        tankReadings,
+        tankAlerts,
+        datasets.tanks,
+      ]
+    );
 
   /* =======================================================
      EXPORT — MARKETPLACE REPORT
   ======================================================= */
 
   const marketExportRows =
-    useMemo(() => {
-      const listingRows =
-        datasets.listings.map(
-          (
-            listing,
-            index
-          ) => ({
-            Type:
-              "Marketplace Listing",
+    useMemo(
+      () => {
+        const listingRows =
+          marketListings.map(
+            (
+              listing,
+              index
+            ) => ({
+              Type:
+                "Marketplace Listing",
 
-            Name:
-              getMarketTitle(
-                listing,
-                index
-              ),
+              Name:
+                getMarketTitle(
+                  listing,
+                  index
+                ),
 
-            Status:
-              getFriendlyMarketStatus(
-                getMarketStatus(
-                  listing
-                )
-              ),
+              Status:
+                getFriendlyMarketStatus(
+                  getMarketStatus(
+                    listing
+                  )
+                ),
 
-            Price:
-              formatPeso(
+              Price:
+                formatPeso(
+                  getValue(
+                    listing,
+                    [
+                      "price",
+                      "amount",
+                      "unit_price",
+                      "selling_price",
+                    ],
+                    0
+                  )
+                ),
+
+              Stock:
                 getValue(
                   listing,
                   [
-                    "price",
-                    "amount",
-                    "unit_price",
-                    "selling_price",
+                    "stock",
+                    "quantity",
+                    "available_count",
                   ],
-                  0
-                )
-              ),
+                  "N/A"
+                ),
 
-            Stock:
-              getValue(
-                listing,
-                [
-                  "stock",
-                  "quantity",
-                  "available_count",
-                ],
-                "N/A"
-              ),
+              Date:
+                formatDate(
+                  getRecordDate(
+                    listing
+                  )
+                ),
+            })
+          );
 
-            Date:
-              formatDate(
-                getRecordDate(
-                  listing
-                )
-              ),
-          })
-        );
+        const orderRows =
+          marketOrders.map(
+            (
+              order,
+              index
+            ) => ({
+              Type:
+                "Marketplace Order",
 
-      const orderRows =
-        datasets.orders.map(
-          (
-            order,
-            index
-          ) => ({
-            Type:
-              "Marketplace Order",
+              Name:
+                getMarketTitle(
+                  order,
+                  index
+                ),
 
-            Name:
-              getMarketTitle(
-                order,
-                index
-              ),
+              Status:
+                getFriendlyMarketStatus(
+                  getMarketStatus(
+                    order
+                  )
+                ),
 
-            Status:
-              getFriendlyMarketStatus(
-                getMarketStatus(
-                  order
-                )
-              ),
+              Amount:
+                formatPeso(
+                  getOrderTotal(
+                    order
+                  )
+                ),
 
-            Amount:
-              formatPeso(
-                getOrderTotal(
-                  order
-                )
-              ),
+              Quantity:
+                getValue(
+                  order,
+                  [
+                    "quantity",
+                    "qty",
+                    "count",
+                    "order_quantity",
+                  ],
+                  "N/A"
+                ),
 
-            Quantity:
-              getValue(
-                order,
-                [
-                  "quantity",
-                  "qty",
-                  "count",
-                  "order_quantity",
-                ],
-                "N/A"
-              ),
+              Date:
+                formatDate(
+                  getRecordDate(
+                    order
+                  )
+                ),
+            })
+          );
 
-            Date:
-              formatDate(
-                getRecordDate(
-                  order
-                )
-              ),
-          })
-        );
-
-      return [
-        ...listingRows,
-        ...orderRows,
-      ];
-    }, [
-      datasets.listings,
-      datasets.orders,
-    ]);
+        return [
+          ...listingRows,
+          ...orderRows,
+        ];
+      },
+      [
+        marketListings,
+        marketOrders,
+      ]
+    );
 
   /* =======================================================
-     EXPORT SECTIONS
+     EXPORT HELPERS
   ======================================================= */
 
   function getTankReportSection() {
@@ -2399,17 +3117,30 @@ export default function ReportsPage() {
       description:
         selectedTankId ===
         "all"
-          ? "Water readings, water conditions, and alert history for all tanks."
-          : `Water readings, water conditions, and alert history for ${selectedTankName}.`,
+          ? `Water readings, water conditions, and alert history for all tanks. Date range: ${dateRangeLabel}.`
+          : `Water readings, water conditions, and alert history for ${selectedTankName}. Date range: ${dateRangeLabel}.`,
 
       rows:
         tankExportRows,
     };
   }
 
+  function getMarketplaceReportSection() {
+    return {
+      title:
+        "Marketplace Reports",
+
+      description:
+        `Marketplace listings, orders, reservations, and sales activity. Date range: ${dateRangeLabel}.`,
+
+      rows:
+        marketExportRows,
+    };
+  }
+
   function getSelectedReportSections() {
     if (
-      exportScope ===
+      activeReport ===
       "tanks"
     ) {
       return [
@@ -2417,37 +3148,8 @@ export default function ReportsPage() {
       ];
     }
 
-    if (
-      exportScope ===
-      "market"
-    ) {
-      return [
-        {
-          title:
-            "Marketplace Reports",
-
-          description:
-            "Marketplace listings, orders, reservations, and sales activity.",
-
-          rows:
-            marketExportRows,
-        },
-      ];
-    }
-
     return [
-      getTankReportSection(),
-
-      {
-        title:
-          "Marketplace Reports",
-
-        description:
-          "Marketplace listings, orders, reservations, and sales activity.",
-
-        rows:
-          marketExportRows,
-      },
+      getMarketplaceReportSection(),
     ];
   }
 
@@ -2457,39 +3159,52 @@ export default function ReportsPage() {
 
     const rows =
       sections.flatMap(
-        (section) =>
+        (
+          section
+        ) =>
           section.rows.map(
-            (row) => ({
+            (
+              row
+            ) => ({
               Section:
                 section.title,
+
+              "Date Range":
+                dateRangeLabel,
 
               ...row,
             })
           )
       );
 
+    const dateFilePart =
+      fromDate ||
+      toDate
+        ? `-${
+            fromDate ||
+            "start"
+          }-to-${
+            toDate ||
+            "latest"
+          }`
+        : "";
+
     let filename;
 
     if (
-      exportScope ===
+      activeReport ===
       "tanks"
     ) {
       filename =
         selectedTankId ===
         "all"
-          ? "craythrive-all-tanks-report.csv"
+          ? `craythrive-all-tanks-report${dateFilePart}.csv`
           : `craythrive-${safeFilePart(
               selectedTankName
-            )}-report.csv`;
-    } else if (
-      exportScope ===
-      "market"
-    ) {
-      filename =
-        "craythrive-marketplace-reports.csv";
+            )}-report${dateFilePart}.csv`;
     } else {
       filename =
-        "craythrive-combined-reports.csv";
+        `craythrive-marketplace-report${dateFilePart}.csv`;
     }
 
     downloadCsv(
@@ -2502,14 +3217,11 @@ export default function ReportsPage() {
     const sections =
       getSelectedReportSections();
 
-    let title =
-      "CrayThrive Reports";
-
-    let subtitle =
-      "Tank and Marketplace Reports";
+    let title;
+    let subtitle;
 
     if (
-      exportScope ===
+      activeReport ===
       "tanks"
     ) {
       title =
@@ -2518,30 +3230,14 @@ export default function ReportsPage() {
       subtitle =
         selectedTankId ===
         "all"
-          ? "All Tanks"
-          : selectedTankName;
-    }
-
-    if (
-      exportScope ===
-      "market"
-    ) {
+          ? `All Tanks • ${dateRangeLabel}`
+          : `${selectedTankName} • ${dateRangeLabel}`;
+    } else {
       title =
         "CrayThrive Marketplace Report";
 
       subtitle =
-        "Marketplace Report";
-    }
-
-    if (
-      exportScope ===
-      "both"
-    ) {
-      subtitle =
-        selectedTankId ===
-        "all"
-          ? "All Tanks and Marketplace"
-          : `${selectedTankName} and Marketplace`;
+        `Marketplace • ${dateRangeLabel}`;
     }
 
     printReport({
@@ -2555,7 +3251,9 @@ export default function ReportsPage() {
      LOADING
   ======================================================= */
 
-  if (isLoading) {
+  if (
+    isLoading
+  ) {
     return (
       <section className="cray-report-loading">
         <Loader2
@@ -2582,6 +3280,7 @@ export default function ReportsPage() {
 
   return (
     <div className="cray-reports-page">
+
       {/* ===============================================
           HERO
       ================================================ */}
@@ -2594,29 +3293,43 @@ export default function ReportsPage() {
 
           <h2>
             See how your tanks
-            and marketplace are doing.
+            and marketplace are
+            doing.
           </h2>
 
           <p>
-            Review tank conditions,
-            alert activity, marketplace
-            performance, and sales in
-            one simple report center.
+            Choose a report type
+            and date range. Tank
+            and marketplace reports
+            are now kept separate
+            for clearer exports.
           </p>
 
           <div className="cray-report-actions">
             <button
               type="button"
               className="dashboard-primary-button"
-              onClick={
-                loadReports
+              disabled={
+                isRefreshing
+              }
+              onClick={() =>
+                loadReports(
+                  false
+                )
               }
             >
               <RefreshCw
                 size={18}
+                className={
+                  isRefreshing
+                    ? "spin-icon"
+                    : ""
+                }
               />
 
-              Refresh
+              {isRefreshing
+                ? "Refreshing..."
+                : "Refresh"}
             </button>
 
             <span>
@@ -2641,11 +3354,11 @@ export default function ReportsPage() {
                 "all"
                 ? "All Tanks"
                 : selectedTankName
-              : "Market"}
+              : "Marketplace"}
           </strong>
 
           <span>
-            Current report
+            {dateRangeLabel}
           </span>
         </div>
       </section>
@@ -2663,15 +3376,11 @@ export default function ReportsPage() {
               ? "is-active"
               : ""
           }
-          onClick={() => {
+          onClick={() =>
             setActiveReport(
               "tanks"
-            );
-
-            setExportScope(
-              "tanks"
-            );
-          }}
+            )
+          }
         >
           <Droplets
             size={18}
@@ -2688,15 +3397,11 @@ export default function ReportsPage() {
               ? "is-active"
               : ""
           }
-          onClick={() => {
+          onClick={() =>
             setActiveReport(
               "market"
-            );
-
-            setExportScope(
-              "market"
-            );
-          }}
+            )
+          }
         >
           <ShoppingBag
             size={18}
@@ -2707,7 +3412,7 @@ export default function ReportsPage() {
       </section>
 
       {/* ===============================================
-          EXPORT / TANK SELECTOR
+          DATE + EXPORT CONTROLS
       ================================================ */}
 
       <section
@@ -2716,11 +3421,87 @@ export default function ReportsPage() {
           reportExportBarStyle
         }
       >
+        <div
+          style={
+            reportDateFieldStyle
+          }
+        >
+          <label
+            htmlFor="report-from-date"
+            style={
+              reportDateLabelStyle
+            }
+          >
+            <CalendarDays
+              size={14}
+            />
+
+            From Date
+          </label>
+
+          <input
+            id="report-from-date"
+            type="date"
+            value={
+              fromDate
+            }
+            max={
+              toDate ||
+              undefined
+            }
+            onChange={
+              handleFromDateChange
+            }
+            style={
+              reportDateInputStyle
+            }
+          />
+        </div>
+
+        <div
+          style={
+            reportDateFieldStyle
+          }
+        >
+          <label
+            htmlFor="report-to-date"
+            style={
+              reportDateLabelStyle
+            }
+          >
+            <CalendarDays
+              size={14}
+            />
+
+            To Date
+          </label>
+
+          <input
+            id="report-to-date"
+            type="date"
+            value={
+              toDate
+            }
+            min={
+              fromDate ||
+              undefined
+            }
+            onChange={
+              handleToDateChange
+            }
+            style={
+              reportDateInputStyle
+            }
+          />
+        </div>
+
         {activeReport ===
           "tanks" && (
           <ReportFilterDropdown
             ariaLabel="Choose which tank to include in the report"
-            icon={Droplets}
+            icon={
+              Droplets
+            }
             value={
               selectedTankId
             }
@@ -2734,7 +3515,9 @@ export default function ReportsPage() {
               },
 
               ...tankOptions.map(
-                (option) => ({
+                (
+                  option
+                ) => ({
                   value:
                     option.id,
 
@@ -2749,41 +3532,17 @@ export default function ReportsPage() {
           />
         )}
 
-        <ReportFilterDropdown
-          ariaLabel="Choose report export scope"
-          icon={FileText}
-          value={
-            exportScope
-          }
-          options={[
-            {
-              value:
-                "tanks",
-
-              label:
-                "Tank Report Only",
-            },
-
-            {
-              value:
-                "market",
-
-              label:
-                "Marketplace Report Only",
-            },
-
-            {
-              value:
-                "both",
-
-              label:
-                "Tank + Marketplace",
-            },
-          ]}
-          onChange={
-            setExportScope
-          }
-        />
+        {(fromDate ||
+          toDate) && (
+          <button
+            type="button"
+            onClick={
+              clearDateRange
+            }
+          >
+            Clear Dates
+          </button>
+        )}
 
         <button
           type="button"
@@ -2813,13 +3572,43 @@ export default function ReportsPage() {
       </section>
 
       {/* ===============================================
-          TANK REPORT
+          ACTIVE RANGE
+      ================================================ */}
+
+      <section
+        style={
+          reportRangeNoticeStyle
+        }
+      >
+        <CalendarDays
+          size={17}
+        />
+
+        <div>
+          <strong>
+            Report period:{" "}
+            {dateRangeLabel}
+          </strong>
+
+          <span>
+            {activeReport ===
+            "tanks"
+              ? "Tank readings, alerts, analytics, CSV, and print output use this date range."
+              : "Marketplace listings, orders, sales analytics, CSV, and print output use this date range."}
+          </span>
+        </div>
+      </section>
+
+      {/* ===============================================
+          ACTIVE REPORT
       ================================================ */}
 
       {activeReport ===
       "tanks" ? (
         <>
-          {/* SELECTED TANK LABEL */}
+          {/* =============================================
+              TANK REPORT HEADER
+          ============================================== */}
 
           <section className="cray-report-panel">
             <div className="cray-report-panel-heading">
@@ -2852,23 +3641,30 @@ export default function ReportsPage() {
                 <span>
                   {selectedTankId ===
                   "all"
-                    ? "The information below includes all registered tanks."
-                    : `Only readings and alerts linked to ${selectedTankName} are included below and in exports.`}
+                    ? `All registered tanks are included for ${dateRangeLabel}.`
+                    : `Only readings and alerts linked to ${selectedTankName} are included for ${dateRangeLabel}.`}
                 </span>
               </div>
 
               <b className="cray-report-chip normal">
-                {tankAnalytics.totalReadings}{" "}
+                {
+                  tankAnalytics
+                    .totalReadings
+                }{" "}
                 readings
               </b>
             </div>
           </section>
 
-          {/* SUMMARY */}
+          {/* =============================================
+              TANK SUMMARY
+          ============================================== */}
 
           <section className="cray-report-summary-grid">
             <SummaryCard
-              icon={Droplets}
+              icon={
+                Droplets
+              }
               label={
                 selectedTankId ===
                 "all"
@@ -2878,7 +3674,8 @@ export default function ReportsPage() {
               value={
                 selectedTankId ===
                 "all"
-                  ? tankAnalytics.totalTanks
+                  ? tankAnalytics
+                      .totalTanks
                   : "1"
               }
               helper={
@@ -2890,12 +3687,15 @@ export default function ReportsPage() {
             />
 
             <SummaryCard
-              icon={Activity}
+              icon={
+                Activity
+              }
               label="Water Readings"
               value={
-                tankAnalytics.totalReadings
+                tankAnalytics
+                  .totalReadings
               }
-              helper="Saved sensor records"
+              helper={`Saved records • ${dateRangeLabel}`}
             />
 
             <SummaryCard
@@ -2904,11 +3704,13 @@ export default function ReportsPage() {
               }
               label="Urgent Alerts"
               value={
-                tankAnalytics.alertCritical
+                tankAnalytics
+                  .alertCritical
               }
               helper={`${tankAnalytics.totalAlerts} total alert records`}
               tone={
-                tankAnalytics.alertCritical >
+                tankAnalytics
+                  .alertCritical >
                 0
                   ? "danger"
                   : "success"
@@ -2916,14 +3718,18 @@ export default function ReportsPage() {
             />
 
             <SummaryCard
-              icon={Waves}
+              icon={
+                Waves
+              }
               label="Water Clarity Issues"
               value={
-                tankAnalytics.waterClarityWarning
+                tankAnalytics
+                  .waterClarityWarning
               }
               helper="Readings that need checking"
               tone={
-                tankAnalytics.waterClarityWarning >
+                tankAnalytics
+                  .waterClarityWarning >
                 0
                   ? "warning"
                   : "success"
@@ -2931,9 +3737,12 @@ export default function ReportsPage() {
             />
           </section>
 
-          {/* ANALYTICS */}
+          {/* =============================================
+              TANK ANALYTICS
+          ============================================== */}
 
           <section className="cray-report-grid">
+
             {/* WATER OVERVIEW */}
 
             <article className="cray-report-panel">
@@ -2963,7 +3772,8 @@ export default function ReportsPage() {
                   />
 
                   <strong>
-                    {tankAnalytics.avgTemp ===
+                    {tankAnalytics
+                      .avgTemp ===
                     "N/A"
                       ? "No Data"
                       : `${tankAnalytics.avgTemp}°C`}
@@ -2975,7 +3785,8 @@ export default function ReportsPage() {
 
                   <small>
                     {formatFriendlyText(
-                      tankAnalytics.latestTemperatureStatus
+                      tankAnalytics
+                        .latestTemperatureStatus
                     )}
                   </small>
                 </div>
@@ -2987,7 +3798,8 @@ export default function ReportsPage() {
 
                   <strong>
                     {formatFriendlyText(
-                      tankAnalytics.latestPhStatus
+                      tankAnalytics
+                        .latestPhStatus
                     )}
                   </strong>
 
@@ -3003,7 +3815,8 @@ export default function ReportsPage() {
 
                   <strong>
                     {formatFriendlyText(
-                      tankAnalytics.latestWaterClarityStatus
+                      tankAnalytics
+                        .latestWaterClarityStatus
                     )}
                   </strong>
 
@@ -3018,7 +3831,8 @@ export default function ReportsPage() {
                   />
 
                   <strong>
-                    {tankAnalytics.avgWaterLevel ===
+                    {tankAnalytics
+                      .avgWaterLevel ===
                     "N/A"
                       ? "No Data"
                       : `${tankAnalytics.avgWaterLevel} cm`}
@@ -3030,14 +3844,15 @@ export default function ReportsPage() {
 
                   <small>
                     {formatFriendlyText(
-                      tankAnalytics.latestWaterStatus
+                      tankAnalytics
+                        .latestWaterStatus
                     )}
                   </small>
                 </div>
               </div>
             </article>
 
-            {/* CONDITION GRAPH */}
+            {/* CONDITION BREAKDOWN */}
 
             <article className="cray-report-panel">
               <div className="cray-report-panel-heading">
@@ -3058,7 +3873,9 @@ export default function ReportsPage() {
 
               <div className="cray-report-bars">
                 {tankBars.map(
-                  (item) => (
+                  (
+                    item
+                  ) => (
                     <BarRow
                       key={
                         item.label
@@ -3091,7 +3908,8 @@ export default function ReportsPage() {
                   </p>
 
                   <h3>
-                    Water reading percentage
+                    Water reading
+                    percentage
                   </h3>
                 </div>
 
@@ -3104,10 +3922,12 @@ export default function ReportsPage() {
                 <DonutStat
                   label="Good"
                   value={
-                    tankAnalytics.normal
+                    tankAnalytics
+                      .normal
                   }
                   total={
-                    tankAnalytics.totalReadings
+                    tankAnalytics
+                      .totalReadings
                   }
                   tone="success"
                 />
@@ -3115,10 +3935,12 @@ export default function ReportsPage() {
                 <DonutStat
                   label="Needs Checking"
                   value={
-                    tankAnalytics.warning
+                    tankAnalytics
+                      .warning
                   }
                   total={
-                    tankAnalytics.totalReadings
+                    tankAnalytics
+                      .totalReadings
                   }
                   tone="warning"
                 />
@@ -3126,10 +3948,12 @@ export default function ReportsPage() {
                 <DonutStat
                   label="Urgent"
                   value={
-                    tankAnalytics.critical
+                    tankAnalytics
+                      .critical
                   }
                   total={
-                    tankAnalytics.totalReadings
+                    tankAnalytics
+                      .totalReadings
                   }
                   tone="danger"
                 />
@@ -3159,7 +3983,8 @@ export default function ReportsPage() {
               </div>
 
               <div className="cray-report-list">
-                {recentTankRecords.length ===
+                {recentTankRecords
+                  .length ===
                 0 ? (
                   <div className="cray-report-empty-small">
                     <CheckCircle2
@@ -3167,13 +3992,17 @@ export default function ReportsPage() {
                     />
 
                     <strong>
-                      No tank records yet
+                      No tank
+                      records found
                     </strong>
 
                     <span>
-                      No readings or alerts
-                      were found for this
-                      tank selection.
+                      No readings
+                      or alerts
+                      were found
+                      for this tank
+                      and date
+                      selection.
                     </span>
                   </div>
                 ) : (
@@ -3240,8 +4069,57 @@ export default function ReportsPage() {
       ) : (
         <>
           {/* =============================================
-              MARKETPLACE SUMMARY
+              MARKETPLACE REPORT ONLY
           ============================================== */}
+
+          <section className="cray-report-panel">
+            <div className="cray-report-panel-heading">
+              <div>
+                <p className="dashboard-eyebrow">
+                  Marketplace Report
+                </p>
+
+                <h3>
+                  {
+                    dateRangeLabel
+                  }
+                </h3>
+              </div>
+
+              <ShoppingBag
+                size={22}
+              />
+            </div>
+
+            <div className="cray-report-row">
+              <div>
+                <strong>
+                  Marketplace-only
+                  report
+                </strong>
+
+                <span>
+                  Only marketplace
+                  listings, orders,
+                  reservations, and
+                  sales activity are
+                  included. Tank
+                  readings are
+                  excluded.
+                </span>
+              </div>
+
+              <b className="cray-report-chip normal">
+                {
+                  marketAnalytics
+                    .totalOrders
+                }{" "}
+                orders
+              </b>
+            </div>
+          </section>
+
+          {/* MARKET SUMMARY */}
 
           <section className="cray-report-summary-grid">
             <SummaryCard
@@ -3250,7 +4128,8 @@ export default function ReportsPage() {
               }
               label="Listings"
               value={
-                marketAnalytics.totalListings
+                marketAnalytics
+                  .totalListings
               }
               helper={`${marketAnalytics.activeListings} currently available`}
             />
@@ -3261,7 +4140,8 @@ export default function ReportsPage() {
               }
               label="Orders"
               value={
-                marketAnalytics.totalOrders
+                marketAnalytics
+                  .totalOrders
               }
               helper={`${marketAnalytics.completedOrders} successful orders`}
             />
@@ -3271,10 +4151,13 @@ export default function ReportsPage() {
                 DollarSign
               }
               label="Sales"
-              value={formatPeso(
-                marketAnalytics.totalSales
-              )}
-              helper="Successful order value"
+              value={
+                formatPeso(
+                  marketAnalytics
+                    .totalSales
+                )
+              }
+              helper={`Successful order value • ${dateRangeLabel}`}
               tone="success"
             />
 
@@ -3291,6 +4174,9 @@ export default function ReportsPage() {
           {/* MARKET ANALYTICS */}
 
           <section className="cray-report-grid">
+
+            {/* SALES */}
+
             <article className="cray-report-panel">
               <div className="cray-report-panel-heading">
                 <div>
@@ -3311,22 +4197,28 @@ export default function ReportsPage() {
               <div className="cray-report-sales-card">
                 <strong>
                   {formatPeso(
-                    marketAnalytics.totalSales
+                    marketAnalytics
+                      .totalSales
                   )}
                 </strong>
 
                 <span>
-                  Successful sales value
+                  Successful sales
+                  value
                 </span>
 
                 <p>
                   Total value from
-                  completed, confirmed,
-                  or paid marketplace
-                  orders.
+                  completed,
+                  confirmed, or paid
+                  marketplace orders
+                  within{" "}
+                  {dateRangeLabel}.
                 </p>
               </div>
             </article>
+
+            {/* MARKETPLACE ACTIVITY */}
 
             <article className="cray-report-panel">
               <div className="cray-report-panel-heading">
@@ -3336,7 +4228,8 @@ export default function ReportsPage() {
                   </p>
 
                   <h3>
-                    Listing and order activity
+                    Listing and order
+                    activity
                   </h3>
                 </div>
 
@@ -3347,7 +4240,9 @@ export default function ReportsPage() {
 
               <div className="cray-report-bars">
                 {marketBars.map(
-                  (item) => (
+                  (
+                    item
+                  ) => (
                     <BarRow
                       key={
                         item.label
@@ -3370,6 +4265,8 @@ export default function ReportsPage() {
               </div>
             </article>
 
+            {/* ORDER STATUS */}
+
             <article className="cray-report-panel cray-report-wide">
               <div className="cray-report-panel-heading">
                 <div>
@@ -3391,10 +4288,12 @@ export default function ReportsPage() {
                 <DonutStat
                   label="Successful"
                   value={
-                    marketAnalytics.completedOrders
+                    marketAnalytics
+                      .completedOrders
                   }
                   total={
-                    marketAnalytics.totalOrders
+                    marketAnalytics
+                      .totalOrders
                   }
                   tone="success"
                 />
@@ -3402,10 +4301,12 @@ export default function ReportsPage() {
                 <DonutStat
                   label="Pending"
                   value={
-                    marketAnalytics.pendingOrders
+                    marketAnalytics
+                      .pendingOrders
                   }
                   total={
-                    marketAnalytics.totalOrders
+                    marketAnalytics
+                      .totalOrders
                   }
                   tone="warning"
                 />
@@ -3413,15 +4314,19 @@ export default function ReportsPage() {
                 <DonutStat
                   label="Cancelled"
                   value={
-                    marketAnalytics.cancelledOrders
+                    marketAnalytics
+                      .cancelledOrders
                   }
                   total={
-                    marketAnalytics.totalOrders
+                    marketAnalytics
+                      .totalOrders
                   }
                   tone="danger"
                 />
               </div>
             </article>
+
+            {/* RECENT MARKETPLACE ACTIVITY */}
 
             <article className="cray-report-panel cray-report-wide">
               <div className="cray-report-panel-heading">
@@ -3431,7 +4336,8 @@ export default function ReportsPage() {
                   </p>
 
                   <h3>
-                    Latest marketplace records
+                    Latest marketplace
+                    records
                   </h3>
                 </div>
 
@@ -3441,7 +4347,8 @@ export default function ReportsPage() {
               </div>
 
               <div className="cray-report-list">
-                {recentMarketRecords.length ===
+                {recentMarketRecords
+                  .length ===
                 0 ? (
                   <div className="cray-report-empty-small">
                     <ShoppingBag
@@ -3449,14 +4356,15 @@ export default function ReportsPage() {
                     />
 
                     <strong>
-                      No marketplace records yet
+                      No marketplace
+                      records
                     </strong>
 
                     <span>
-                      Listings and orders
-                      will appear here once
-                      marketplace activity
-                      begins.
+                      No listings or
+                      orders were found
+                      for the selected
+                      date range.
                     </span>
                   </div>
                 ) : (
@@ -3504,10 +4412,11 @@ export default function ReportsPage() {
 }
 
 /* =========================================================
-   MINIMAL THEME-AWARE REPORT FILTER UI
+   DATE / FILTER UI
 ========================================================= */
 
-const reportExportBarStyle = {
+const reportExportBarStyle =
+{
   overflow:
     "visible",
 
@@ -3518,7 +4427,123 @@ const reportExportBarStyle = {
     12,
 };
 
-const reportDropdownWrapStyle = {
+const reportDateFieldStyle =
+{
+  display:
+    "flex",
+
+  flexDirection:
+    "column",
+
+  gap:
+    "5px",
+
+  minWidth:
+    "165px",
+};
+
+const reportDateLabelStyle =
+{
+  display:
+    "flex",
+
+  alignItems:
+    "center",
+
+  gap:
+    "5px",
+
+  color:
+    "var(--ct-muted, var(--text, #64748b))",
+
+  fontSize:
+    "0.72rem",
+
+  fontWeight:
+    700,
+};
+
+const reportDateInputStyle =
+{
+  width:
+    "100%",
+
+  minWidth:
+    "165px",
+
+  height:
+    "46px",
+
+  padding:
+    "0 12px",
+
+  border:
+    "1px solid var(--ct-border, var(--border, #e5e4e7))",
+
+  borderRadius:
+    "12px",
+
+  background:
+    "var(--ct-surface, var(--bg, #ffffff))",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+
+  boxShadow:
+    "var(--ct-shadow-soft, 0 4px 14px rgba(15, 23, 42, 0.04))",
+
+  colorScheme:
+    "light dark",
+
+  font:
+    "inherit",
+
+  fontSize:
+    "0.8rem",
+
+  fontWeight:
+    600,
+
+  outline:
+    "none",
+};
+
+const reportRangeNoticeStyle =
+{
+  display:
+    "flex",
+
+  alignItems:
+    "flex-start",
+
+  gap:
+    "10px",
+
+  marginBottom:
+    "16px",
+
+  padding:
+    "12px 14px",
+
+  border:
+    "1px solid var(--ct-border, var(--border, #e5e4e7))",
+
+  borderRadius:
+    "12px",
+
+  background:
+    "var(--ct-surface, var(--bg, #ffffff))",
+
+  color:
+    "var(--ct-text, var(--text-h, #0f172a))",
+};
+
+/* =========================================================
+   DROPDOWN UI
+========================================================= */
+
+const reportDropdownWrapStyle =
+{
   position:
     "relative",
 
@@ -3526,7 +4551,8 @@ const reportDropdownWrapStyle = {
     0,
 };
 
-const reportDropdownTriggerStyle = {
+const reportDropdownTriggerStyle =
+{
   width:
     "100%",
 
@@ -3582,7 +4608,8 @@ const reportDropdownTriggerStyle = {
     "background 150ms ease, border-color 150ms ease, box-shadow 150ms ease",
 };
 
-const reportDropdownTriggerOpenStyle = {
+const reportDropdownTriggerOpenStyle =
+{
   borderColor:
     "var(--ct-brand, #00b8a9)",
 
@@ -3593,7 +4620,8 @@ const reportDropdownTriggerOpenStyle = {
     "0 0 0 3px rgba(0, 217, 199, 0.08)",
 };
 
-const reportDropdownIconStyle = {
+const reportDropdownIconStyle =
+{
   flexShrink:
     0,
 
@@ -3601,7 +4629,8 @@ const reportDropdownIconStyle = {
     "var(--ct-brand, #00b8a9)",
 };
 
-const reportDropdownSelectedTextStyle = {
+const reportDropdownSelectedTextStyle =
+{
   minWidth:
     0,
 
@@ -3615,7 +4644,8 @@ const reportDropdownSelectedTextStyle = {
     "nowrap",
 };
 
-const reportDropdownChevronStyle = {
+const reportDropdownChevronStyle =
+{
   marginLeft:
     "auto",
 
@@ -3632,7 +4662,8 @@ const reportDropdownChevronStyle = {
     "transform 160ms ease",
 };
 
-const reportDropdownMenuStyle = {
+const reportDropdownMenuStyle =
+{
   position:
     "absolute",
 
@@ -3676,7 +4707,8 @@ const reportDropdownMenuStyle = {
     "blur(18px)",
 };
 
-const reportDropdownItemStyle = {
+const reportDropdownItemStyle =
+{
   width:
     "100%",
 
@@ -3726,7 +4758,8 @@ const reportDropdownItemStyle = {
     "left",
 };
 
-const reportDropdownItemActiveStyle = {
+const reportDropdownItemActiveStyle =
+{
   background:
     "var(--ct-brand-soft, var(--accent-bg, rgba(0, 217, 199, 0.10)))",
 
