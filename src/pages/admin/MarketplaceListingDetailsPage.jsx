@@ -8,12 +8,10 @@ import {
   AlertCircle,
   ArrowLeft,
   CheckCircle2,
-  CircleDollarSign,
   Edit3,
   ExternalLink,
   Eye,
   EyeOff,
-  Facebook,
   Globe2,
   Loader2,
   MapPin,
@@ -92,6 +90,7 @@ function formatPeso(value) {
     {
       style: "currency",
       currency: "PHP",
+
       minimumFractionDigits:
         Number.isInteger(
           number
@@ -221,7 +220,9 @@ export default function MarketplaceListingDetailsPage() {
   const [
     messageType,
     setMessageType,
-  ] = useState("success");
+  ] = useState(
+    "success"
+  );
 
   const isOwner =
     Boolean(
@@ -278,33 +279,53 @@ export default function MarketplaceListingDetailsPage() {
       return [
         {
           label: "Shopee",
+
           value:
             seller.shopee_url,
-          icon: ShoppingBag,
+
+          icon:
+            ShoppingBag,
         },
+
         {
           label: "Lazada",
+
           value:
             seller.lazada_url,
-          icon: ShoppingBag,
+
+          icon:
+            ShoppingBag,
         },
+
         {
           label: "Facebook",
+
           value:
             seller.facebook_url,
-          icon: Facebook,
+
+          icon:
+            Globe2,
         },
+
         {
-          label: "TikTok Shop",
+          label:
+            "TikTok Shop",
+
           value:
             seller.tiktok_url,
-          icon: ExternalLink,
+
+          icon:
+            ExternalLink,
         },
+
         {
           label: "Website",
+
           value:
             seller.website_url,
-          icon: Globe2,
+
+          icon:
+            Globe2,
         },
       ].filter(
         (item) =>
@@ -316,9 +337,15 @@ export default function MarketplaceListingDetailsPage() {
       seller,
     ]);
 
+  /* =======================================================
+     LOAD
+  ======================================================= */
+
   useEffect(() => {
     loadPage(true);
-  }, [listingId]);
+  }, [
+    listingId,
+  ]);
 
   async function loadPage(
     fullLoading = false
@@ -366,6 +393,7 @@ export default function MarketplaceListingDetailsPage() {
       const {
         data:
           listingData,
+
         error:
           listingError,
       } =
@@ -408,6 +436,7 @@ export default function MarketplaceListingDetailsPage() {
       const {
         data:
           sellerData,
+
         error:
           sellerError,
       } =
@@ -561,8 +590,10 @@ export default function MarketplaceListingDetailsPage() {
     const labels = {
       active:
         "activate",
+
       hidden:
         "hide",
+
       sold:
         "mark as sold",
     };
@@ -585,6 +616,10 @@ export default function MarketplaceListingDetailsPage() {
       );
     }
   }
+
+  /* =======================================================
+     REMOVE
+  ======================================================= */
 
   async function removeListing() {
     if (
@@ -682,6 +717,7 @@ export default function MarketplaceListingDetailsPage() {
   if (loading) {
     return (
       <section className="listing-details-loading">
+
         <Loader2
           className="spin-icon"
           size={34}
@@ -695,15 +731,21 @@ export default function MarketplaceListingDetailsPage() {
           Getting marketplace
           product information.
         </p>
+
       </section>
     );
   }
+
+  /* =======================================================
+     NOT FOUND
+  ======================================================= */
 
   if (
     !listing
   ) {
     return (
       <section className="listing-details-error">
+
         <AlertCircle
           size={34}
         />
@@ -727,6 +769,7 @@ export default function MarketplaceListingDetailsPage() {
 
           Back to Marketplace
         </Link>
+
       </section>
     );
   }
@@ -738,11 +781,14 @@ export default function MarketplaceListingDetailsPage() {
   return (
     <div className="listing-details-page">
 
-      {/* TOP */}
+      {/* ===============================================
+          TOP
+      ================================================ */}
 
       <section className="listing-details-top">
 
         <div>
+
           <Link
             to="/admin/marketplace"
             className="listing-details-back"
@@ -764,6 +810,7 @@ export default function MarketplaceListingDetailsPage() {
           </h2>
 
           <div className="listing-details-header-meta">
+
             <span>
               <Tag
                 size={14}
@@ -785,7 +832,9 @@ export default function MarketplaceListingDetailsPage() {
                   "Product"
               )}
             </span>
+
           </div>
+
         </div>
 
         <button
@@ -812,7 +861,9 @@ export default function MarketplaceListingDetailsPage() {
 
       </section>
 
-      {/* MESSAGE */}
+      {/* ===============================================
+          MESSAGE
+      ================================================ */}
 
       {message ? (
         <div
@@ -835,24 +886,29 @@ export default function MarketplaceListingDetailsPage() {
         </div>
       ) : null}
 
-      {/* MAIN */}
+      {/* ===============================================
+          PRODUCT
+      ================================================ */}
 
       <section className="listing-details-main">
 
         {/* IMAGE */}
 
         <article className="listing-details-image-card">
+
           {listing.image_url ? (
             <img
               src={
                 listing.image_url
               }
               alt={
-                listing.title
+                listing.title ||
+                "Marketplace product"
               }
             />
           ) : (
             <div className="listing-details-image-empty">
+
               <ShoppingBag
                 size={48}
               />
@@ -860,6 +916,7 @@ export default function MarketplaceListingDetailsPage() {
               <strong>
                 No product image
               </strong>
+
             </div>
           )}
 
@@ -870,6 +927,7 @@ export default function MarketplaceListingDetailsPage() {
               status
             )}
           </span>
+
         </article>
 
         {/* DETAILS */}
@@ -877,6 +935,7 @@ export default function MarketplaceListingDetailsPage() {
         <article className="listing-details-info">
 
           <div className="listing-details-price">
+
             <span>
               Price
             </span>
@@ -895,6 +954,7 @@ export default function MarketplaceListingDetailsPage() {
                 )
               )}
             </small>
+
           </div>
 
           <div className="listing-details-stat-grid">
@@ -948,6 +1008,8 @@ export default function MarketplaceListingDetailsPage() {
             />
 
           </div>
+
+          {/* CRAYFISH DETAILS */}
 
           {category ===
           "crayfish" ? (
@@ -1023,7 +1085,10 @@ export default function MarketplaceListingDetailsPage() {
             </div>
           )}
 
+          {/* DESCRIPTION */}
+
           <div className="listing-details-description">
+
             <span>
               Description
             </span>
@@ -1032,6 +1097,7 @@ export default function MarketplaceListingDetailsPage() {
               {listing.description ||
                 "No additional product description was provided."}
             </p>
+
           </div>
 
           <div className="listing-details-date">
@@ -1045,12 +1111,15 @@ export default function MarketplaceListingDetailsPage() {
 
       </section>
 
-      {/* OWNER */}
+      {/* ===============================================
+          OWNER CONTROLS
+      ================================================ */}
 
       {isOwner ? (
         <section className="listing-details-owner-panel">
 
           <div>
+
             <p className="dashboard-eyebrow">
               Seller Controls
             </p>
@@ -1063,6 +1132,7 @@ export default function MarketplaceListingDetailsPage() {
               This listing belongs
               to your account.
             </span>
+
           </div>
 
           <div className="listing-details-owner-actions">
@@ -1167,9 +1237,16 @@ export default function MarketplaceListingDetailsPage() {
                   removeListing
                 }
               >
-                <Trash2
-                  size={16}
-                />
+                {updating ? (
+                  <Loader2
+                    size={16}
+                    className="spin-icon"
+                  />
+                ) : (
+                  <Trash2
+                    size={16}
+                  />
+                )}
 
                 Remove
               </button>
@@ -1180,12 +1257,16 @@ export default function MarketplaceListingDetailsPage() {
         </section>
       ) : null}
 
-      {/* SELLER */}
+      {/* ===============================================
+          SELLER
+      ================================================ */}
 
       <section className="listing-details-seller">
 
         <div className="listing-details-panel-heading">
+
           <div>
+
             <p className="dashboard-eyebrow">
               Seller
             </p>
@@ -1193,16 +1274,19 @@ export default function MarketplaceListingDetailsPage() {
             <h3>
               Seller Information
             </h3>
+
           </div>
 
           <Store
             size={22}
           />
+
         </div>
 
         <div className="listing-details-seller-main">
 
           <div className="listing-details-store-name">
+
             <div>
               <UserRound
                 size={22}
@@ -1210,6 +1294,7 @@ export default function MarketplaceListingDetailsPage() {
             </div>
 
             <span>
+
               <strong>
                 {seller?.store_name ||
                   "Marketplace Seller"}
@@ -1219,17 +1304,21 @@ export default function MarketplaceListingDetailsPage() {
                 {seller?.store_description ||
                   "CrayThrive Marketplace seller"}
               </small>
+
             </span>
+
           </div>
 
           <div className="listing-details-contact-grid">
 
             <div>
+
               <Phone
                 size={17}
               />
 
               <span>
+
                 <small>
                   Mobile
                 </small>
@@ -1238,15 +1327,19 @@ export default function MarketplaceListingDetailsPage() {
                   {sellerMobile ||
                     "Not provided"}
                 </strong>
+
               </span>
+
             </div>
 
             <div>
+
               <MapPin
                 size={17}
               />
 
               <span>
+
                 <small>
                   Pickup Location
                 </small>
@@ -1254,7 +1347,9 @@ export default function MarketplaceListingDetailsPage() {
                 <strong>
                   {sellerLocation}
                 </strong>
+
               </span>
+
             </div>
 
           </div>
@@ -1308,6 +1403,7 @@ export default function MarketplaceListingDetailsPage() {
           </div>
 
         </div>
+
       </section>
 
     </div>
@@ -1333,6 +1429,7 @@ function DetailStat({
       ) : null}
 
       <span>
+
         <small>
           {label}
         </small>
@@ -1340,6 +1437,7 @@ function DetailStat({
         <strong>
           {value}
         </strong>
+
       </span>
 
     </div>

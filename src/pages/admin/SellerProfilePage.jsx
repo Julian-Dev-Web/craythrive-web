@@ -7,7 +7,6 @@ import {
 import {
   AlertCircle,
   CheckCircle2,
-  Facebook,
   Globe2,
   Link2,
   Loader2,
@@ -40,77 +39,133 @@ const BULACAN_PROVINCE_NAME =
   "Bulacan";
 
 const BULACAN_FALLBACK_LOCALITIES = [
-  { name: "Angat", code: "Angat" },
-  { name: "Balagtas", code: "Balagtas" },
-  { name: "Baliwag", code: "Baliwag" },
-  { name: "Bocaue", code: "Bocaue" },
-  { name: "Bulakan", code: "Bulakan" },
-  { name: "Bustos", code: "Bustos" },
-  { name: "Calumpit", code: "Calumpit" },
   {
-    name: "Doña Remedios Trinidad",
-    code: "Doña Remedios Trinidad",
+    name: "Angat",
+    code: "Angat",
   },
+
+  {
+    name: "Balagtas",
+    code: "Balagtas",
+  },
+
+  {
+    name: "Baliwag",
+    code: "Baliwag",
+  },
+
+  {
+    name: "Bocaue",
+    code: "Bocaue",
+  },
+
+  {
+    name: "Bulakan",
+    code: "Bulakan",
+  },
+
+  {
+    name: "Bustos",
+    code: "Bustos",
+  },
+
+  {
+    name: "Calumpit",
+    code: "Calumpit",
+  },
+
+  {
+    name:
+      "Doña Remedios Trinidad",
+
+    code:
+      "Doña Remedios Trinidad",
+  },
+
   {
     name: "Guiguinto",
     code: "Guiguinto",
   },
+
   {
     name: "Hagonoy",
     code: "Hagonoy",
   },
+
   {
-    name: "City of Malolos",
-    code: "City of Malolos",
+    name:
+      "City of Malolos",
+
+    code:
+      "City of Malolos",
   },
+
   {
     name: "Marilao",
     code: "Marilao",
   },
+
   {
-    name: "City of Meycauayan",
-    code: "City of Meycauayan",
+    name:
+      "City of Meycauayan",
+
+    code:
+      "City of Meycauayan",
   },
+
   {
     name: "Norzagaray",
     code: "Norzagaray",
   },
+
   {
     name: "Obando",
     code: "Obando",
   },
+
   {
     name: "Pandi",
     code: "Pandi",
   },
+
   {
     name: "Paombong",
     code: "Paombong",
   },
+
   {
     name: "Plaridel",
     code: "Plaridel",
   },
+
   {
     name: "Pulilan",
     code: "Pulilan",
   },
+
   {
     name: "San Ildefonso",
     code: "San Ildefonso",
   },
+
   {
-    name: "City of San Jose del Monte",
-    code: "City of San Jose del Monte",
+    name:
+      "City of San Jose del Monte",
+
+    code:
+      "City of San Jose del Monte",
   },
+
   {
     name: "San Miguel",
     code: "San Miguel",
   },
+
   {
     name: "San Rafael",
     code: "San Rafael",
   },
+
   {
     name: "Santa Maria",
     code: "Santa Maria",
@@ -123,11 +178,17 @@ const EMPTY_FORM = {
 
   seller_mobile: "",
 
-  pickup_municipality: "",
-  pickup_municipality_code: "",
+  pickup_municipality:
+    "",
 
-  pickup_barangay: "",
-  pickup_barangay_code: "",
+  pickup_municipality_code:
+    "",
+
+  pickup_barangay:
+    "",
+
+  pickup_barangay_code:
+    "",
 
   pickup_note: "",
 
@@ -145,72 +206,123 @@ const EMPTY_FORM = {
 ========================================================= */
 
 function clean(value) {
-  return String(value ?? "").trim();
+  return String(
+    value ?? ""
+  ).trim();
 }
 
 function normalizeApiList(json) {
-  if (Array.isArray(json)) {
+  if (
+    Array.isArray(
+      json
+    )
+  ) {
     return json;
   }
 
-  if (Array.isArray(json?.data)) {
+  if (
+    Array.isArray(
+      json?.data
+    )
+  ) {
     return json.data;
   }
 
-  if (Array.isArray(json?.items)) {
+  if (
+    Array.isArray(
+      json?.items
+    )
+  ) {
     return json.items;
   }
 
-  if (Array.isArray(json?.results)) {
+  if (
+    Array.isArray(
+      json?.results
+    )
+  ) {
     return json.results;
   }
 
   return [];
 }
 
-function buildUsernameFromEmail(email) {
-  const value = clean(email);
+function buildUsernameFromEmail(
+  email
+) {
+  const value =
+    clean(email);
 
-  if (!value.includes("@")) {
+  if (
+    !value.includes("@")
+  ) {
     return "";
   }
 
-  return value.split("@")[0] || "";
+  return (
+    value.split("@")[0] ||
+    ""
+  );
 }
 
-function getDisplayName(profile, user) {
+function getDisplayName(
+  profile,
+  user
+) {
   return (
     profile?.username ||
     profile?.full_name ||
-    user?.user_metadata?.username ||
-    user?.user_metadata?.full_name ||
-    buildUsernameFromEmail(user?.email) ||
+    user?.user_metadata
+      ?.username ||
+    user?.user_metadata
+      ?.full_name ||
+    buildUsernameFromEmail(
+      user?.email
+    ) ||
     "CrayThrive Seller"
   );
 }
 
 function mobileOnly(value) {
-  return String(value ?? "")
-    .replace(/[^0-9+]/g, "")
-    .slice(0, 14);
+  return String(
+    value ?? ""
+  )
+    .replace(
+      /[^0-9+]/g,
+      ""
+    )
+    .slice(
+      0,
+      14
+    );
 }
 
-function normalizeOptionalUrl(value) {
-  const text = clean(value);
+function normalizeOptionalUrl(
+  value
+) {
+  const text =
+    clean(value);
 
   if (!text) {
     return null;
   }
 
-  if (/^https?:\/\//i.test(text)) {
+  if (
+    /^https?:\/\//i.test(
+      text
+    )
+  ) {
     return text;
   }
 
   return `https://${text}`;
 }
 
-function isValidOptionalUrl(value) {
-  const text = clean(value);
+function isValidOptionalUrl(
+  value
+) {
+  const text =
+    clean(value);
 
   if (!text) {
     return true;
@@ -218,14 +330,20 @@ function isValidOptionalUrl(value) {
 
   try {
     const normalized =
-      normalizeOptionalUrl(text);
+      normalizeOptionalUrl(
+        text
+      );
 
     const url =
-      new URL(normalized);
+      new URL(
+        normalized
+      );
 
     return (
-      url.protocol === "http:" ||
-      url.protocol === "https:"
+      url.protocol ===
+        "http:" ||
+      url.protocol ===
+        "https:"
     );
   } catch {
     return false;
@@ -237,86 +355,126 @@ function isValidOptionalUrl(value) {
 ========================================================= */
 
 export default function SellerProfilePage() {
-  const [form, setForm] =
-    useState(EMPTY_FORM);
+  const [
+    form,
+    setForm,
+  ] =
+    useState(
+      EMPTY_FORM
+    );
 
-  const [userId, setUserId] =
+  const [
+    userId,
+    setUserId,
+  ] =
     useState("");
 
-  const [email, setEmail] =
+  const [
+    email,
+    setEmail,
+  ] =
     useState("");
 
   const [
     displayName,
     setDisplayName,
-  ] = useState("CrayThrive Seller");
+  ] =
+    useState(
+      "CrayThrive Seller"
+    );
 
   const [
     localities,
     setLocalities,
-  ] = useState([]);
+  ] =
+    useState([]);
 
   const [
     barangays,
     setBarangays,
-  ] = useState([]);
+  ] =
+    useState([]);
 
   const [
     isLoading,
     setIsLoading,
-  ] = useState(true);
+  ] =
+    useState(true);
 
   const [
     isSaving,
     setIsSaving,
-  ] = useState(false);
+  ] =
+    useState(false);
 
   const [
     isRefreshing,
     setIsRefreshing,
-  ] = useState(false);
+  ] =
+    useState(false);
 
   const [
     loadingLocalities,
     setLoadingLocalities,
-  ] = useState(false);
+  ] =
+    useState(false);
 
   const [
     loadingBarangays,
     setLoadingBarangays,
-  ] = useState(false);
+  ] =
+    useState(false);
 
   const [
     message,
     setMessage,
-  ] = useState("");
+  ] =
+    useState("");
 
   const [
     messageType,
     setMessageType,
-  ] = useState("success");
+  ] =
+    useState(
+      "success"
+    );
 
   const [
     lastUpdated,
     setLastUpdated,
-  ] = useState(null);
+  ] =
+    useState(null);
+
+  /* =======================================================
+     SELECTED LOCATION
+  ======================================================= */
 
   const selectedLocality =
-    useMemo(() => {
-      return (
-        localities.find(
-          (item) =>
-            item.code ===
-              form.pickup_municipality_code ||
-            item.name ===
-              form.pickup_municipality
-        ) || null
-      );
-    }, [
-      localities,
-      form.pickup_municipality,
-      form.pickup_municipality_code,
-    ]);
+    useMemo(
+      () => {
+        return (
+          localities.find(
+            (
+              item
+            ) =>
+              item.code ===
+                form.pickup_municipality_code ||
+              item.name ===
+                form.pickup_municipality
+          ) ||
+          null
+        );
+      },
+      [
+        localities,
+        form.pickup_municipality,
+        form.pickup_municipality_code,
+      ]
+    );
+
+  /* =======================================================
+     INITIAL LOAD
+  ======================================================= */
 
   useEffect(() => {
     loadPage();
@@ -329,47 +487,69 @@ export default function SellerProfilePage() {
       !isSupabaseConfigured ||
       !supabase
     ) {
-      setMessageType("error");
+      setMessageType(
+        "error"
+      );
+
       setMessage(
         "Supabase is not configured."
       );
-      setIsLoading(false);
+
+      setIsLoading(
+        false
+      );
 
       return;
     }
 
     try {
-      if (refresh) {
-        setIsRefreshing(true);
+      if (
+        refresh
+      ) {
+        setIsRefreshing(
+          true
+        );
       } else {
-        setIsLoading(true);
+        setIsLoading(
+          true
+        );
       }
 
       setMessage("");
 
       await Promise.all([
         loadSellerProfile(),
+
         loadBulacanLocalities(),
       ]);
 
       setLastUpdated(
         new Date()
       );
-    } catch (error) {
+    } catch (
+      error
+    ) {
       console.error(
         "Seller profile load error:",
         error
       );
 
-      setMessageType("error");
+      setMessageType(
+        "error"
+      );
 
       setMessage(
         error?.message ||
           "Unable to load seller profile."
       );
     } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
+      setIsLoading(
+        false
+      );
+
+      setIsRefreshing(
+        false
+      );
     }
   }
 
@@ -379,12 +559,19 @@ export default function SellerProfilePage() {
 
   async function loadSellerProfile() {
     const {
-      data: userData,
-      error: userError,
-    } =
-      await supabase.auth.getUser();
+      data:
+        userData,
 
-    if (userError) {
+      error:
+        userError,
+    } =
+      await supabase
+        .auth
+        .getUser();
+
+    if (
+      userError
+    ) {
       throw new Error(
         userError.message ||
           "Unable to load account."
@@ -394,28 +581,48 @@ export default function SellerProfilePage() {
     const user =
       userData?.user;
 
-    if (!user?.id) {
+    if (
+      !user?.id
+    ) {
       throw new Error(
         "No logged in user found."
       );
     }
 
-    setUserId(user.id);
-    setEmail(user.email || "");
+    setUserId(
+      user.id
+    );
+
+    setEmail(
+      user.email ||
+        ""
+    );
+
+    /* PROFILE IDENTITY */
 
     const {
-      data: profileData,
-      error: profileError,
+      data:
+        profileData,
+
+      error:
+        profileError,
     } =
       await supabase
-        .from("profiles")
+        .from(
+          "profiles"
+        )
         .select(
           "username, full_name"
         )
-        .eq("id", user.id)
+        .eq(
+          "id",
+          user.id
+        )
         .maybeSingle();
 
-    if (profileError) {
+    if (
+      profileError
+    ) {
       console.warn(
         "Profile identity load error:",
         profileError
@@ -429,39 +636,57 @@ export default function SellerProfilePage() {
       )
     );
 
+    /* SELLER */
+
     const {
-      data: sellerData,
-      error: sellerError,
+      data:
+        sellerData,
+
+      error:
+        sellerError,
     } =
       await supabase
-        .from("seller_profiles")
+        .from(
+          "seller_profiles"
+        )
         .select("*")
-        .eq("user_id", user.id)
+        .eq(
+          "user_id",
+          user.id
+        )
         .maybeSingle();
 
-    if (sellerError) {
+    if (
+      sellerError
+    ) {
       throw sellerError;
     }
 
-    if (!sellerData) {
+    if (
+      !sellerData
+    ) {
       return;
     }
 
     const nextForm = {
       store_name:
-        sellerData.store_name ||
+        sellerData
+          .store_name ||
         "",
 
       store_description:
-        sellerData.store_description ||
+        sellerData
+          .store_description ||
         "",
 
       seller_mobile:
-        sellerData.seller_mobile ||
+        sellerData
+          .seller_mobile ||
         "",
 
       pickup_municipality:
-        sellerData.pickup_municipality ||
+        sellerData
+          .pickup_municipality ||
         "",
 
       pickup_municipality_code:
@@ -470,7 +695,8 @@ export default function SellerProfilePage() {
         "",
 
       pickup_barangay:
-        sellerData.pickup_barangay ||
+        sellerData
+          .pickup_barangay ||
         "",
 
       pickup_barangay_code:
@@ -479,37 +705,47 @@ export default function SellerProfilePage() {
         "",
 
       pickup_note:
-        sellerData.pickup_note ||
+        sellerData
+          .pickup_note ||
         "",
 
       shopee_url:
-        sellerData.shopee_url ||
+        sellerData
+          .shopee_url ||
         "",
 
       lazada_url:
-        sellerData.lazada_url ||
+        sellerData
+          .lazada_url ||
         "",
 
       facebook_url:
-        sellerData.facebook_url ||
+        sellerData
+          .facebook_url ||
         "",
 
       tiktok_url:
-        sellerData.tiktok_url ||
+        sellerData
+          .tiktok_url ||
         "",
 
       website_url:
-        sellerData.website_url ||
+        sellerData
+          .website_url ||
         "",
 
       is_active:
-        typeof sellerData.is_active ===
+        typeof sellerData
+          .is_active ===
         "boolean"
-          ? sellerData.is_active
+          ? sellerData
+              .is_active
           : true,
     };
 
-    setForm(nextForm);
+    setForm(
+      nextForm
+    );
 
     if (
       nextForm
@@ -529,6 +765,7 @@ export default function SellerProfilePage() {
             nextForm
               .pickup_municipality,
         },
+
         {
           preserveBarangay:
             true,
@@ -538,11 +775,13 @@ export default function SellerProfilePage() {
   }
 
   /* =======================================================
-     LOCATIONS
+     BULACAN LOCATIONS
   ======================================================= */
 
   async function loadBulacanLocalities() {
-    setLoadingLocalities(true);
+    setLoadingLocalities(
+      true
+    );
 
     try {
       const province =
@@ -555,7 +794,9 @@ export default function SellerProfilePage() {
           `${PSGC_BASE_URL}/provinces/${province}/cities-municipalities`
         );
 
-      if (!response.ok) {
+      if (
+        !response.ok
+      ) {
         throw new Error(
           "Unable to load Bulacan locations."
         );
@@ -565,39 +806,54 @@ export default function SellerProfilePage() {
         await response.json();
 
       const rows =
-        normalizeApiList(json);
+        normalizeApiList(
+          json
+        );
 
       const mapped =
         rows
-          .map((item) => ({
-            name:
-              item.name ||
-              item.area_name ||
-              "Unknown",
+          .map(
+            (
+              item
+            ) => ({
+              name:
+                item.name ||
+                item.area_name ||
+                "Unknown",
 
-            code:
-              item.code ||
-              item.psgc_code ||
-              item.id ||
-              item.name,
-          }))
+              code:
+                item.code ||
+                item.psgc_code ||
+                item.id ||
+                item.name,
+            })
+          )
           .filter(
-            (item) =>
+            (
+              item
+            ) =>
               item.name &&
               item.code
           )
-          .sort((a, b) =>
-            a.name.localeCompare(
-              b.name
-            )
+          .sort(
+            (
+              a,
+              b
+            ) =>
+              a.name.localeCompare(
+                b.name
+              )
           );
 
       setLocalities(
-        mapped.length > 0
+        mapped.length >
+          0
           ? mapped
           : BULACAN_FALLBACK_LOCALITIES
       );
-    } catch (error) {
+    } catch (
+      error
+    ) {
       console.warn(
         "Bulacan locality load error:",
         error
@@ -607,7 +863,9 @@ export default function SellerProfilePage() {
         BULACAN_FALLBACK_LOCALITIES
       );
     } finally {
-      setLoadingLocalities(false);
+      setLoadingLocalities(
+        false
+      );
     }
   }
 
@@ -620,6 +878,7 @@ export default function SellerProfilePage() {
       !locality?.name
     ) {
       setBarangays([]);
+
       return;
     }
 
@@ -628,16 +887,28 @@ export default function SellerProfilePage() {
         options.preserveBarangay
       );
 
-    setLoadingBarangays(true);
+    setLoadingBarangays(
+      true
+    );
+
     setBarangays([]);
 
-    if (!preserveBarangay) {
-      setForm((previous) => ({
-        ...previous,
+    if (
+      !preserveBarangay
+    ) {
+      setForm(
+        (
+          previous
+        ) => ({
+          ...previous,
 
-        pickup_barangay: "",
-        pickup_barangay_code: "",
-      }));
+          pickup_barangay:
+            "",
+
+          pickup_barangay_code:
+            "",
+        })
+      );
     }
 
     try {
@@ -652,7 +923,9 @@ export default function SellerProfilePage() {
           `${PSGC_BASE_URL}/cities-municipalities/${localityKey}/barangays`
         );
 
-      if (!response.ok) {
+      if (
+        !response.ok
+      ) {
         throw new Error(
           "Unable to load barangays."
         );
@@ -662,35 +935,51 @@ export default function SellerProfilePage() {
         await response.json();
 
       const rows =
-        normalizeApiList(json);
+        normalizeApiList(
+          json
+        );
 
       const mapped =
         rows
-          .map((item) => ({
-            name:
-              item.name ||
-              item.area_name ||
-              "Unknown",
+          .map(
+            (
+              item
+            ) => ({
+              name:
+                item.name ||
+                item.area_name ||
+                "Unknown",
 
-            code:
-              item.code ||
-              item.psgc_code ||
-              item.id ||
-              item.name,
-          }))
+              code:
+                item.code ||
+                item.psgc_code ||
+                item.id ||
+                item.name,
+            })
+          )
           .filter(
-            (item) =>
+            (
+              item
+            ) =>
               item.name &&
               item.code
           )
-          .sort((a, b) =>
-            a.name.localeCompare(
-              b.name
-            )
+          .sort(
+            (
+              a,
+              b
+            ) =>
+              a.name.localeCompare(
+                b.name
+              )
           );
 
-      setBarangays(mapped);
-    } catch (error) {
+      setBarangays(
+        mapped
+      );
+    } catch (
+      error
+    ) {
       console.warn(
         "Barangay loading error:",
         error
@@ -698,7 +987,9 @@ export default function SellerProfilePage() {
 
       setBarangays([]);
     } finally {
-      setLoadingBarangays(false);
+      setLoadingBarangays(
+        false
+      );
     }
   }
 
@@ -712,10 +1003,16 @@ export default function SellerProfilePage() {
   ) {
     setMessage("");
 
-    setForm((previous) => ({
-      ...previous,
-      [key]: value,
-    }));
+    setForm(
+      (
+        previous
+      ) => ({
+        ...previous,
+
+        [key]:
+          value,
+      })
+    );
   }
 
   async function handleMunicipalityChange(
@@ -726,14 +1023,24 @@ export default function SellerProfilePage() {
 
     const locality =
       localities.find(
-        (item) =>
-          String(item.code) ===
-          String(code)
+        (
+          item
+        ) =>
+          String(
+            item.code
+          ) ===
+          String(
+            code
+          )
       );
 
-    if (!locality) {
+    if (
+      !locality
+    ) {
       setForm(
-        (previous) => ({
+        (
+          previous
+        ) => ({
           ...previous,
 
           pickup_municipality:
@@ -756,7 +1063,9 @@ export default function SellerProfilePage() {
     }
 
     setForm(
-      (previous) => ({
+      (
+        previous
+      ) => ({
         ...previous,
 
         pickup_municipality:
@@ -786,20 +1095,30 @@ export default function SellerProfilePage() {
 
     const barangay =
       barangays.find(
-        (item) =>
-          String(item.code) ===
-          String(code)
+        (
+          item
+        ) =>
+          String(
+            item.code
+          ) ===
+          String(
+            code
+          )
       );
 
     setForm(
-      (previous) => ({
+      (
+        previous
+      ) => ({
         ...previous,
 
         pickup_barangay:
-          barangay?.name || "",
+          barangay?.name ||
+          "",
 
         pickup_barangay_code:
-          barangay?.code || "",
+          barangay?.code ||
+          "",
       })
     );
   }
@@ -830,7 +1149,8 @@ export default function SellerProfilePage() {
       mobile.replace(
         /\D/g,
         ""
-      ).length < 10
+      ).length <
+      10
     ) {
       return "Please enter a valid mobile number.";
     }
@@ -856,18 +1176,22 @@ export default function SellerProfilePage() {
         "Shopee",
         form.shopee_url,
       ],
+
       [
         "Lazada",
         form.lazada_url,
       ],
+
       [
         "Facebook",
         form.facebook_url,
       ],
+
       [
         "TikTok Shop",
         form.tiktok_url,
       ],
+
       [
         "Website",
         form.website_url,
@@ -903,15 +1227,26 @@ export default function SellerProfilePage() {
     const validation =
       validateForm();
 
-    if (validation) {
-      setMessageType("error");
-      setMessage(validation);
+    if (
+      validation
+    ) {
+      setMessageType(
+        "error"
+      );
+
+      setMessage(
+        validation
+      );
 
       return;
     }
 
-    if (!userId) {
-      setMessageType("error");
+    if (
+      !userId
+    ) {
+      setMessageType(
+        "error"
+      );
 
       setMessage(
         "User session is missing."
@@ -920,7 +1255,9 @@ export default function SellerProfilePage() {
       return;
     }
 
-    setIsSaving(true);
+    setIsSaving(
+      true
+    );
 
     try {
       const payload = {
@@ -1017,11 +1354,15 @@ export default function SellerProfilePage() {
             }
           );
 
-      if (error) {
+      if (
+        error
+      ) {
         throw error;
       }
 
-      setMessageType("success");
+      setMessageType(
+        "success"
+      );
 
       setMessage(
         "Seller profile saved successfully. These details are now shared with the mobile marketplace."
@@ -1030,13 +1371,17 @@ export default function SellerProfilePage() {
       setLastUpdated(
         new Date()
       );
-    } catch (error) {
+    } catch (
+      error
+    ) {
       console.error(
         "Seller profile save error:",
         error
       );
 
-      setMessageType("error");
+      setMessageType(
+        "error"
+      );
 
       const text =
         String(
@@ -1062,7 +1407,9 @@ export default function SellerProfilePage() {
         );
       }
     } finally {
-      setIsSaving(false);
+      setIsSaving(
+        false
+      );
     }
   }
 
@@ -1070,9 +1417,12 @@ export default function SellerProfilePage() {
      LOADING
   ======================================================= */
 
-  if (isLoading) {
+  if (
+    isLoading
+  ) {
     return (
       <section className="seller-profile-loading">
+
         <Loader2
           className="spin-icon"
           size={34}
@@ -1086,6 +1436,7 @@ export default function SellerProfilePage() {
           Getting your marketplace
           seller information.
         </p>
+
       </section>
     );
   }
@@ -1097,10 +1448,14 @@ export default function SellerProfilePage() {
   return (
     <div className="seller-profile-page">
 
-      {/* HERO */}
+      {/* ===============================================
+          HERO
+      ================================================ */}
 
       <section className="seller-profile-hero">
+
         <div>
+
           <p className="dashboard-eyebrow">
             Marketplace
           </p>
@@ -1118,11 +1473,14 @@ export default function SellerProfilePage() {
           </p>
 
           <div className="seller-profile-hero-actions">
+
             <button
               type="button"
               className="dashboard-primary-button"
               onClick={() =>
-                loadPage(true)
+                loadPage(
+                  true
+                )
               }
               disabled={
                 isRefreshing
@@ -1149,16 +1507,20 @@ export default function SellerProfilePage() {
                     {
                       hour:
                         "numeric",
+
                       minute:
                         "2-digit",
                     }
                   )}`
                 : "Seller profile ready"}
             </span>
+
           </div>
+
         </div>
 
         <div className="seller-profile-hero-card">
+
           <Store
             size={34}
           />
@@ -1173,10 +1535,14 @@ export default function SellerProfilePage() {
               ? "Active Seller"
               : "Inactive Seller"}
           </span>
+
         </div>
+
       </section>
 
-      {/* MESSAGE */}
+      {/* ===============================================
+          MESSAGE
+      ================================================ */}
 
       {message ? (
         <div
@@ -1199,11 +1565,16 @@ export default function SellerProfilePage() {
         </div>
       ) : null}
 
-      {/* STATUS */}
+      {/* ===============================================
+          SELLER STATUS
+      ================================================ */}
 
       <section className="seller-profile-panel">
+
         <div className="seller-profile-panel-heading">
+
           <div>
+
             <p className="dashboard-eyebrow">
               Seller Status
             </p>
@@ -1218,15 +1589,19 @@ export default function SellerProfilePage() {
               without deleting your
               saved information.
             </p>
+
           </div>
 
           <Power
             size={22}
           />
+
         </div>
 
         <div className="seller-profile-status-row">
+
           <div>
+
             <strong>
               Seller profile
             </strong>
@@ -1236,6 +1611,7 @@ export default function SellerProfilePage() {
                 ? "Your seller information can be used by Marketplace."
                 : "Your seller profile is currently inactive."}
             </span>
+
           </div>
 
           <button
@@ -1255,18 +1631,25 @@ export default function SellerProfilePage() {
           >
             <span />
           </button>
+
         </div>
+
       </section>
 
-      {/* MAIN GRID */}
+      {/* ===============================================
+          GRID
+      ================================================ */}
 
       <div className="seller-profile-grid">
 
         {/* STORE */}
 
         <section className="seller-profile-panel">
+
           <div className="seller-profile-panel-heading">
+
             <div>
+
               <p className="dashboard-eyebrow">
                 Store
               </p>
@@ -1274,11 +1657,13 @@ export default function SellerProfilePage() {
               <h3>
                 Store information
               </h3>
+
             </div>
 
             <Store
               size={22}
             />
+
           </div>
 
           <div className="seller-profile-form">
@@ -1331,13 +1716,17 @@ export default function SellerProfilePage() {
             </FormField>
 
           </div>
+
         </section>
 
         {/* ACCOUNT */}
 
         <section className="seller-profile-panel">
+
           <div className="seller-profile-panel-heading">
+
             <div>
+
               <p className="dashboard-eyebrow">
                 Account
               </p>
@@ -1345,21 +1734,25 @@ export default function SellerProfilePage() {
               <h3>
                 Seller identity
               </h3>
+
             </div>
 
             <UserRound
               size={22}
             />
+
           </div>
 
           <div className="seller-profile-readonly-list">
 
             <div>
+
               <UserRound
                 size={18}
               />
 
               <span>
+
                 <small>
                   Display Name
                 </small>
@@ -1367,15 +1760,19 @@ export default function SellerProfilePage() {
                 <strong>
                   {displayName}
                 </strong>
+
               </span>
+
             </div>
 
             <div>
+
               <Mail
                 size={18}
               />
 
               <span>
+
                 <small>
                   Login Email
                 </small>
@@ -1384,7 +1781,9 @@ export default function SellerProfilePage() {
                   {email ||
                     "No email"}
                 </strong>
+
               </span>
+
             </div>
 
           </div>
@@ -1418,13 +1817,17 @@ export default function SellerProfilePage() {
             </FormField>
 
           </div>
+
         </section>
 
         {/* PICKUP */}
 
         <section className="seller-profile-panel">
+
           <div className="seller-profile-panel-heading">
+
             <div>
+
               <p className="dashboard-eyebrow">
                 Pickup
               </p>
@@ -1440,11 +1843,13 @@ export default function SellerProfilePage() {
                 creating marketplace
                 listings.
               </p>
+
             </div>
 
             <MapPin
               size={22}
             />
+
           </div>
 
           <div className="seller-profile-form">
@@ -1570,13 +1975,19 @@ export default function SellerProfilePage() {
             </FormField>
 
           </div>
+
         </section>
 
-        {/* ONLINE SHOPS */}
+        {/* ===============================================
+            ONLINE STORES
+        ================================================ */}
 
         <section className="seller-profile-panel">
+
           <div className="seller-profile-panel-heading">
+
             <div>
+
               <p className="dashboard-eyebrow">
                 External Shops
               </p>
@@ -1591,14 +2002,18 @@ export default function SellerProfilePage() {
                 existing online
                 stores.
               </p>
+
             </div>
 
             <Globe2
               size={22}
             />
+
           </div>
 
           <div className="seller-profile-form">
+
+            {/* SHOPEE */}
 
             <FormField
               label="Shopee"
@@ -1623,6 +2038,8 @@ export default function SellerProfilePage() {
               />
             </FormField>
 
+            {/* LAZADA */}
+
             <FormField
               label="Lazada"
               icon={
@@ -1646,10 +2063,12 @@ export default function SellerProfilePage() {
               />
             </FormField>
 
+            {/* FACEBOOK */}
+
             <FormField
               label="Facebook"
               icon={
-                Facebook
+                Link2
               }
             >
               <input
@@ -1668,6 +2087,8 @@ export default function SellerProfilePage() {
                 placeholder="https://facebook.com/your-page"
               />
             </FormField>
+
+            {/* TIKTOK */}
 
             <FormField
               label="TikTok Shop"
@@ -1691,6 +2112,8 @@ export default function SellerProfilePage() {
                 placeholder="https://www.tiktok.com/@your-store"
               />
             </FormField>
+
+            {/* WEBSITE */}
 
             <FormField
               label="Website / Other Store"
@@ -1716,14 +2139,19 @@ export default function SellerProfilePage() {
             </FormField>
 
           </div>
+
         </section>
 
       </div>
 
-      {/* SAVE */}
+      {/* ===============================================
+          SAVE
+      ================================================ */}
 
       <section className="seller-profile-save-bar">
+
         <div>
+
           <strong>
             Shared seller profile
           </strong>
@@ -1734,6 +2162,7 @@ export default function SellerProfilePage() {
             as your CrayThrive
             mobile app.
           </span>
+
         </div>
 
         <button
@@ -1761,6 +2190,7 @@ export default function SellerProfilePage() {
             ? "Saving..."
             : "Save Seller Profile"}
         </button>
+
       </section>
 
     </div>
@@ -1781,12 +2211,15 @@ function FormField({
     <label className="seller-profile-field">
 
       <span className="seller-profile-field-label">
+
         <span>
+
           <Icon
             size={15}
           />
 
           {label}
+
         </span>
 
         {required ? (
@@ -1798,6 +2231,7 @@ function FormField({
             Optional
           </small>
         )}
+
       </span>
 
       {children}
