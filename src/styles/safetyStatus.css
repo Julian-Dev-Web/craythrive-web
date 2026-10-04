@@ -1,0 +1,40 @@
+/* Shared, accessible monitoring status colors across all three pages. */
+.safety-status.safety-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: fit-content;
+  min-height: 28px;
+  padding: 4px 9px;
+  border: 1px solid;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 900;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.safety-status.safety-status.normal { color: #115e59; background: #ccfbf1; border-color: #0d9488; }
+.safety-status.safety-status.warning { color: #854d0e; background: #fef3c7; border-color: #d97706; }
+.safety-status.safety-status.critical { color: #991b1b; background: #fee2e2; border-color: #dc2626; }
+.safety-status.safety-status.no-data { color: var(--ct-muted, #8faab1); background: var(--ct-surface-soft); border-color: var(--ct-border); }
+.safety-status.safety-status svg { flex: 0 0 auto; color: inherit; }
+.safety-explanation { display: block; margin-top: 6px; color: var(--ct-muted, #8faab1); font-size: 0.7rem; line-height: 1.5; }
+.safety-surface.normal { --safety-rgb: 0, 217, 199; }
+.safety-surface.warning { --safety-rgb: 255, 209, 102; }
+.safety-surface.critical { --safety-rgb: 248, 113, 113; }
+.safety-surface.no-data { --safety-rgb: 143, 170, 177; }
+.safety-surface.safety-surface {
+  border: 1px solid rgba(var(--safety-rgb), 0.4);
+  background: linear-gradient(135deg, rgba(var(--safety-rgb), 0.1), rgba(var(--safety-rgb), 0.02)), var(--ct-surface);
+}
+.safety-surface.safety-surface > svg,
+.safety-surface.safety-surface > div[class$="banner-icon"] { color: rgb(var(--safety-rgb)); }
+.safety-surface.safety-surface > div[class$="banner-icon"] { background: rgba(var(--safety-rgb), 0.14); }
+.safety-surface.safety-surface > strong { color: rgb(var(--safety-rgb)); }
+.safety-summary.safety-summary > span {
+  color: rgb(var(--safety-rgb));
+  border-color: rgba(var(--safety-rgb), 0.4);
+  background: rgba(var(--safety-rgb), 0.14);
+}
+.safety-summary.safety-summary > div > p { color: rgb(var(--safety-rgb)); }

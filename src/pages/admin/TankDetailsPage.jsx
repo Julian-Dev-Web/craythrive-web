@@ -1,3 +1,5 @@
+import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
+import { getSafetyLabelSeverity, getSafetySeverity, getParameterExplanation, getSafetyStatusLabel } from "../../utils/statusHelpers";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
@@ -144,6 +146,8 @@ function getAmmoniaNumericValue(row) {
 ========================================================= */
 
 function getStatusSeverity(statuses) {
+  const evaluatedSeverity = getSafetyLabelSeverity(statuses);
+  if (evaluatedSeverity) return evaluatedSeverity;
   const joined = statuses
     .map(normalizeStatusText)
     .join(" ");
@@ -180,32 +184,10 @@ function getStatusSeverity(statuses) {
   return "normal";
 }
 
-function getOverallReadingStatus(
-  normalizedReading
-) {
-  return getStatusSeverity([
-    normalizedReading.temperatureStatus,
-    normalizedReading.phStatus,
-    normalizedReading.turbidityStatus,
-    normalizedReading.waterStatus,
-  ]);
+function getOverallReadingStatus(normalizedReading) {
+  return getSafetySeverity(normalizedReading.safety);
 }
 
-function getFriendlyTankStatus(status) {
-  switch (status) {
-    case "critical":
-      return "Needs Attention";
-
-    case "warning":
-      return "Check";
-
-    case "no-data":
-      return "No Data";
-
-    default:
-      return "Good";
-  }
-}
 
 /* =========================================================
    FORMATTERS
@@ -641,39 +623,8 @@ function isCompletedPumpCommand(
    WATER SAFETY
 ========================================================= */
 
-function parseNumberFromText(value) {
-  const match =
-    String(value || "").match(
-      /-?\d+(?:\.\d+)?/
-    );
-
-  if (!match) {
-    return null;
-  }
-
-  const number =
-    Number(match[0]);
-
-  return Number.isFinite(number)
-    ? number
-    : null;
-}
-
 function getWaterCmFromReading(item) {
-  const raw =
-    item?.normalized?.waterDepth ??
-    item?.normalized?.waterDistance ??
-    item?.normalized?.waterLevel ??
-    item?.normalized?.waterValue ??
-    item?.reading?.water_depth_cm ??
-    item?.reading?.water_distance_cm ??
-    item?.reading?.water_level ??
-    item?.reading?.water_depth ??
-    item?.reading?.distance_cm ??
-    item?.reading?.water_cm ??
-    parseNumberFromText(
-      item?.normalized?.waterLabel
-    );
+  const raw = item?.reading?.water_depth_cm ?? item?.reading?.water_level ?? item?.normalized?.waterValue;
 
   const number =
     Number(raw);
@@ -755,8 +706,6 @@ function getWaterStabilityState(
   const latestWaterStatus =
     latestReading?.normalized
       ?.waterStatus ||
-    latestReading?.reading
-      ?.water_status ||
     "";
 
   if (
@@ -830,8 +779,6 @@ function getWaterStabilityState(
         const waterStatus =
           item?.normalized
             ?.waterStatus ||
-          item?.reading
-            ?.water_status ||
           "";
 
         if (
@@ -1632,57 +1579,16 @@ async function fetchTodaysFeedCommands(
    SMALL COMPONENTS
 ========================================================= */
 
-function DetailMetricCard({
-  icon: Icon,
-  label,
-  value,
-  status,
-  severity: severityOverride,
-  statusLabel,
-}) {
-  const hasStatus =
-    clean(status) &&
-    lower(status) !==
-      "no reading";
-
-  const severity =
-    severityOverride ||
-    (hasStatus
-      ? getStatusSeverity(
-          [status]
-        )
-      : "warning");
-
-  const displayLabel =
-    statusLabel ||
-    (hasStatus
-      ? formatFriendlyText(
-          status
-        )
-      : "No Reading");
-
+function DetailMetricCard({ icon: Icon, label, value, severity, statusLabel }) {
+  const explanation = getParameterExplanation({ severity, label: statusLabel }, label);
   return (
     <article className="modern-tank-detail-metric">
-      <span>
-        <Icon size={22} />
-      </span>
-
+      <span><Icon size={22} /></span>
       <div>
-        <strong>
-          {formatFriendlyText(
-            value
-          )}
-        </strong>
-
-        <p>
-          {label}
-        </p>
-
-        <b
-          className={`modern-tank-status ${severity}`}
-        >
-          {displayLabel}
-        </b>
+        <strong>{formatFriendlyText(value)}</strong>
+        <p>{label}</p>
+        <SafetyBadge className="modern-tank-status" severity={severity} />
+        {explanation && <small className="safety-explanation">{explanation}</small>}
       </div>
     </article>
   );
@@ -1840,6 +1746,7 @@ export default function TankDetailsPage() {
     async (
       silent = false
     ) => {
+      setThresholds(await loadActiveThresholds());
       if (
         !isSupabaseConfigured ||
         !supabase
@@ -2281,9 +2188,7 @@ export default function TankDetailsPage() {
           index
         ) => {
           const normalized =
-            normalizeSensorReading(
-              reading
-            );
+            normalizeSensorReading(reading, thresholds);
 
           const status =
             getOverallReadingStatus(
@@ -2304,7 +2209,7 @@ export default function TankDetailsPage() {
           };
         }
       );
-    }, [readings]);
+    }, [readings, thresholds]);
 
   const latestReading =
     enrichedReadings[0] ||
@@ -2328,10 +2233,10 @@ export default function TankDetailsPage() {
           temperature:
             row?.temperature_c ?? row?.temperature,
           ph: row?.ph ?? row?.ph_value,
-          turbidityStatus:
-            latestReading?.normalized?.turbidityStatus,
+          turbidityVoltage:
+            latestReading?.normalized?.turbidityValue,
           waterDepth:
-            row?.water_depth_cm ?? row?.water_level,
+            latestReading.normalized.waterValue,
           ammonia: latestAmmoniaValue,
         },
         thresholds
@@ -2508,7 +2413,7 @@ export default function TankDetailsPage() {
 
   const tankStatus =
     latestReading
-      ? latestReading.status
+      ? getSafetySeverity(latestSafety)
       : "no-data";
 
   const actuatorState =
@@ -3097,25 +3002,16 @@ export default function TankDetailsPage() {
           </div>
         </div>
 
-        <div className="modern-tank-detail-hero-card">
+        <div className={`modern-tank-detail-hero-card safety-surface ${tankStatus}`}>
 
-          {tankStatus ===
-          "normal" ? (
-            <CheckCircle2
-              size={36}
-            />
-          ) : (
-            <AlertTriangle
-              size={36}
-            />
-          )}
+          <SafetyIcon severity={tankStatus} size={36} />
 
           <strong
             className={
               tankStatus
             }
           >
-            {getFriendlyTankStatus(
+            {getSafetyStatusLabel(
               tankStatus
             )}
           </strong>
@@ -3381,27 +3277,15 @@ export default function TankDetailsPage() {
 
           {latestSafety && (
             <section
-              className={`modern-tank-safety-banner ${
-                latestSafety.isSafe ? "is-safe" : "is-unsafe"
-              }`}
+              className={`modern-tank-safety-banner safety-surface ${getSafetySeverity(latestSafety)}`}
             >
               <div className="modern-tank-safety-banner-icon">
-                {latestSafety.isSafe ? (
-                  <CheckCircle2 size={24} />
-                ) : (
-                  <AlertTriangle size={24} />
-                )}
+                <SafetyIcon severity={getSafetySeverity(latestSafety)} size={24} />
               </div>
 
               <div className="modern-tank-safety-banner-text">
                 <strong>
-                  {latestSafety.isSafe
-                    ? "This tank is within the safe range"
-                    : `This tank is outside the safe range (${latestSafety.issues.length} ${
-                        latestSafety.issues.length === 1
-                          ? "issue"
-                          : "issues"
-                      })`}
+                  {getSafetyStatusLabel(getSafetySeverity(latestSafety))}
                 </strong>
 
                 <span>Checked against your saved Threshold Settings</span>
@@ -4259,13 +4143,7 @@ export default function TankDetailsPage() {
                       </span>
 
                       <span>
-                        <b
-                          className={`modern-tank-status ${item.status}`}
-                        >
-                          {getFriendlyTankStatus(
-                            item.status
-                          )}
-                        </b>
+                        <SafetyBadge className="modern-tank-status" severity={item.status} />
                       </span>
                     </div>
                   )
@@ -4380,18 +4258,7 @@ export default function TankDetailsPage() {
                       >
                         <div>
                           <strong>
-                            {formatFriendlyText(
-                              getValue(
-                                item,
-                                [
-                                  "ammonia_status",
-                                  "status",
-                                  "result",
-                                  "level",
-                                ],
-                                "Ammonia Reading"
-                              )
-                            )}
+                            <SafetyBadge severity={evaluateReadingSafety({ ammonia: getAmmoniaNumericValue(item) }, thresholds).parameters.ammonia.severity} />
                           </strong>
 
                           <span>
@@ -4509,17 +4376,7 @@ export default function TankDetailsPage() {
                           </span>
                         </div>
 
-                        <b
-                          className={`modern-tank-status ${severity}`}
-                        >
-                          {severity ===
-                          "critical"
-                            ? "Urgent"
-                            : severity ===
-                                "warning"
-                              ? "Check"
-                              : "Good"}
-                        </b>
+                        <SafetyBadge className="modern-tank-status" severity={severity} />
                       </div>
                     );
                   }

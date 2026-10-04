@@ -1,7 +1,10 @@
+import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
+import { getSafetySeverity, getParameterExplanation, getSafetyStatusLabel } from "../../utils/statusHelpers";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   Activity,
+  AlertCircle,
   AlertTriangle,
   Check,
   CheckCircle2,
@@ -29,7 +32,6 @@ import {
 } from "../../utils/sensorReadingUtils";
 
 import {
-  evaluateReadingSafety,
   loadActiveThresholds,
 } from "../../utils/thresholdEvaluation";
 
@@ -78,7 +80,7 @@ const sensorOptions = [
   },
   {
     value: "issues",
-    label: "Needs Attention",
+    label: "Warning / Critical",
   },
 ];
 
@@ -90,11 +92,6 @@ function lower(value) {
   return clean(value).toLowerCase();
 }
 
-function normalizeStatusText(value) {
-  return lower(value)
-    .replaceAll("_", " ")
-    .replaceAll("-", " ");
-}
 
 function formatFriendlyText(value) {
   const text = clean(value);
@@ -132,57 +129,11 @@ function formatDate(value) {
   });
 }
 
-function getStatusSeverity(statuses) {
-  const joined = statuses
-    .map(normalizeStatusText)
-    .join(" ");
 
-  if (
-    joined.includes("critical") ||
-    joined.includes("sensor error") ||
-    joined.includes("danger") ||
-    joined.includes("unsafe")
-  ) {
-    return "critical";
-  }
-
-  if (
-    joined.includes("warning") ||
-    joined.includes("slightly cloudy") ||
-    joined.includes("dirty") ||
-    joined.includes("low acidic") ||
-    joined.includes("high alkaline") ||
-    joined.includes("needs") ||
-    joined.includes("moderate")
-  ) {
-    return "warning";
-  }
-
-  return "normal";
+function getOverallReadingStatus(normalizedReading) {
+  return getSafetySeverity(normalizedReading.safety);
 }
 
-function getOverallReadingStatus(
-  normalizedReading
-) {
-  return getStatusSeverity([
-    normalizedReading.temperatureStatus,
-    normalizedReading.phStatus,
-    normalizedReading.turbidityStatus,
-    normalizedReading.waterStatus,
-  ]);
-}
-
-function getFriendlyStatus(status) {
-  if (status === "critical") {
-    return "Urgent";
-  }
-
-  if (status === "warning") {
-    return "Check";
-  }
-
-  return "Good";
-}
 
 function getSeverityRank(severity) {
   if (severity === "critical") {
@@ -218,9 +169,7 @@ function getSensorFocus(
         normalized.temperatureStatus,
 
       severity:
-        getStatusSeverity([
-          normalized.temperatureStatus,
-        ]),
+        normalized.safety.parameters.temperature.severity,
 
       hasValue:
         normalized.temperatureValue !== null &&
@@ -241,9 +190,7 @@ function getSensorFocus(
         normalized.phStatus,
 
       severity:
-        getStatusSeverity([
-          normalized.phStatus,
-        ]),
+        normalized.safety.parameters.ph.severity,
 
       hasValue:
         normalized.phStatus !==
@@ -262,9 +209,7 @@ function getSensorFocus(
         normalized.turbidityStatus,
 
       severity:
-        getStatusSeverity([
-          normalized.turbidityStatus,
-        ]),
+        normalized.safety.parameters.turbidity.severity,
 
       hasValue:
         normalized.turbidityStatus !==
@@ -283,9 +228,7 @@ function getSensorFocus(
         normalized.waterStatus,
 
       severity:
-        getStatusSeverity([
-          normalized.waterStatus,
-        ]),
+        normalized.safety.parameters.waterLevel.severity,
 
       hasValue:
         normalized.waterValue !== null &&
@@ -713,12 +656,13 @@ function SummaryCard({
   helper,
   tone = "default",
 }) {
+  const safetyLevel = { success: "normal", warning: "warning", danger: "critical" }[tone];
   return (
     <article
-      className={`modern-reading-summary-card ${tone}`}
+      className={`modern-reading-summary-card ${tone} ${safetyLevel ? `safety-summary safety-surface ${safetyLevel}` : ""}`}
     >
       <span>
-        <Icon size={21} />
+        {safetyLevel ? <SafetyIcon severity={safetyLevel} size={21} /> : <Icon size={21} />}
       </span>
 
       <div>
@@ -738,43 +682,16 @@ function SummaryCard({
   );
 }
 
-function MetricCard({
-  icon: Icon,
-  label,
-  value,
-  status,
-}) {
-  const severity =
-    status
-      ? getStatusSeverity(
-          [status]
-        )
-      : "normal";
-
+function MetricCard({ icon: Icon, label, value, parameter }) {
+  const explanation = getParameterExplanation(parameter, label.replace(/^Latest /, ""));
   return (
     <div className="modern-reading-metric">
-      <span className="modern-reading-metric-icon">
-        <Icon size={20} />
-      </span>
-
+      <span className="modern-reading-metric-icon"><Icon size={20} /></span>
       <div>
-        <small>
-          {label}
-        </small>
-
-        <strong>
-          {value}
-        </strong>
-
-        {status && (
-          <b
-            className={`modern-reading-status ${severity}`}
-          >
-            {formatFriendlyText(
-              status
-            )}
-          </b>
-        )}
+        <small>{label}</small>
+        <strong>{value}</strong>
+        <SafetyBadge className="modern-reading-status" severity={parameter?.severity} />
+        {explanation && <small className="safety-explanation">{explanation}</small>}
       </div>
     </div>
   );
@@ -1063,6 +980,7 @@ export default function SensorReadingsPage() {
 
   const loadReadings =
     async () => {
+      setThresholds(await loadActiveThresholds());
       if (
         !isSupabaseConfigured ||
         !supabase
@@ -1154,9 +1072,7 @@ export default function SensorReadingsPage() {
             index
           ) => {
             const normalized =
-              normalizeSensorReading(
-                reading
-              );
+              normalizeSensorReading(reading, thresholds);
 
             const status =
               getOverallReadingStatus(
@@ -1217,6 +1133,7 @@ export default function SensorReadingsPage() {
     }, [
       readings,
       tanks,
+      thresholds,
     ]);
 
   const tankFilterOptions =
@@ -1277,19 +1194,20 @@ export default function SensorReadingsPage() {
 
         {
           value: "normal",
-          label: "Good",
+          label: "Normal",
         },
 
         {
           value: "warning",
           label:
-            "Needs Checking",
+            "Warning",
         },
 
         {
           value: "critical",
-          label: "Urgent",
+          label: "Critical",
         },
+        { value: "no-data", label: "No Data" },
       ],
       []
     );
@@ -1618,41 +1536,7 @@ export default function SensorReadingsPage() {
         )
       : null;
 
-  const latestSafety =
-    useMemo(() => {
-      if (
-        !latestReading ||
-        !thresholds
-      ) {
-        return null;
-      }
-
-      return evaluateReadingSafety(
-        {
-          temperature:
-            latestTemperature,
-
-          ph:
-            latestPH,
-
-          turbidityStatus:
-            latestReading
-              ?.normalized
-              ?.turbidityStatus,
-
-          waterDepth:
-            latestWaterDepth,
-        },
-
-        thresholds
-      );
-    }, [
-      latestReading,
-      latestTemperature,
-      latestPH,
-      latestWaterDepth,
-      thresholds,
-    ]);
+  const latestSafety = latestReading?.normalized?.safety || null;
 
   const selectedTankName =
     tankFilter ===
@@ -1756,34 +1640,15 @@ export default function SensorReadingsPage() {
 
       {latestSafety && (
         <section
-          className={`modern-safety-banner ${
-            latestSafety.isSafe
-              ? "is-safe"
-              : "is-unsafe"
-          }`}
+          className={`modern-safety-banner safety-surface ${getSafetySeverity(latestSafety)}`}
         >
           <div className="modern-safety-banner-icon">
-            {latestSafety.isSafe ? (
-              <CheckCircle2
-                size={26}
-              />
-            ) : (
-              <AlertTriangle
-                size={26}
-              />
-            )}
+            <SafetyIcon severity={getSafetySeverity(latestSafety)} size={26} />
           </div>
 
           <div className="modern-safety-banner-text">
             <strong>
-              {latestSafety.isSafe
-                ? "Latest reading is within the safe range"
-                : `Latest reading is outside the safe range (${latestSafety.issues.length} ${
-                    latestSafety.issues.length ===
-                    1
-                      ? "issue"
-                      : "issues"
-                  })`}
+              {getSafetyStatusLabel(getSafetySeverity(latestSafety))}
             </strong>
 
             <span>
@@ -1822,7 +1687,7 @@ export default function SensorReadingsPage() {
           icon={
             CheckCircle2
           }
-          label="Good"
+          label="Normal"
           value={
             summary.normal
           }
@@ -1834,7 +1699,7 @@ export default function SensorReadingsPage() {
           icon={
             AlertTriangle
           }
-          label="Needs Checking"
+          label="Warning"
           value={
             summary.warning
           }
@@ -1843,10 +1708,8 @@ export default function SensorReadingsPage() {
         />
 
         <SummaryCard
-          icon={
-            AlertTriangle
-          }
-          label="Urgent"
+          icon={AlertCircle}
+          label="Critical"
           value={
             summary.critical
           }
@@ -1899,12 +1762,7 @@ export default function SensorReadingsPage() {
                       2
                     )}°C`
               }
-              status={
-                latestReading
-                  ?.normalized
-                  ?.temperatureStatus ||
-                "No Reading"
-              }
+              parameter={latestReading?.normalized?.safety?.parameters.temperature}
             />
 
             <MetricCard
@@ -1928,12 +1786,7 @@ export default function SensorReadingsPage() {
                       2
                     )
               }
-              status={
-                latestReading
-                  ?.normalized
-                  ?.phStatus ||
-                "No Reading"
-              }
+              parameter={latestReading?.normalized?.safety?.parameters.ph}
             />
 
             <MetricCard
@@ -1947,12 +1800,7 @@ export default function SensorReadingsPage() {
                   ?.turbidityStatus ||
                 "No Reading"
               }
-              status={
-                latestReading
-                  ?.normalized
-                  ?.turbidityStatus ||
-                "No Reading"
-              }
+              parameter={latestReading?.normalized?.safety?.parameters.turbidity}
             />
 
             <MetricCard
@@ -1968,12 +1816,7 @@ export default function SensorReadingsPage() {
                       2
                     )} cm`
               }
-              status={
-                latestReading
-                  ?.normalized
-                  ?.waterStatus ||
-                "No Reading"
-              }
+              parameter={latestReading?.normalized?.safety?.parameters.waterLevel}
             />
           </div>
         </article>
@@ -2017,13 +1860,7 @@ export default function SensorReadingsPage() {
                 </span>
               </div>
 
-              <b
-                className={`modern-reading-status ${latestReading.status}`}
-              >
-                {getFriendlyStatus(
-                  latestReading.status
-                )}
-              </b>
+              <SafetyBadge className="modern-reading-status" severity={latestReading.status} />
             </div>
           ) : (
             <div className="modern-reading-empty-small">
@@ -2253,11 +2090,10 @@ export default function SensorReadingsPage() {
                         normalized.temperatureLabel
                       }
 
-                      <small>
-                        {formatFriendlyText(
-                          normalized.temperatureStatus
-                        )}
-                      </small>
+                      <SafetyBadge className="modern-reading-status" severity={normalized.safety?.parameters.temperature.severity} />
+                      {getParameterExplanation(normalized.safety?.parameters.temperature, "Temperature") && (
+                        <small className="safety-explanation">{getParameterExplanation(normalized.safety?.parameters.temperature, "Temperature")}</small>
+                      )}
                     </span>
 
                     <span data-label="pH">
@@ -2270,31 +2106,18 @@ export default function SensorReadingsPage() {
                         </span>
                       )}
 
-                      <b
-                        className={`modern-reading-status ${getStatusSeverity(
-                          [
-                            normalized.phStatus,
-                          ]
-                        )}`}
-                      >
-                        {formatFriendlyText(
-                          normalized.phStatus
-                        )}
-                      </b>
+                      <SafetyBadge className="modern-reading-status" severity={normalized.safety?.parameters.ph.severity} />
+                      {getParameterExplanation(normalized.safety?.parameters.ph, "pH") && (
+                        <small className="safety-explanation">{getParameterExplanation(normalized.safety?.parameters.ph, "pH")}</small>
+                      )}
                     </span>
 
                     <span data-label="Water Clarity">
-                      <b
-                        className={`modern-reading-status ${getStatusSeverity(
-                          [
-                            normalized.turbidityStatus,
-                          ]
-                        )}`}
-                      >
-                        {formatFriendlyText(
-                          normalized.turbidityStatus
-                        )}
-                      </b>
+                      <span>{formatFriendlyText(normalized.turbidityStatus)}</span>
+                      <SafetyBadge className="modern-reading-status" severity={normalized.safety?.parameters.turbidity.severity} />
+                      {getParameterExplanation(normalized.safety?.parameters.turbidity, "Water Clarity") && (
+                        <small className="safety-explanation">{getParameterExplanation(normalized.safety?.parameters.turbidity, "Water Clarity")}</small>
+                      )}
                     </span>
 
                     <span data-label="Water Level">
@@ -2305,28 +2128,14 @@ export default function SensorReadingsPage() {
                             2
                           )} cm`}
 
-                      <small>
-                        {formatFriendlyText(
-                          normalized.waterStatus
-                        )}
-                      </small>
+                      <SafetyBadge className="modern-reading-status" severity={normalized.safety?.parameters.waterLevel.severity} />
+                      {getParameterExplanation(normalized.safety?.parameters.waterLevel, "Water Level") && (
+                        <small className="safety-explanation">{getParameterExplanation(normalized.safety?.parameters.waterLevel, "Water Level")}</small>
+                      )}
                     </span>
 
                     <span data-label="Status">
-                      <b
-                        className={`modern-reading-status ${displaySeverity}`}
-                      >
-                        {sensorFilter ===
-                          "all" ||
-                        sensorFilter ===
-                          "issues"
-                          ? getFriendlyStatus(
-                              item.status
-                            )
-                          : formatFriendlyText(
-                              focus.status
-                            )}
-                      </b>
+                      <SafetyBadge className="modern-reading-status" severity={displaySeverity} />
                     </span>
 
                     <span data-label="Date">

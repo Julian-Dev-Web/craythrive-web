@@ -1,3 +1,5 @@
+import { evaluateReadingSafety, getLocalThresholds } from "./thresholdEvaluation";
+
 // src/utils/sensorReadingUtils.js
 
 export function getFirstValue(...values) {
@@ -37,7 +39,7 @@ export function normalizeStatus(value) {
     .trim();
 }
 
-export function normalizeSensorReading(reading) {
+export function normalizeSensorReading(reading, thresholds = getLocalThresholds()) {
   if (!reading) {
     return {
       raw: null,
@@ -87,28 +89,21 @@ export function normalizeSensorReading(reading) {
   const waterValue = getFirstValue(
     reading.water_depth_cm,
     reading.water_level,
-    reading.water_distance_cm
+    reading.waterValue
   );
 
-  const temperatureStatus = normalizeStatus(
-    reading.temperature_status || getTemperatureStatus(temperatureValue)
-  );
-
-  // IMPORTANT:
-  // Recompute pH status from the selected phValue.
-  // This prevents HIGH_ALKALINE from ph_value=10.xx from overriding ph=7.xx.
-  const phStatus = normalizeStatus(getPhStatus(phValue));
-
-  const turbidityStatus = normalizeStatus(
-    reading.turbidity_status || getTurbidityStatusFromVoltage(turbidityValue)
-  );
-
-  const waterStatus = normalizeStatus(
-    reading.water_status || getWaterStatus(waterValue)
-  );
+  const safety = evaluateReadingSafety({
+    temperature: temperatureValue, ph: phValue,
+    turbidityVoltage: turbidityValue, waterDepth: waterValue,
+  }, thresholds);
+  const temperatureStatus = safety.parameters.temperature.label;
+  const phStatus = safety.parameters.ph.label;
+  const turbidityStatus = safety.parameters.turbidity.label;
+  const waterStatus = safety.parameters.waterLevel.label;
 
   return {
     raw: reading,
+    safety,
 
     temperatureValue,
     temperatureLabel:
@@ -143,45 +138,20 @@ export function normalizeSensorReading(reading) {
   };
 }
 
-export function getTemperatureStatus(value) {
-  const numberValue = toNumberOrNull(value);
-
-  if (numberValue === null) return "No Reading";
-  if (numberValue < 22) return "Cold";
-  if (numberValue > 30) return "Warm";
-
-  return "Ideal";
+export function getTemperatureStatus(value, thresholds = getLocalThresholds()) {
+  return evaluateReadingSafety({ temperature: value }, thresholds).parameters.temperature.label;
 }
 
-export function getPhStatus(value) {
-  const numberValue = toNumberOrNull(value);
-
-  if (numberValue === null) return "No Reading";
-  if (numberValue < 6.5) return "Low pH";
-  if (numberValue > 8.5) return "High pH";
-
-  return "Ideal pH";
+export function getPhStatus(value, thresholds = getLocalThresholds()) {
+  return evaluateReadingSafety({ ph: value }, thresholds).parameters.ph.label;
 }
 
-export function getTurbidityStatusFromVoltage(value) {
-  const numberValue = toNumberOrNull(value);
-
-  if (numberValue === null) return "No Reading";
-
-  // Higher voltage = clearer water, lower voltage = dirtier water.
-  if (numberValue >= 3.8) return "Clear";
-  if (numberValue >= 2.5) return "Slightly Dirty";
-  if (numberValue >= 1.5) return "Dirty";
-
-  return "Critical";
+export function getTurbidityStatusFromVoltage(value, thresholds = getLocalThresholds()) {
+  return evaluateReadingSafety({ turbidityVoltage: value }, thresholds).parameters.turbidity.label;
 }
 
-export function getWaterStatus(value) {
-  const numberValue = toNumberOrNull(value);
-
-  if (numberValue === null) return "No Reading";
-
-  return "Measured";
+export function getWaterStatus(value, thresholds = getLocalThresholds()) {
+  return evaluateReadingSafety({ waterDepth: value }, thresholds).parameters.waterLevel.label;
 }
 
 export function formatReadingTime(value) {

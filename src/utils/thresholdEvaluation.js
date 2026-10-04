@@ -685,7 +685,7 @@ export function evaluateReadingSafety(
   {
     temperature,
     ph,
-    turbidityStatus,
+    turbidityVoltage,
     waterDepth,
     ammonia,
   },
@@ -892,86 +892,20 @@ export function evaluateReadingSafety(
   | TURBIDITY
   |--------------------------------------------------------------------------
   |
-  | The current dashboard receives an already-computed turbidity status.
-  |
-  | We continue using that status rather than comparing the raw voltage here
-  | because older parts of the system use `turbidityMax` with inconsistent
-  | naming/direction.
-  |
-  | Later, once all firmware/web/mobile naming is normalized, this can use:
-  |
-  |   turbidityVoltage >= clearMinimumVoltage
-  |
-  | directly.
+  | Numeric voltage is evaluated against the active clear-water minimum.
+  | Stored sensor statuses are raw metadata only.
   |
   */
 
-  const cleanTurbidityStatus =
-    String(
-      turbidityStatus ||
-        ""
-    )
-      .trim()
-      .toLowerCase();
-
-  if (
-    !cleanTurbidityStatus ||
-    cleanTurbidityStatus ===
-      "no reading" ||
-    cleanTurbidityStatus ===
-      "no_reading" ||
-    cleanTurbidityStatus ===
-      "no data" ||
-    cleanTurbidityStatus ===
-      "no_data"
-  ) {
-    parameters.turbidity = {
-      severity:
-        "no-data",
-
-      label:
-        "No Reading",
-
-      hasValue:
-        false,
-    };
-  } else if (
-    cleanTurbidityStatus ===
-    "clear"
-  ) {
-    parameters.turbidity = {
-      severity:
-        "normal",
-
-      label:
-        "Clear",
-
-      hasValue:
-        true,
-    };
-  } else {
-    parameters.turbidity = {
-      severity:
-        "critical",
-
-      label:
-        "Needs Attention",
-
-      hasValue:
-        true,
-    };
-
-    issues.push({
-      key:
-        "turbidity",
-
-      label:
-        "Water Clarity",
-
-      message:
-        `Water clarity is currently "${turbidityStatus}". ` +
-        `CrayThrive currently expects the sensor status to be Clear.`,
-    });
+  const turbidityValue = toNumberOrNull(turbidityVoltage);
+  parameters.turbidity = turbidityValue === null
+    ? { severity: "no-data", label: "No Reading", hasValue: false }
+    : turbidityValue >= active.turbidityMax
+      ? { severity: "normal", label: "Clear", hasValue: true }
+      : { severity: "critical", label: "Needs Attention", hasValue: true };
+  if (parameters.turbidity.severity === "critical") {
+    issues.push({ key: "turbidity", label: "Water Clarity",
+      message: `${turbidityValue} V is below the active clear-water minimum (${active.turbidityMax} V)` });
   }
 
   /*
@@ -1131,18 +1065,7 @@ export function evaluateReadingSafety(
   |
   */
 
-  const hasTurbidityData =
-    Boolean(
-      cleanTurbidityStatus &&
-        cleanTurbidityStatus !==
-          "no reading" &&
-        cleanTurbidityStatus !==
-          "no_reading" &&
-        cleanTurbidityStatus !==
-          "no data" &&
-        cleanTurbidityStatus !==
-          "no_data"
-    );
+  const hasTurbidityData = turbidityValue !== null;
 
   const hasAnyData =
     temp !== null ||

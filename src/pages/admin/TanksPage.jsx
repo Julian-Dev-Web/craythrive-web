@@ -1,3 +1,5 @@
+import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
+import { getSafetySeverity, getParameterExplanation, getSafetyStatusLabel } from "../../utils/statusHelpers";
 import {
   useEffect,
   useMemo,
@@ -8,6 +10,7 @@ import {
 import { Link } from "react-router-dom";
 
 import {
+  AlertCircle,
   AlertTriangle,
   ArrowRight,
   Check,
@@ -33,6 +36,7 @@ import {
 import {
   evaluateReadingSafety,
   loadActiveThresholds,
+  getLocalThresholds,
 } from "../../utils/thresholdEvaluation";
 
 import {
@@ -80,11 +84,6 @@ function lower(value) {
   return clean(value).toLowerCase();
 }
 
-function normalizeStatusText(value) {
-  return lower(value)
-    .replaceAll("_", " ")
-    .replaceAll("-", " ");
-}
 
 function formatFriendlyText(value) {
   const text = clean(value);
@@ -123,63 +122,11 @@ function getPhNumericLabel(reading) {
    STATUS
 ========================================================= */
 
-function getStatusSeverity(statuses) {
-  const joined =
-    statuses
-      .map(normalizeStatusText)
-      .join(" ");
 
-  if (
-    joined.includes("critical") ||
-    joined.includes("danger") ||
-    joined.includes("unsafe") ||
-    joined.includes("high ph") ||
-    joined.includes("low ph") ||
-    joined.includes("warm") ||
-    joined.includes("cold")
-  ) {
-    return "critical";
-  }
-
-  if (
-    joined.includes("warning") ||
-    joined.includes("dirty") ||
-    joined.includes("slightly") ||
-    joined.includes("needs") ||
-    joined.includes("moderate")
-  ) {
-    return "warning";
-  }
-
-  return "normal";
+function getOverallReadingStatus(normalizedReading) {
+  return getSafetySeverity(normalizedReading.safety);
 }
 
-function getOverallReadingStatus(
-  normalizedReading
-) {
-  return getStatusSeverity([
-    normalizedReading.temperatureStatus,
-    normalizedReading.phStatus,
-    normalizedReading.turbidityStatus,
-    normalizedReading.waterStatus,
-  ]);
-}
-
-function getFriendlyTankStatus(status) {
-  switch (status) {
-    case "critical":
-      return "Urgent";
-
-    case "warning":
-      return "Check";
-
-    case "no-data":
-      return "No Data";
-
-    default:
-      return "Good";
-  }
-}
 
 /* =========================================================
    TANK HELPERS
@@ -323,63 +270,10 @@ function getReadingPhValue(reading) {
   );
 }
 
-function isSafePhStatus(status) {
-  const value =
-    normalizeStatusText(status);
-
-  return (
-    value.includes("ideal") ||
-    value.includes("safe") ||
-    value.includes("normal")
-  );
-}
-
-function isUnsafePhStatus(status) {
-  const value =
-    normalizeStatusText(status);
-
-  return (
-    value.includes("unsafe") ||
-    value.includes("critical") ||
-    value.includes("danger") ||
-    value.includes("high ph") ||
-    value.includes("low ph") ||
-    value.includes("high alkaline") ||
-    value.includes("low alkaline") ||
-    value.includes("acidic")
-  );
-}
-
 function isUnsafePhReading(reading) {
-  if (!reading) {
-    return false;
-  }
-
-  const phValue =
-    getReadingPhValue(reading);
-
-  const phStatus =
-    reading?.ph_status || "";
-
-  if (
-    isSafePhStatus(phStatus)
-  ) {
-    return false;
-  }
-
-  if (
-    phValue !== null &&
-    (
-      phValue < 6.5 ||
-      phValue > 8.5
-    )
-  ) {
-    return true;
-  }
-
-  return isUnsafePhStatus(
-    phStatus
-  );
+  if (!reading) return false;
+  return evaluateReadingSafety({ ph: getReadingPhValue(reading) }, getLocalThresholds())
+    .parameters.ph.severity === "critical";
 }
 
 function sortReadingsNewestFirst(
@@ -932,14 +826,13 @@ function SummaryCard({
   helper,
   tone = "default",
 }) {
+  const safetyLevel = { success: "normal", warning: "warning", danger: "critical" }[tone];
   return (
     <article
-      className={`modern-tank-summary-card ${tone}`}
+      className={`modern-tank-summary-card ${tone} ${safetyLevel ? `safety-summary safety-surface ${safetyLevel}` : ""}`}
     >
       <span>
-        <Icon
-          size={21}
-        />
+        {safetyLevel ? <SafetyIcon severity={safetyLevel} size={21} /> : <Icon size={21} />}
       </span>
 
       <div>
@@ -959,49 +852,15 @@ function SummaryCard({
   );
 }
 
-function SensorMiniCard({
-  icon: Icon,
-  label,
-  value,
-  status,
-}) {
-  const hasStatus =
-    clean(status) &&
-    lower(status) !==
-      "no reading";
-
-  const severity =
-    hasStatus
-      ? getStatusSeverity(
-          [status]
-        )
-      : "no-data";
-
+function SensorMiniCard({ icon: Icon, label, value, parameter }) {
+  const explanation = getParameterExplanation(parameter, label);
   return (
     <div className="modern-tank-sensor-card">
-      <Icon
-        size={19}
-      />
-
-      <span>
-        {label}
-      </span>
-
-      <strong>
-        {formatFriendlyText(
-          value
-        )}
-      </strong>
-
-      <b
-        className={`modern-tank-status ${severity}`}
-      >
-        {hasStatus
-          ? formatFriendlyText(
-              status
-            )
-          : "No Reading"}
-      </b>
+      <Icon size={19} />
+      <span>{label}</span>
+      <strong>{formatFriendlyText(value)}</strong>
+      <SafetyBadge className="modern-tank-status" severity={parameter?.severity} />
+      {explanation && <small className="safety-explanation">{explanation}</small>}
     </div>
   );
 }
@@ -1309,6 +1168,7 @@ export default function TanksPage() {
 
   const loadTanks =
     async () => {
+      setThresholds(await loadActiveThresholds());
       if (
         !isSupabaseConfigured ||
         !supabase
@@ -1480,9 +1340,7 @@ export default function TanksPage() {
             );
 
           const normalized =
-            normalizeSensorReading(
-              latestReading
-            );
+            normalizeSensorReading(latestReading, thresholds);
 
           const readingStatus =
             latestReading
@@ -1520,15 +1378,10 @@ export default function TanksPage() {
                       latestReading
                         ?.ph_value,
 
-                    turbidityStatus:
-                      normalized
-                        .turbidityStatus,
+                    turbidityVoltage:
+                      normalized.turbidityValue,
 
-                    waterDepth:
-                      latestReading
-                        ?.water_depth_cm ??
-                      latestReading
-                        ?.water_level,
+                    waterDepth: normalized.waterValue,
 
                     ammonia:
                       latestAmmoniaValue,
@@ -1596,7 +1449,7 @@ export default function TanksPage() {
               "",
 
             status:
-              readingStatus,
+              safety ? getSafetySeverity(safety) : readingStatus,
 
             safety,
 
@@ -1771,25 +1624,25 @@ export default function TanksPage() {
         {
           value: "normal",
           label:
-            "Doing Well",
+            "Normal",
         },
 
         {
           value: "warning",
           label:
-            "Needs Checking",
+            "Warning",
         },
 
         {
           value: "critical",
           label:
-            "Urgent",
+            "Critical",
         },
 
         {
           value: "no-data",
           label:
-            "No Recent Data",
+            "No Data",
         },
       ],
       []
@@ -1917,7 +1770,7 @@ export default function TanksPage() {
           icon={
             CheckCircle2
           }
-          label="Doing Well"
+          label="Normal"
           value={
             summary.normal
           }
@@ -1929,7 +1782,7 @@ export default function TanksPage() {
           icon={
             AlertTriangle
           }
-          label="Needs Checking"
+          label="Warning"
           value={
             summary.warning
           }
@@ -1938,10 +1791,8 @@ export default function TanksPage() {
         />
 
         <SummaryCard
-          icon={
-            AlertTriangle
-          }
-          label="Urgent"
+          icon={AlertCircle}
+          label="Critical"
           value={
             summary.critical
           }
@@ -1953,7 +1804,7 @@ export default function TanksPage() {
           icon={
             Database
           }
-          label="No Recent Data"
+          label="No Data"
           value={
             summary.noData
           }
@@ -2081,13 +1932,7 @@ export default function TanksPage() {
                     </h3>
                   </div>
 
-                  <b
-                    className={`modern-tank-status ${item.status}`}
-                  >
-                    {getFriendlyTankStatus(
-                      item.status
-                    )}
-                  </b>
+                  <SafetyBadge className="modern-tank-status" severity={item.status} />
                 </div>
 
                 {/* LAST UPDATE */}
@@ -2120,10 +1965,7 @@ export default function TanksPage() {
                       item.normalized
                         .temperatureLabel
                     }
-                    status={
-                      item.normalized
-                        .temperatureStatus
-                    }
+                    parameter={item.normalized.safety?.parameters.temperature}
                   />
 
                   <SensorMiniCard
@@ -2138,10 +1980,7 @@ export default function TanksPage() {
                       item.normalized
                         .phStatus
                     }
-                    status={
-                      item.normalized
-                        .phStatus
-                    }
+                    parameter={item.normalized.safety?.parameters.ph}
                   />
 
                   <SensorMiniCard
@@ -2153,10 +1992,7 @@ export default function TanksPage() {
                       item.normalized
                         .turbidityStatus
                     }
-                    status={
-                      item.normalized
-                        .turbidityStatus
-                    }
+                    parameter={item.normalized.safety?.parameters.turbidity}
                   />
 
                   <SensorMiniCard
@@ -2168,41 +2004,18 @@ export default function TanksPage() {
                       item.normalized
                         .waterLabel
                     }
-                    status={
-                      item.normalized
-                        .waterStatus
-                    }
+                    parameter={item.normalized.safety?.parameters.waterLevel}
                   />
                 </div>
 
                 {/* SAFE RANGE */}
 
                 {item.safety && (
-                  <div
-                    className={`modern-tank-safety-chip ${
-                      item.safety.isSafe
-                        ? "is-safe"
-                        : "is-unsafe"
-                    }`}
-                  >
-                    {item.safety.isSafe ? (
-                      <CheckCircle2
-                        size={15}
-                      />
-                    ) : (
-                      <AlertTriangle
-                        size={15}
-                      />
-                    )}
-
+                  <div className={`modern-tank-safety-chip safety-surface ${item.status}`}>
+                    <SafetyIcon severity={item.status} size={15} />
                     <span>
-                      {item.safety.isSafe
-                        ? "Within safe range"
-                        : `${item.safety.issues.length} ${
-                            item.safety.issues.length === 1
-                              ? "parameter"
-                              : "parameters"
-                          } outside safe range`}
+                      {getSafetyStatusLabel(item.status)}
+                      {item.safety.issues.length > 0 && ` ? ${item.safety.issues.length} parameter(s) outside the configured range`}
                     </span>
                   </div>
                 )}
