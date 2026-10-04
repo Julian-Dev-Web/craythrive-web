@@ -1,3 +1,7 @@
+import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
+import { getSafetySeverity, getSafetyStatusLabel, getParameterExplanation } from "../../utils/statusHelpers";
+import { buildMonitoringRecords, evaluateCurrentTankSafety, getLatestAmmoniaForTank, getAmmoniaNumericValue } from "../../utils/monitoringRecords";
+import { evaluateReadingSafety } from "../../utils/thresholdEvaluation";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -21,7 +25,6 @@ import { isSupabaseConfigured, supabase } from "../../lib/supabase";
 
 import {
   formatReadingTime,
-  normalizeSensorReading,
   toNumberOrNull,
 } from "../../utils/sensorReadingUtils";
 
@@ -151,123 +154,16 @@ function normalizeStatusText(value) {
    USER-FRIENDLY TANK NAME
 ========================================================= */
 
-function getTankDisplayName(tankId, tanks = []) {
-  if (!tankId) {
-    return "My Tank";
-  }
-
-  const matchedTank = tanks.find((tank) => {
-    const candidateIds = [
-      tank?.id,
-      tank?.tank_id,
-      tank?.uuid,
-    ]
-      .filter(Boolean)
-      .map(String);
-
-    return candidateIds.includes(String(tankId));
-  });
-
-  return (
-    matchedTank?.tank_name ||
-    matchedTank?.name ||
-    matchedTank?.title ||
-    matchedTank?.tank_label ||
-    matchedTank?.display_name ||
-    "My Tank"
-  );
-}
 
 /* =========================================================
    AMMONIA HELPERS
 ========================================================= */
 
-function getAmmoniaNumericValue(row) {
-  const raw =
-    row?.ammonia_mg_l ??
-    row?.ammonia_level ??
-    row?.ammonia_ppm ??
-    row?.ammonia_value ??
-    row?.value ??
-    row?.ppm;
-
-  const numberValue = Number(raw);
-
-  return Number.isFinite(numberValue)
-    ? numberValue
-    : null;
-}
-
-function getAmmoniaTankId(row) {
-  return String(
-    row?.tank_id ||
-      row?.tank_uuid ||
-      ""
-  );
-}
-
-function getAmmoniaRowDate(row) {
-  return (
-    row?.created_at ||
-    row?.timestamp ||
-    row?.date ||
-    row?.updated_at ||
-    ""
-  );
-}
-
-function getTankIdCandidates(tank) {
-  return [
-    tank?.id,
-    tank?.tank_id,
-    tank?.uuid,
-  ]
-    .filter(Boolean)
-    .map(String);
-}
 
 /* =========================================================
    SENSOR STATUS
 ========================================================= */
 
-function getStatusSeverity(statuses) {
-  const joined = statuses
-    .map(normalizeStatusText)
-    .join(" ");
-
-  if (
-    joined.includes("critical") ||
-    joined.includes("danger") ||
-    joined.includes("unsafe") ||
-    joined.includes("high ph") ||
-    joined.includes("low ph") ||
-    joined.includes("warm") ||
-    joined.includes("cold")
-  ) {
-    return "critical";
-  }
-
-  if (
-    joined.includes("warning") ||
-    joined.includes("dirty") ||
-    joined.includes("slightly") ||
-    joined.includes("needs") ||
-    joined.includes("moderate")
-  ) {
-    return "warning";
-  }
-
-  return "normal";
-}
-
-function getOverallReadingStatus(normalizedReading) {
-  return getStatusSeverity([
-    normalizedReading.temperatureStatus,
-    normalizedReading.phStatus,
-    normalizedReading.turbidityStatus,
-    normalizedReading.waterStatus,
-  ]);
-}
 
 /* =========================================================
    ALERT HELPERS
@@ -624,6 +520,7 @@ export default function DashboardOverview() {
   ======================================================= */
 
   const loadDashboard = async () => {
+    setThresholds(await loadActiveThresholds());
     if (
       !isSupabaseConfigured ||
       !supabase
@@ -724,131 +621,33 @@ export default function DashboardOverview() {
      SENSOR READINGS
   ======================================================= */
 
-  const enrichedReadings = useMemo(() => {
-    return datasets.readings.map(
-      (reading, index) => {
-        const normalized =
-          normalizeSensorReading(reading);
-
-        const status =
-          getOverallReadingStatus(normalized);
-
-        /*
-         * IMPORTANT:
-         * Use readable tank name instead of UUID.
-         */
-        const tankName =
-          reading?.tank_name ||
-          reading?.tank_label ||
-          reading?.tank_display_name ||
-          getTankDisplayName(
-            reading?.tank_id ||
-              reading?.tank_uuid,
-            datasets.tanks
-          ) ||
-          `Tank ${index + 1}`;
-
-        const date =
-          normalized.createdAt ||
-          reading?.timestamp ||
-          reading?.date ||
-          reading?.updated_at;
-
-        return {
-          reading,
-          normalized,
-          status,
-          tankName: String(tankName),
-          date,
-        };
-      }
-    );
-  }, [
-    datasets.readings,
-    datasets.tanks,
-  ]);
-
-  const latestReading =
-    enrichedReadings[0] || null;
-
-  const latestReadingTankId = String(
-    latestReading?.reading?.tank_id ||
-      latestReading?.reading?.tank_uuid ||
-      ""
+  const monitoringRecords = useMemo(
+    () => buildMonitoringRecords(datasets.readings, datasets.ammonia, datasets.tanks, thresholds),
+    [datasets.readings, datasets.ammonia, datasets.tanks, thresholds]
   );
-
-  const latestAmmoniaForReading = useMemo(() => {
-    if (!latestReadingTankId) {
-      return null;
-    }
-
-    const matchedRows = datasets.ammonia.filter(
-      (row) =>
-        getAmmoniaTankId(row) === latestReadingTankId
-    );
-
-    if (matchedRows.length === 0) {
-      return null;
-    }
-
-    const latestRow = [...matchedRows].sort(
-      (a, b) =>
-        new Date(getAmmoniaRowDate(b)) -
-        new Date(getAmmoniaRowDate(a))
-    )[0];
-
-    return getAmmoniaNumericValue(latestRow);
-  }, [
-    datasets.ammonia,
-    latestReadingTankId,
-  ]);
+  const enrichedReadings = useMemo(() => monitoringRecords.filter(item => item.type === "Water Reading"), [monitoringRecords]);
+  const latestReading = enrichedReadings[0] || null;
+  const latestAmmoniaRecord = monitoringRecords.find(item => item.type === "Ammonia Reading" &&
+    (!latestReading || item.tankKey === latestReading.tankKey)) || null;
+  const latestAmmoniaForReading = latestAmmoniaRecord?.ammoniaValue ?? null;
+  const latestTankSafety = evaluateCurrentTankSafety(latestReading, latestAmmoniaRecord, thresholds);
 
   /* =======================================================
      AMMONIA STATUS
   ======================================================= */
 
   const ammoniaStats = useMemo(() => {
-    const ammoniaMax = thresholds?.ammoniaMax;
-
     let elevated = 0;
     let noScan = 0;
-
-    datasets.tanks.forEach((tank) => {
-      const tankIds = getTankIdCandidates(tank);
-
-      const matchedRows = datasets.ammonia.filter(
-        (row) =>
-          tankIds.includes(getAmmoniaTankId(row))
-      );
-
-      if (matchedRows.length === 0) {
-        noScan += 1;
-        return;
-      }
-
-      const latestRow = [...matchedRows].sort(
-        (a, b) =>
-          new Date(getAmmoniaRowDate(b)) -
-          new Date(getAmmoniaRowDate(a))
-      )[0];
-
-      const value = getAmmoniaNumericValue(latestRow);
-
-      if (
-        value !== null &&
-        ammoniaMax !== undefined &&
-        value > ammoniaMax
-      ) {
-        elevated += 1;
-      }
+    datasets.tanks.forEach(tank => {
+      const row = getLatestAmmoniaForTank(tank, datasets.ammonia);
+      const value = getAmmoniaNumericValue(row);
+      if (value === null) { noScan += 1; return; }
+      const parameter = evaluateReadingSafety({ ammonia: value }, thresholds).parameters.ammonia;
+      if (["warning", "critical"].includes(parameter.severity)) elevated += 1;
     });
-
     return { elevated, noScan };
-  }, [
-    datasets.tanks,
-    datasets.ammonia,
-    thresholds,
-  ]);
+  }, [datasets.tanks, datasets.ammonia, thresholds]);
 
   /* =======================================================
      STATS
@@ -1012,7 +811,7 @@ export default function DashboardOverview() {
 
   const recentSensorIssues =
     useMemo(() => {
-      return enrichedReadings
+      return monitoringRecords
         .filter((item) =>
           [
             "warning",
@@ -1025,7 +824,7 @@ export default function DashboardOverview() {
             new Date(a.date || 0)
         )
         .slice(0, 5);
-    }, [enrichedReadings]);
+    }, [monitoringRecords]);
 
   /* =======================================================
      MARKETPLACE ACTIVITY
@@ -1163,7 +962,7 @@ export default function DashboardOverview() {
   ======================================================= */
 
   const hasCriticalProblem =
-    stats.criticalAlerts > 0 ||
+    stats.criticalAlerts > 0 || stats.ammoniaElevated > 0 ||
     recentSensorIssues.some(
       (item) =>
         item.status === "critical"
@@ -1173,15 +972,12 @@ export default function DashboardOverview() {
     stats.sensorIssues > 0 ||
     stats.activeAlerts > 0;
 
-  const simpleHealthTitle =
-    hasCriticalProblem
-      ? "Action needed"
-      : hasWarning
-        ? "Needs attention"
-        : "Everything looks good";
+  const simpleHealthSeverity = hasCriticalProblem ? "critical" : hasWarning ? "warning"
+    : monitoringRecords.some(item => item.normalized.safety.hasData) ? "normal" : "no-data";
+  const simpleHealthTitle = getSafetyStatusLabel(simpleHealthSeverity);
 
   const simpleHealthText =
-    hasCriticalProblem
+    simpleHealthSeverity === "no-data" ? "Waiting for sensor readings or ammonia scans." : hasCriticalProblem
       ? "One or more tank conditions need to be checked as soon as possible."
       : hasWarning
         ? "Some tank conditions need your attention. CrayThrive is continuing to monitor them."
@@ -1199,23 +995,12 @@ export default function DashboardOverview() {
       ================================================ */}
 
       <section
-        className={`farmer-status-banner ${
-          hasCriticalProblem
-            ? "critical"
-            : hasWarning
-              ? "warning"
-              : "success"
-        }`}
+        className={`farmer-status-banner safety-surface ${simpleHealthSeverity}`}
       >
         <div className="farmer-status-content">
 
           <div className="farmer-status-icon">
-            {hasCriticalProblem ||
-            hasWarning ? (
-              <AlertTriangle size={27} />
-            ) : (
-              <CheckCircle2 size={27} />
-            )}
+            <SafetyIcon severity={simpleHealthSeverity} size={27} />
           </div>
 
           <div>
@@ -1386,11 +1171,7 @@ export default function DashboardOverview() {
 
           <Link
             to="/admin/tanks"
-            className={`farmer-summary-card ${
-              stats.ammoniaElevated > 0
-                ? "warning"
-                : ""
-            }`}
+            className={`farmer-summary-card safety-surface ${stats.ammoniaElevated > 0 ? "critical" : stats.ammoniaNoScan > 0 ? "no-data" : "normal"}`}
           >
             <div className="farmer-summary-icon">
               <FlaskConical size={22} />
@@ -1464,165 +1245,27 @@ export default function DashboardOverview() {
                   </span>
                 </div>
 
-                <b
-                  className={`modern-status-chip ${latestReading.status}`}
-                >
-                  {latestReading.status ===
-                  "normal"
-                    ? "Good"
-                    : latestReading.status ===
-                        "warning"
-                      ? "Check"
-                      : "Attention"}
-                </b>
+                <SafetyBadge severity={getSafetySeverity(latestTankSafety)} />
               </div>
 
               <div className="farmer-water-grid">
-
-                <div className="farmer-water-item">
-
-                  <span className="farmer-water-icon">
-                    <Thermometer
-                      size={21}
-                    />
-                  </span>
-
-                  <div>
-                    <small>
-                      Temperature
-                    </small>
-
-                    <strong>
-                      {
-                        latestReading
-                          .normalized
-                          .temperatureLabel
-                      }
-                    </strong>
-
-                    <span>
-                      {
-                        latestReading
-                          .normalized
-                          .temperatureStatus
-                      }
-                    </span>
+                {[
+                  ["Temperature", latestReading.normalized.temperatureLabel, "temperature", Thermometer],
+                  ["pH Level", latestReading.normalized.phNumberLabel, "ph", Droplets],
+                  ["Water Clarity", latestReading.normalized.turbidityStatus, "turbidity", Waves],
+                  ["Water Level", latestReading.normalized.waterLabel, "waterLevel", Database],
+                  ["Ammonia", latestAmmoniaForReading === null ? "No Scan" : latestAmmoniaForReading.toFixed(2) + " mg/L", "ammonia", FlaskConical],
+                ].map(([label, value, key, Icon]) => (
+                  <div className="farmer-water-item" key={key}>
+                    <span className="farmer-water-icon"><Icon size={21} /></span>
+                    <div><small>{label}</small><strong>{value}</strong>
+                      <SafetyBadge severity={latestTankSafety.parameters[key].severity} emptyLabel={key === "ammonia" ? "No Scan" : "No Data"} />
+                      {getParameterExplanation(latestTankSafety.parameters[key], label) &&
+                        <span>{getParameterExplanation(latestTankSafety.parameters[key], label)}</span>}
+                      {key === "ammonia" && latestAmmoniaRecord?.date && <span>Latest scan: {formatReadingTime(latestAmmoniaRecord.date)}</span>}
+                    </div>
                   </div>
-                </div>
-
-                <div className="farmer-water-item">
-
-                  <span className="farmer-water-icon">
-                    <Droplets
-                      size={21}
-                    />
-                  </span>
-
-                  <div>
-                    <small>
-                      pH Level
-                    </small>
-
-                    <strong>
-                      {
-                        latestReading
-                          .normalized
-                          .phStatus
-                      }
-                    </strong>
-
-                    <span>
-                      Water acidity
-                    </span>
-                  </div>
-                </div>
-
-                <div className="farmer-water-item">
-
-                  <span className="farmer-water-icon">
-                    <Waves
-                      size={21}
-                    />
-                  </span>
-
-                  <div>
-                    <small>
-                      Water Clarity
-                    </small>
-
-                    <strong>
-                      {
-                        latestReading
-                          .normalized
-                          .turbidityStatus
-                      }
-                    </strong>
-
-                    <span>
-                      Water cleanliness
-                    </span>
-                  </div>
-                </div>
-
-                <div className="farmer-water-item">
-
-                  <span className="farmer-water-icon">
-                    <Database
-                      size={21}
-                    />
-                  </span>
-
-                  <div>
-                    <small>
-                      Water Level
-                    </small>
-
-                    <strong>
-                      {
-                        latestReading
-                          .normalized
-                          .waterLabel
-                      }
-                    </strong>
-
-                    <span>
-                      {
-                        latestReading
-                          .normalized
-                          .waterStatus
-                      }
-                    </span>
-                  </div>
-                </div>
-
-                <div className="farmer-water-item">
-
-                  <span className="farmer-water-icon">
-                    <FlaskConical
-                      size={21}
-                    />
-                  </span>
-
-                  <div>
-                    <small>
-                      Ammonia
-                    </small>
-
-                    <strong>
-                      {latestAmmoniaForReading ===
-                        null
-                        ? "No Scan"
-                        : `${latestAmmoniaForReading} mg/L`}
-                    </strong>
-
-                    <span>
-                      {latestAmmoniaForReading ===
-                        null
-                        ? "Waiting for mobile scan"
-                        : "Latest test-strip result"}
-                    </span>
-                  </div>
-                </div>
+                ))}
               </div>
             </>
           ) : (
@@ -1651,7 +1294,7 @@ export default function DashboardOverview() {
 
             <div>
               <span>
-                Needs Attention
+                Warning / Critical
               </span>
 
               <h3>
@@ -1717,14 +1360,7 @@ export default function DashboardOverview() {
                         </span>
                       </div>
 
-                      <b
-                        className={`modern-status-chip ${item.status}`}
-                      >
-                        {item.status ===
-                        "critical"
-                          ? "Urgent"
-                          : "Check"}
-                      </b>
+                      <SafetyBadge severity={item.status} />
                     </div>
                   )
                 )}

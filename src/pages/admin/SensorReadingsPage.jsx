@@ -1,3 +1,4 @@
+import { buildMonitoringRecords, evaluateCurrentTankSafety } from "../../utils/monitoringRecords";
 import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
 import { getSafetySeverity, getParameterExplanation, getSafetyStatusLabel } from "../../utils/statusHelpers";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -16,6 +17,7 @@ import {
   Loader2,
   RefreshCw,
   Search,
+  FlaskConical,
   Thermometer,
   Waves,
 } from "lucide-react";
@@ -27,7 +29,6 @@ import {
 
 import {
   formatReadingTime,
-  normalizeSensorReading,
   toNumberOrNull,
 } from "../../utils/sensorReadingUtils";
 
@@ -78,6 +79,7 @@ const sensorOptions = [
     value: "water_depth",
     label: "Water Level",
   },
+  { value: "ammonia", label: "Ammonia" },
   {
     value: "issues",
     label: "Warning / Critical",
@@ -92,22 +94,6 @@ function lower(value) {
   return clean(value).toLowerCase();
 }
 
-
-function formatFriendlyText(value) {
-  const text = clean(value);
-
-  if (!text) {
-    return "No Reading";
-  }
-
-  return text
-    .replaceAll("_", " ")
-    .replaceAll("-", " ")
-    .toLowerCase()
-    .replace(/\b\w/g, (character) =>
-      character.toUpperCase()
-    );
-}
 
 function formatDate(value) {
   if (!value) {
@@ -127,11 +113,6 @@ function formatDate(value) {
     hour: "numeric",
     minute: "2-digit",
   });
-}
-
-
-function getOverallReadingStatus(normalizedReading) {
-  return getSafetySeverity(normalizedReading.safety);
 }
 
 
@@ -157,6 +138,13 @@ function getSensorFocus(
 ) {
   const normalized =
     item.normalized;
+
+  if (sensorFilter === "ammonia") {
+    return { label: "Ammonia", value: item.ammoniaLabel,
+      status: item.type === "Ammonia Reading" ? getSafetyStatusLabel(item.status) : "No Scan",
+      severity: item.type === "Ammonia Reading" ? item.status : "no-data",
+      hasValue: item.type === "Ammonia Reading" };
+  }
 
   if (sensorFilter === "temperature") {
     return {
@@ -276,83 +264,6 @@ function averageFromNormalized(
     total /
     values.length
   ).toFixed(2);
-}
-
-function getTankIdValues(tank) {
-  return [
-    tank?.id,
-    tank?.tank_id,
-    tank?.uuid,
-    tank?.device_uid,
-    tank?.iot_device_id,
-    tank?.device_id,
-  ]
-    .filter(Boolean)
-    .map(String);
-}
-
-function getReadingTankValues(
-  reading
-) {
-  return [
-    reading?.tank_id,
-    reading?.tankId,
-    reading?.tank_uuid,
-    reading?.tank_profile_id,
-    reading?.device_uid,
-    reading?.iot_device_id,
-    reading?.device_id,
-  ]
-    .filter(Boolean)
-    .map(String);
-}
-
-function getTankDisplayName(
-  reading,
-  tanks,
-  index
-) {
-  const directName =
-    reading?.tank_name ||
-    reading?.tank_label ||
-    reading?.tank_display_name ||
-    reading?.name;
-
-  if (directName) {
-    return directName;
-  }
-
-  const readingKeys =
-    getReadingTankValues(
-      reading
-    );
-
-  const matchedTank =
-    tanks.find((tank) => {
-      const tankKeys =
-        getTankIdValues(
-          tank
-        );
-
-      return readingKeys.some(
-        (key) =>
-          tankKeys.includes(
-            key
-          )
-      );
-    });
-
-  if (matchedTank) {
-    return (
-      matchedTank?.name ||
-      matchedTank?.tank_name ||
-      matchedTank?.title ||
-      matchedTank?.label ||
-      `Tank ${index + 1}`
-    );
-  }
-
-  return `Tank ${index + 1}`;
 }
 
 function uniqueRows(rows) {
@@ -682,7 +593,7 @@ function SummaryCard({
   );
 }
 
-function MetricCard({ icon: Icon, label, value, parameter }) {
+function MetricCard({ icon: Icon, label, value, parameter, scanDate }) {
   const explanation = getParameterExplanation(parameter, label.replace(/^Latest /, ""));
   return (
     <div className="modern-reading-metric">
@@ -690,8 +601,9 @@ function MetricCard({ icon: Icon, label, value, parameter }) {
       <div>
         <small>{label}</small>
         <strong>{value}</strong>
-        <SafetyBadge className="modern-reading-status" severity={parameter?.severity} />
+        <SafetyBadge className="modern-reading-status" severity={parameter?.severity} emptyLabel={label === "Ammonia" ? "No Scan" : "No Data"} />
         {explanation && <small className="safety-explanation">{explanation}</small>}
+        {scanDate && <small>Latest ammonia scan: {formatReadingTime(scanDate)}</small>}
       </div>
     </div>
   );
@@ -954,6 +866,8 @@ export default function SensorReadingsPage() {
   ] =
     useState(null);
 
+  const [ammoniaReadings, setAmmoniaReadings] = useState([]);
+
   const [
     thresholds,
     setThresholds,
@@ -999,6 +913,7 @@ export default function SensorReadingsPage() {
           !currentUser.id
         ) {
           setReadings([]);
+          setAmmoniaReadings([]);
           setTanks([]);
           return;
         }
@@ -1006,8 +921,10 @@ export default function SensorReadingsPage() {
         const [
           readingResult,
           tankResult,
+          ammoniaResult,
         ] =
           await Promise.all([
+
             currentUser.isAdmin
               ? fetchAdminRows(
                   readingTables
@@ -1027,6 +944,9 @@ export default function SensorReadingsPage() {
                   currentUser.id,
                   300
                 ),
+            currentUser.isAdmin
+              ? fetchAdminRows(["ammonia_readings"])
+              : fetchUserRows(["ammonia_readings"], currentUser.id),
           ]);
 
         setReadings(
@@ -1036,6 +956,7 @@ export default function SensorReadingsPage() {
         setTanks(
           tankResult.rows
         );
+        setAmmoniaReadings(ammoniaResult.rows);
 
         setLastUpdated(
           new Date()
@@ -1063,78 +984,10 @@ export default function SensorReadingsPage() {
     tankFilter,
   ]);
 
-  const enrichedReadings =
-    useMemo(() => {
-      return readings
-        .map(
-          (
-            reading,
-            index
-          ) => {
-            const normalized =
-              normalizeSensorReading(reading, thresholds);
-
-            const status =
-              getOverallReadingStatus(
-                normalized
-              );
-
-            const tankName =
-              getTankDisplayName(
-                reading,
-                tanks,
-                index
-              );
-
-            const date =
-              normalized.createdAt ||
-              reading?.created_at ||
-              reading?.timestamp ||
-              reading?.date ||
-              reading?.updated_at;
-
-            const tankKey =
-              getReadingTankValues(
-                reading
-              )[0] ||
-              `tank-name:${String(
-                tankName
-              )}`;
-
-            return {
-              reading,
-              normalized,
-              index,
-              status,
-
-              tankKey:
-                String(
-                  tankKey
-                ),
-
-              tankName:
-                String(
-                  tankName
-                ),
-
-              date,
-            };
-          }
-        )
-        .sort(
-          (a, b) =>
-            new Date(
-              b.date || 0
-            ) -
-            new Date(
-              a.date || 0
-            )
-        );
-    }, [
-      readings,
-      tanks,
-      thresholds,
-    ]);
+  const enrichedReadings = useMemo(
+    () => buildMonitoringRecords(readings, ammoniaReadings, tanks, thresholds),
+    [readings, ammoniaReadings, tanks, thresholds]
+  );
 
   const tankFilterOptions =
     useMemo(() => {
@@ -1252,6 +1105,9 @@ export default function SensorReadingsPage() {
 
             const searchableText =
               [
+                item.type,
+                item.ammoniaLabel,
+                getSafetyStatusLabel(item.status),
                 item.tankName,
                 item.status,
 
@@ -1309,7 +1165,7 @@ export default function SensorReadingsPage() {
                   item.status
                 )
               ) ||
-              focus.hasValue;
+              (sensorFilter !== "issues" && focus.hasValue);
 
             return (
               matchesSearch &&
@@ -1474,69 +1330,15 @@ export default function SensorReadingsPage() {
       tankScopedReadings,
     ]);
 
-  const latestReading =
-    tankScopedReadings[0] ||
-    null;
+  const latestReading = tankScopedReadings.find(item => item.type === "Water Reading") || null;
+  const latestAmmonia = tankScopedReadings.find(item => item.type === "Ammonia Reading" &&
+    (!latestReading || item.tankKey === latestReading.tankKey)) || null;
 
-  const latestWaterDepth =
-    latestReading
-      ? (
-          toNumberOrNull(
-            latestReading
-              ?.reading
-              ?.water_depth_cm
-          ) ??
-          toNumberOrNull(
-            latestReading
-              ?.reading
-              ?.water_level
-          ) ??
-          toNumberOrNull(
-            latestReading
-              ?.normalized
-              ?.waterValue
-          )
-        )
-      : null;
+  const latestWaterDepth = toNumberOrNull(latestReading?.normalized.waterValue);
+  const latestTemperature = toNumberOrNull(latestReading?.normalized.temperatureValue);
+  const latestPH = toNumberOrNull(latestReading?.normalized.phValue);
 
-  const latestTemperature =
-    latestReading
-      ? (
-          toNumberOrNull(
-            latestReading
-              ?.reading
-              ?.temperature_c
-          ) ??
-          toNumberOrNull(
-            latestReading
-              ?.reading
-              ?.temperature
-          ) ??
-          toNumberOrNull(
-            latestReading
-              ?.normalized
-              ?.temperatureValue
-          )
-        )
-      : null;
-
-  const latestPH =
-    latestReading
-      ? (
-          toNumberOrNull(
-            latestReading
-              ?.reading
-              ?.ph_value
-          ) ??
-          toNumberOrNull(
-            latestReading
-              ?.reading
-              ?.ph
-          )
-        )
-      : null;
-
-  const latestSafety = latestReading?.normalized?.safety || null;
+  const latestSafety = evaluateCurrentTankSafety(latestReading, latestAmmonia, thresholds);
 
   const selectedTankName =
     tankFilter ===
@@ -1818,6 +1620,9 @@ export default function SensorReadingsPage() {
               }
               parameter={latestReading?.normalized?.safety?.parameters.waterLevel}
             />
+            <MetricCard icon={FlaskConical} label="Ammonia"
+              value={latestAmmonia?.ammoniaLabel || "No Scan"}
+              parameter={latestSafety.parameters.ammonia} scanDate={latestAmmonia?.date} />
           </div>
         </article>
 
@@ -1860,7 +1665,7 @@ export default function SensorReadingsPage() {
                 </span>
               </div>
 
-              <SafetyBadge className="modern-reading-status" severity={latestReading.status} />
+              <SafetyBadge className="modern-reading-status" severity={getSafetySeverity(latestSafety)} />
             </div>
           ) : (
             <div className="modern-reading-empty-small">
@@ -1985,7 +1790,7 @@ export default function SensorReadingsPage() {
               </span>
 
               <h3>
-                Water records
+                Water and ammonia records
               </h3>
             </div>
 
@@ -1996,7 +1801,9 @@ export default function SensorReadingsPage() {
             </small>
           </div>
 
+          <div className="modern-reading-table-scroll">
           <div className="modern-reading-table-header">
+            <span>Type</span>
             <span>
               Tank
             </span>
@@ -2017,6 +1824,7 @@ export default function SensorReadingsPage() {
               Water Level
             </span>
 
+            <span>Ammonia</span>
             <span>
               Status
             </span>
@@ -2027,126 +1835,44 @@ export default function SensorReadingsPage() {
           </div>
 
           <div className="modern-reading-table-body">
-            {paginatedReadings.map(
-              (item) => {
-                const normalized =
-                  item.normalized;
-
-                const row =
-                  item.reading;
-
-                const focus =
-                  getSensorFocus(
-                    item,
-                    sensorFilter
-                  );
-
-                const displaySeverity =
-                  sensorFilter ===
-                    "all" ||
-                  sensorFilter ===
-                    "issues"
-                    ? item.status
-                    : focus.severity;
-
-                const rowWaterDepth =
-                  toNumberOrNull(
-                    row?.water_depth_cm
-                  ) ??
-                  toNumberOrNull(
-                    row?.water_level
-                  ) ??
-                  toNumberOrNull(
-                    normalized.waterValue
-                  );
-
-                const rowPH =
-                  toNumberOrNull(
-                    row?.ph_value
-                  ) ??
-                  toNumberOrNull(
-                    row?.ph
-                  );
-
-                return (
-                  <div
-                    className="modern-reading-table-row"
-                    key={
-                      row?.id ||
-                      row?.reading_id ||
-                      `${item.tankKey}:${item.date}:${item.index}`
-                    }
-                  >
-                    <span data-label="Tank">
-                      <strong>
-                        {
-                          item.tankName
-                        }
-                      </strong>
+            {paginatedReadings.map(item => {
+              const water = item.type === "Water Reading";
+              const normalized = item.normalized;
+              const focus = getSensorFocus(item, sensorFilter);
+              const displaySeverity = ["all", "issues"].includes(sensorFilter) ? item.status : focus.severity;
+              const metrics = [
+                ["Temperature", normalized.temperatureLabel, "temperature"],
+                ["pH", normalized.phNumberLabel, "ph"],
+                ["Water Clarity", normalized.turbidityNumberLabel, "turbidity"],
+                ["Water Level", normalized.waterLabel, "waterLevel"],
+              ];
+              return (
+                <div className="modern-reading-table-row" key={item.recordId}>
+                  <span data-label="Type">{item.type}</span>
+                  <span data-label="Tank"><strong>{item.tankName}</strong></span>
+                  {metrics.map(([label, value, key]) => (
+                    <span data-label={label} key={key}>
+                      {water ? <>
+                        {value}
+                        <SafetyBadge severity={normalized.safety.parameters[key].severity} />
+                        {getParameterExplanation(normalized.safety.parameters[key], label) &&
+                          <small className="safety-explanation">{getParameterExplanation(normalized.safety.parameters[key], label)}</small>}
+                      </> : "-"}
                     </span>
+                  ))}
+                  <span data-label="Ammonia">{water ? "-" : <>
+                    {item.ammoniaLabel}
+                    <SafetyBadge severity={item.status} emptyLabel="No Scan" />
+                    {getParameterExplanation(normalized.safety.parameters.ammonia, "Ammonia") &&
+                      <small className="safety-explanation">{getParameterExplanation(normalized.safety.parameters.ammonia, "Ammonia")}</small>}
+                  </>}</span>
+                  <span data-label="Status"><SafetyBadge severity={displaySeverity} /></span>
+                  <span data-label="Date">{formatDate(item.date)}</span>
+                </div>
+              );
+            })}
+          </div>
 
-                    <span data-label="Temperature">
-                      {
-                        normalized.temperatureLabel
-                      }
-
-                      <SafetyBadge className="modern-reading-status" severity={normalized.safety?.parameters.temperature.severity} />
-                      {getParameterExplanation(normalized.safety?.parameters.temperature, "Temperature") && (
-                        <small className="safety-explanation">{getParameterExplanation(normalized.safety?.parameters.temperature, "Temperature")}</small>
-                      )}
-                    </span>
-
-                    <span data-label="pH">
-                      {rowPH !==
-                        null && (
-                        <span>
-                          {rowPH.toFixed(
-                            2
-                          )}
-                        </span>
-                      )}
-
-                      <SafetyBadge className="modern-reading-status" severity={normalized.safety?.parameters.ph.severity} />
-                      {getParameterExplanation(normalized.safety?.parameters.ph, "pH") && (
-                        <small className="safety-explanation">{getParameterExplanation(normalized.safety?.parameters.ph, "pH")}</small>
-                      )}
-                    </span>
-
-                    <span data-label="Water Clarity">
-                      <span>{formatFriendlyText(normalized.turbidityStatus)}</span>
-                      <SafetyBadge className="modern-reading-status" severity={normalized.safety?.parameters.turbidity.severity} />
-                      {getParameterExplanation(normalized.safety?.parameters.turbidity, "Water Clarity") && (
-                        <small className="safety-explanation">{getParameterExplanation(normalized.safety?.parameters.turbidity, "Water Clarity")}</small>
-                      )}
-                    </span>
-
-                    <span data-label="Water Level">
-                      {rowWaterDepth ===
-                        null
-                        ? normalized.waterLabel
-                        : `${rowWaterDepth.toFixed(
-                            2
-                          )} cm`}
-
-                      <SafetyBadge className="modern-reading-status" severity={normalized.safety?.parameters.waterLevel.severity} />
-                      {getParameterExplanation(normalized.safety?.parameters.waterLevel, "Water Level") && (
-                        <small className="safety-explanation">{getParameterExplanation(normalized.safety?.parameters.waterLevel, "Water Level")}</small>
-                      )}
-                    </span>
-
-                    <span data-label="Status">
-                      <SafetyBadge className="modern-reading-status" severity={displaySeverity} />
-                    </span>
-
-                    <span data-label="Date">
-                      {formatDate(
-                        item.date
-                      )}
-                    </span>
-                  </div>
-                );
-              }
-            )}
           </div>
 
           <div className="modern-reading-pagination">
@@ -2219,10 +1945,7 @@ export default function SensorReadingsPage() {
 const readingToolbarStyle = {
   display: "grid",
 
-  gridTemplateColumns:
-    "minmax(260px, 1fr) minmax(160px, 190px) minmax(160px, 190px) minmax(170px, 200px)",
-
-  alignItems: "center",
+alignItems: "center",
 
   gap: "10px",
 
@@ -2326,8 +2049,9 @@ const readingDropdownTriggerStyle = {
   padding:
     "0 13px",
 
-  border:
-    "1px solid var(--ct-border, var(--border, #e5e4e7))",
+  borderWidth: "1px",
+  borderStyle: "solid",
+  borderColor: "var(--ct-border, var(--border, #e5e4e7))",
 
   borderRadius:
     "12px",

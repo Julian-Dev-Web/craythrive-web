@@ -1,3 +1,4 @@
+import SafetyBadge from "../../components/SafetyBadge";
 import {
   useEffect,
   useMemo,
@@ -99,23 +100,19 @@ const categoryOptions = [
 const severityOptions = [
   {
     value: "all",
-    label: "All Priority",
+    label: "All",
   },
   {
     value: "critical",
-    label: "Urgent",
+    label: "Critical",
   },
   {
     value: "warning",
-    label: "Needs Checking",
-  },
-  {
-    value: "info",
-    label: "Information",
+    label: "Warning",
   },
   {
     value: "normal",
-    label: "Good",
+    label: "Normal",
   },
 ];
 
@@ -397,23 +394,6 @@ function getAlertDate(row) {
   );
 }
 
-function getFriendlySeverity(
-  severity
-) {
-  switch (severity) {
-    case "critical":
-      return "Urgent";
-
-    case "warning":
-      return "Check";
-
-    case "normal":
-      return "Good";
-
-    default:
-      return "Info";
-  }
-}
 
 function getFriendlyAlertStatus(
   status
@@ -1727,7 +1707,7 @@ export default function AlertsPage() {
 
           <span>
             {summary.critical > 0
-              ? "Urgent alerts"
+              ? "Critical alerts"
               : summary.open > 0
                 ? "Open alerts"
                 : "No open alerts"}
@@ -1756,7 +1736,7 @@ export default function AlertsPage() {
 
         <SummaryCard
           icon={Siren}
-          label="Urgent"
+          label="Critical"
           value={
             summary.critical
           }
@@ -1768,7 +1748,7 @@ export default function AlertsPage() {
           icon={
             AlertTriangle
           }
-          label="Needs Checking"
+          label="Warning"
           value={
             summary.warning
           }
@@ -1816,13 +1796,7 @@ export default function AlertsPage() {
           {latestCritical ? (
             <div className="cray-priority-alert">
               <div className="cray-priority-top">
-                <b
-                  className={`cray-alert-severity ${latestCritical.severity}`}
-                >
-                  {getFriendlySeverity(
-                    latestCritical.severity
-                  )}
-                </b>
+                <SafetyBadge className="cray-alert-severity" severity={latestCritical.severity} emptyLabel="Information" />
 
                 <small>
                   {formatDate(
@@ -2153,13 +2127,7 @@ export default function AlertsPage() {
                         </div>
 
                         <div className="cray-alert-chip-row">
-                          <b
-                            className={`cray-alert-severity ${item.severity}`}
-                          >
-                            {getFriendlySeverity(
-                              item.severity
-                            )}
-                          </b>
+                          <SafetyBadge className="cray-alert-severity" severity={item.severity} emptyLabel="Information" />
 
                           <small
                             className={`cray-alert-status ${item.status}`}

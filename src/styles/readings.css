@@ -7,6 +7,7 @@
   min-width: 0;
 
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 20px;
 
   color: var(--ct-text);
@@ -634,8 +635,9 @@
 
   grid-template-columns:
     minmax(260px, 1fr)
-    210px
-    210px;
+    minmax(160px, 190px)
+    minmax(160px, 190px)
+    minmax(170px, 200px);
 
   gap: 12px;
 
@@ -793,11 +795,13 @@
   display: grid;
 
   grid-template-columns:
+    minmax(115px, 0.9fr)
     minmax(145px, 1.25fr)
     minmax(105px, 0.85fr)
     minmax(100px, 0.75fr)
     minmax(115px, 0.9fr)
     minmax(105px, 0.8fr)
+    minmax(110px, 0.85fr)
     minmax(100px, 0.75fr)
     minmax(145px, 1fr);
 
@@ -806,8 +810,14 @@
   gap: 10px;
 }
 
+.modern-reading-table-scroll { overflow-x: auto; }
+
+@media (min-width: 681px) {
+  .modern-reading-metric-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+}
+
 .modern-reading-table-header {
-  min-width: 940px;
+  min-width: 1180px;
 
   padding: 13px 16px;
 
@@ -833,7 +843,7 @@
 }
 
 .modern-reading-table-row {
-  min-width: 940px;
+  min-width: 1180px;
 
   padding: 14px 16px;
 

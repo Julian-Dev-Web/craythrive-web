@@ -1,3 +1,4 @@
+import { getAmmoniaNumericValue, getLatestAmmoniaForTank, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
 import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
 import { getSafetySeverity, getParameterExplanation, getSafetyStatusLabel } from "../../utils/statusHelpers";
 import {
@@ -36,12 +37,12 @@ import {
 import {
   evaluateReadingSafety,
   loadActiveThresholds,
-  getLocalThresholds,
 } from "../../utils/thresholdEvaluation";
 
 import {
   formatReadingTime,
   normalizeSensorReading,
+  toNumberOrNull,
 } from "../../utils/sensorReadingUtils";
 
 /* =========================================================
@@ -107,13 +108,13 @@ function formatFriendlyText(value) {
 
 function getPhNumericLabel(reading) {
   const raw =
-    reading?.ph_value ??
-    reading?.ph;
+    reading?.ph ??
+    reading?.ph_value;
 
   const numberValue =
-    Number(raw);
+    toNumberOrNull(raw);
 
-  return Number.isFinite(numberValue)
+  return numberValue !== null
     ? numberValue.toFixed(1)
     : null;
 }
@@ -190,47 +191,6 @@ function getProfileName(profile) {
    MATCH TANK TO SENSOR READINGS
 ========================================================= */
 
-function getTankMatchKeys(tank) {
-  return [
-    tank?.id,
-    tank?.tank_id,
-    tank?.uuid,
-    tank?.iot_device_id,
-    tank?.device_id,
-    tank?.device_uid,
-    tank?.tank_code,
-  ]
-    .filter(
-      (value) =>
-        value !== null &&
-        value !== undefined &&
-        value !== ""
-    )
-    .map((value) =>
-      String(value)
-    );
-}
-
-function getReadingMatchKeys(reading) {
-  return [
-    reading?.tank_id,
-    reading?.tankId,
-    reading?.tank_uuid,
-    reading?.tank_profile_id,
-    reading?.iot_device_id,
-    reading?.device_id,
-    reading?.device_uid,
-  ]
-    .filter(
-      (value) =>
-        value !== null &&
-        value !== undefined &&
-        value !== ""
-    )
-    .map((value) =>
-      String(value)
-    );
-}
 
 function getReadingDate(reading) {
   return (
@@ -243,38 +203,9 @@ function getReadingDate(reading) {
 }
 
 /* =========================================================
-   pH SPIKE PROTECTION
+   LATEST READING ORDER
 ========================================================= */
 
-function toNumberOrNull(value) {
-  if (
-    value === null ||
-    value === undefined ||
-    value === ""
-  ) {
-    return null;
-  }
-
-  const numberValue =
-    Number(value);
-
-  return Number.isFinite(numberValue)
-    ? numberValue
-    : null;
-}
-
-function getReadingPhValue(reading) {
-  return toNumberOrNull(
-    reading?.ph_value ??
-      reading?.ph
-  );
-}
-
-function isUnsafePhReading(reading) {
-  if (!reading) return false;
-  return evaluateReadingSafety({ ph: getReadingPhValue(reading) }, getLocalThresholds())
-    .parameters.ph.severity === "critical";
-}
 
 function sortReadingsNewestFirst(
   readings = []
@@ -290,144 +221,12 @@ function sortReadingsNewestFirst(
   );
 }
 
-function pickStableLatestReading(
-  readings = []
-) {
-  const sorted =
-    sortReadingsNewestFirst(
-      readings
-    );
 
-  if (
-    sorted.length === 0
-  ) {
-    return null;
-  }
-
-  const latest =
-    sorted[0];
-
-  if (
-    !isUnsafePhReading(
-      latest
-    )
-  ) {
-    return latest;
-  }
-
-  /*
-   * Require three consecutive unsafe pH
-   * readings before confirming an unsafe pH.
-   */
-
-  const latestThree =
-    sorted.slice(
-      0,
-      3
-    );
-
-  const confirmedUnsafePh =
-    latestThree.length >= 3 &&
-    latestThree.every(
-      isUnsafePhReading
-    );
-
-  if (
-    confirmedUnsafePh
-  ) {
-    return latest;
-  }
-
-  const newestSafeReading =
-    sorted.find(
-      (reading) =>
-        !isUnsafePhReading(
-          reading
-        )
-    );
-
-  return (
-    newestSafeReading ||
-    latest
-  );
+function getLatestReadingForTank(tank, readings) {
+  const matched = readings.filter(reading => recordMatchesMonitoringTank(reading, tank));
+  return sortReadingsNewestFirst(matched)[0] || null;
 }
 
-function getLatestReadingForTank(
-  tank,
-  readings
-) {
-  const tankKeys =
-    getTankMatchKeys(tank);
-
-  const matched =
-    readings.filter(
-      (reading) => {
-        const readingKeys =
-          getReadingMatchKeys(
-            reading
-          );
-
-        return readingKeys.some(
-          (key) =>
-            tankKeys.includes(key)
-        );
-      }
-    );
-
-  return pickStableLatestReading(
-    matched
-  );
-}
-
-function getLatestAmmoniaForTank(
-  tank,
-  ammoniaRows
-) {
-  const tankKeys =
-    getTankMatchKeys(tank);
-
-  const matched =
-    ammoniaRows.filter(
-      (row) => {
-        const rowKeys =
-          getReadingMatchKeys(
-            row
-          );
-
-        return rowKeys.some(
-          (key) =>
-            tankKeys.includes(key)
-        );
-      }
-    );
-
-  if (
-    matched.length === 0
-  ) {
-    return null;
-  }
-
-  return sortReadingsNewestFirst(
-    matched
-  )[0];
-}
-
-function getAmmoniaNumericValue(row) {
-  const raw =
-    row?.ammonia_mg_l ??
-    row?.ammonia_level ??
-    row?.ammonia_ppm ??
-    row?.ammonia_value ??
-    row?.value ??
-    row?.ppm;
-
-  const numberValue =
-    Number(raw);
-
-  return Number.isFinite(numberValue)
-    ? numberValue
-    : null;
-}
 
 /* =========================================================
    UNIQUE RECORDS
@@ -858,7 +657,7 @@ function SensorMiniCard({ icon: Icon, label, value, parameter }) {
     <div className="modern-tank-sensor-card">
       <Icon size={19} />
       <span>{label}</span>
-      <strong>{formatFriendlyText(value)}</strong>
+      <strong>{value ?? "No Data"}</strong>
       <SafetyBadge className="modern-tank-status" severity={parameter?.severity} />
       {explanation && <small className="safety-explanation">{explanation}</small>}
     </div>
@@ -2219,8 +2018,9 @@ const dropdownTriggerStyle = {
   borderRadius:
     "12px",
 
-  border:
-    "1px solid var(--ct-border, var(--border, #e5e4e7))",
+  borderWidth: "1px",
+  borderStyle: "solid",
+  borderColor: "var(--ct-border, var(--border, #e5e4e7))",
 
   background:
     "var(--ct-surface, var(--bg, #ffffff))",

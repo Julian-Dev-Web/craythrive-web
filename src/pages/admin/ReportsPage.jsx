@@ -1,3 +1,7 @@
+import SafetyBadge from "../../components/SafetyBadge";
+import { getSafetySeverity, getSafetyStatusLabel, getParameterExplanation } from "../../utils/statusHelpers";
+import { buildMonitoringRecords, buildTankHistoryExportRows, evaluateCurrentTankSafety, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
+import { loadActiveThresholds } from "../../utils/thresholdEvaluation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -19,6 +23,7 @@ import {
   Printer,
   RefreshCw,
   ShoppingBag,
+  FlaskConical,
   Thermometer,
   TrendingUp,
   Waves,
@@ -30,7 +35,6 @@ import {
 } from "../../lib/supabase";
 
 import {
-  normalizeSensorReading,
   toNumberOrNull,
 } from "../../utils/sensorReadingUtils";
 
@@ -55,6 +59,8 @@ const tableGroups = {
     "tank_readings",
     "readings",
   ],
+
+  ammonia: ["ammonia_readings"],
 
   alerts: [
     "alerts",
@@ -328,102 +334,6 @@ function safeFilePart(value) {
    SENSOR STATUS
 ========================================================= */
 
-function getStatusSeverity(
-  statuses
-) {
-  const joined =
-    statuses
-      .map(
-        normalizeStatusText
-      )
-      .join(" ");
-
-  if (
-    joined.includes(
-      "critical"
-    ) ||
-    joined.includes(
-      "sensor error"
-    ) ||
-    joined.includes(
-      "danger"
-    ) ||
-    joined.includes(
-      "unsafe"
-    ) ||
-    joined.includes(
-      "high ph"
-    ) ||
-    joined.includes(
-      "low ph"
-    ) ||
-    joined.includes(
-      "warm"
-    ) ||
-    joined.includes(
-      "cold"
-    )
-  ) {
-    return "critical";
-  }
-
-  if (
-    joined.includes(
-      "warning"
-    ) ||
-    joined.includes(
-      "dirty"
-    ) ||
-    joined.includes(
-      "slightly"
-    ) ||
-    joined.includes(
-      "needs"
-    ) ||
-    joined.includes(
-      "moderate"
-    ) ||
-    joined.includes(
-      "low acidic"
-    ) ||
-    joined.includes(
-      "high alkaline"
-    )
-  ) {
-    return "warning";
-  }
-
-  return "normal";
-}
-
-function getOverallReadingStatus(
-  normalizedReading
-) {
-  return getStatusSeverity([
-    normalizedReading
-      .temperatureStatus,
-    normalizedReading.phStatus,
-    normalizedReading
-      .turbidityStatus,
-    normalizedReading
-      .waterStatus,
-  ]);
-}
-
-function getFriendlyReadingStatus(
-  status
-) {
-  switch (status) {
-    case "critical":
-      return "Urgent";
-
-    case "warning":
-      return "Needs Checking";
-
-    default:
-      return "Good";
-  }
-}
 
 function averageFromNormalized(
   items,
@@ -655,20 +565,6 @@ function getAlertSeverity(
   return "normal";
 }
 
-function getFriendlyAlertSeverity(
-  severity
-) {
-  switch (severity) {
-    case "critical":
-      return "Urgent";
-
-    case "warning":
-      return "Needs Checking";
-
-    default:
-      return "Good";
-  }
-}
 
 /* =========================================================
    RECORD HELPERS
@@ -837,65 +733,8 @@ function getTankDisplayName(
   );
 }
 
-function recordMatchesTank(
-  record,
-  tank
-) {
-  if (
-    !record ||
-    !tank
-  ) {
-    return false;
-  }
-
-  const recordKeys =
-    getRecordTankKeys(
-      record
-    );
-
-  const tankKeys =
-    getTankKeys(
-      tank
-    );
-
-  const idMatches =
-    recordKeys.some(
-      (key) =>
-        tankKeys.includes(
-          key
-        )
-    );
-
-  if (idMatches) {
-    return true;
-  }
-
-  const recordName =
-    lower(
-      record?.tank_name ||
-        record
-          ?.tank_label ||
-        record
-          ?.tank_display_name
-    );
-
-  const tankName =
-    lower(
-      getTankName(
-        tank
-      )
-    );
-
-  return (
-    Boolean(
-      recordName
-    ) &&
-    Boolean(
-      tankName
-    ) &&
-    recordName ===
-      tankName
-  );
+function recordMatchesTank(record, tank) {
+  return !tank || recordMatchesMonitoringTank(record, tank);
 }
 
 /* =========================================================
@@ -1356,7 +1195,7 @@ function DonutStat({
       </div>
 
       <span>
-        {label}
+        {["Normal", "Warning", "Critical"].includes(label) ? <SafetyBadge severity={{ success: "normal", warning: "warning", danger: "critical" }[tone]} /> : label}
       </span>
 
       <small>
@@ -1645,6 +1484,7 @@ export default function ReportsPage() {
     useState({
       tanks: [],
       readings: [],
+      ammonia: [],
       alerts: [],
       listings: [],
       orders: [],
@@ -1678,11 +1518,15 @@ export default function ReportsPage() {
      LOAD REPORT DATA
   ======================================================= */
 
+  const [thresholds, setThresholds] = useState(null);
+  const [conditionFilter, setConditionFilter] = useState("all");
+
   const loadReports =
     async (
       showFullLoading =
         false
     ) => {
+      setThresholds(await loadActiveThresholds());
       if (
         !isSupabaseConfigured ||
         !supabase
@@ -1720,6 +1564,7 @@ export default function ReportsPage() {
           setDatasets({
             tanks: [],
             readings: [],
+      ammonia: [],
             alerts: [],
             listings: [],
             orders: [],
@@ -1734,6 +1579,7 @@ export default function ReportsPage() {
           alerts,
           listings,
           orders,
+          ammonia,
         ] =
           await Promise.all([
             fetchRowsByScope(
@@ -1765,6 +1611,7 @@ export default function ReportsPage() {
               currentUser,
               1000
             ),
+            fetchRowsByScope(tableGroups.ammonia, currentUser, 1000),
           ]);
 
         setDatasets({
@@ -1773,6 +1620,8 @@ export default function ReportsPage() {
 
           readings:
             readings.rows,
+
+          ammonia: ammonia.rows,
 
           alerts:
             alerts.rows,
@@ -1990,77 +1839,21 @@ export default function ReportsPage() {
      READINGS
   ======================================================= */
 
-  const enrichedReadings =
-    useMemo(
-      () => {
-        return datasets
-          .readings
-          .map(
-            (
-              reading,
-              index
-            ) => {
-              const normalized =
-                normalizeSensorReading(
-                  reading
-                );
-
-              const status =
-                getOverallReadingStatus(
-                  normalized
-                );
-
-              const name =
-                getTankDisplayName(
-                  reading,
-                  datasets.tanks,
-                  index
-                );
-
-              return {
-                reading,
-                normalized,
-                status,
-                name,
-
-                date:
-                  normalized
-                    .createdAt ||
-                  reading
-                    ?.created_at ||
-                  reading
-                    ?.timestamp ||
-                  reading
-                    ?.date ||
-                  reading
-                    ?.updated_at,
-              };
-            }
-          )
-          .sort(
-            (
-              a,
-              b
-            ) =>
-              new Date(
-                b.date ||
-                  0
-              ) -
-              new Date(
-                a.date ||
-                  0
-              )
-          );
-      },
-      [
-        datasets.readings,
-        datasets.tanks,
-      ]
-    );
+  const monitoringRecords = useMemo(
+    () => buildMonitoringRecords(datasets.readings, datasets.ammonia, datasets.tanks, thresholds),
+    [datasets.readings, datasets.ammonia, datasets.tanks, thresholds]
+  );
+  const enrichedReadings = useMemo(() => monitoringRecords.filter(item => item.type === "Water Reading"), [monitoringRecords]);
+  const enrichedAmmonia = useMemo(() => monitoringRecords.filter(item => item.type === "Ammonia Reading"), [monitoringRecords]);
 
   /* =======================================================
      DATE + TANK SCOPED DATA
   ======================================================= */
+
+  const scopedTankRecords = useMemo(() => monitoringRecords.filter(item =>
+    (selectedTankId === "all" || (selectedTank && recordMatchesMonitoringTank(item.reading, selectedTank))) &&
+    isWithinDateRange(item.date, fromDate, toDate)),
+    [monitoringRecords, selectedTankId, selectedTank, fromDate, toDate]);
 
   const tankReadings =
     useMemo(
@@ -2089,6 +1882,7 @@ export default function ReportsPage() {
           (
             item
           ) =>
+            (conditionFilter === "all" || item.status === conditionFilter) &&
             isWithinDateRange(
               item.date,
               fromDate,
@@ -2102,8 +1896,17 @@ export default function ReportsPage() {
         selectedTank,
         fromDate,
         toDate,
+        conditionFilter,
       ]
     );
+
+  const tankAmmonia = useMemo(() => enrichedAmmonia.filter(item =>
+    (selectedTankId === "all" || (selectedTank && recordMatchesMonitoringTank(item.reading, selectedTank))) &&
+    isWithinDateRange(item.date, fromDate, toDate) &&
+    (conditionFilter === "all" || item.status === conditionFilter)),
+    [enrichedAmmonia, selectedTankId, selectedTank, fromDate, toDate, conditionFilter]);
+  const tankRecords = useMemo(() => [...tankReadings, ...tankAmmonia]
+    .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)), [tankReadings, tankAmmonia]);
 
   const tankAlerts =
     useMemo(
@@ -2132,6 +1935,7 @@ export default function ReportsPage() {
           (
             alert
           ) =>
+            (conditionFilter === "all" || getAlertSeverity(alert) === conditionFilter) &&
             isWithinDateRange(
               getRecordDate(
                 alert
@@ -2147,6 +1951,7 @@ export default function ReportsPage() {
         selectedTank,
         fromDate,
         toDate,
+        conditionFilter,
       ]
     );
 
@@ -2200,11 +2005,11 @@ export default function ReportsPage() {
       ]
     );
 
-  const latestReading =
-    tankReadings[
-      0
-    ] ||
-    null;
+  const latestReading = scopedTankRecords.find(item => item.type === "Water Reading") || null;
+
+  const latestAmmonia = scopedTankRecords.filter(item => item.type === "Ammonia Reading").find(item => !latestReading || item.tankKey === latestReading.tankKey) || null;
+  const currentSafety = evaluateCurrentTankSafety(latestReading, latestAmmonia, thresholds);
+  const currentTankName = latestReading?.tankName || latestAmmonia?.tankName || selectedTankName;
 
   /* =======================================================
      TANK ANALYTICS
@@ -2214,7 +2019,7 @@ export default function ReportsPage() {
     useMemo(
       () => {
         const normal =
-          tankReadings.filter(
+          tankRecords.filter(
             (
               item
             ) =>
@@ -2223,7 +2028,7 @@ export default function ReportsPage() {
           ).length;
 
         const warning =
-          tankReadings.filter(
+          tankRecords.filter(
             (
               item
             ) =>
@@ -2232,7 +2037,7 @@ export default function ReportsPage() {
           ).length;
 
         const critical =
-          tankReadings.filter(
+          tankRecords.filter(
             (
               item
             ) =>
@@ -2249,13 +2054,7 @@ export default function ReportsPage() {
                 "warning",
                 "critical",
               ].includes(
-                getStatusSeverity(
-                  [
-                    item
-                      .normalized
-                      .phStatus,
-                  ]
-                )
+                item.normalized.safety.parameters.ph.severity
               )
           ).length;
 
@@ -2268,13 +2067,7 @@ export default function ReportsPage() {
                 "warning",
                 "critical",
               ].includes(
-                getStatusSeverity(
-                  [
-                    item
-                      .normalized
-                      .turbidityStatus,
-                  ]
-                )
+                item.normalized.safety.parameters.turbidity.severity
               )
           ).length;
 
@@ -2304,6 +2097,10 @@ export default function ReportsPage() {
             tankReadings
               .length,
 
+          totalRecords: tankRecords.length,
+          totalAmmonia: tankAmmonia.length,
+          ammoniaIssues: tankAmmonia.filter(item => ["warning", "critical"].includes(item.status)).length,
+
           totalAlerts:
             tankAlerts
               .length,
@@ -2327,29 +2124,6 @@ export default function ReportsPage() {
               "waterValue"
             ),
 
-          latestPhStatus:
-            latestReading
-              ?.normalized
-              ?.phStatus ||
-            "No Reading",
-
-          latestWaterClarityStatus:
-            latestReading
-              ?.normalized
-              ?.turbidityStatus ||
-            "No Reading",
-
-          latestTemperatureStatus:
-            latestReading
-              ?.normalized
-              ?.temperatureStatus ||
-            "No Reading",
-
-          latestWaterStatus:
-            latestReading
-              ?.normalized
-              ?.waterStatus ||
-            "No Reading",
         };
       },
       [
@@ -2357,8 +2131,9 @@ export default function ReportsPage() {
         selectedTankId,
         selectedTank,
         tankReadings,
+        tankAmmonia,
+        tankRecords,
         tankAlerts,
-        latestReading,
       ]
     );
 
@@ -2504,7 +2279,7 @@ export default function ReportsPage() {
     [
       {
         label:
-          "Good readings",
+          "Normal readings",
 
         value:
           tankAnalytics
@@ -2516,7 +2291,7 @@ export default function ReportsPage() {
 
       {
         label:
-          "Needs checking",
+          "Warning readings",
 
         value:
           tankAnalytics
@@ -2528,7 +2303,7 @@ export default function ReportsPage() {
 
       {
         label:
-          "Urgent readings",
+          "Critical readings",
 
         value:
           tankAnalytics
@@ -2538,6 +2313,7 @@ export default function ReportsPage() {
           "danger",
       },
 
+      { label: "Ammonia issues", value: tankAnalytics.ammoniaIssues, tone: "danger" },
       {
         label:
           "pH issues",
@@ -2564,7 +2340,7 @@ export default function ReportsPage() {
 
       {
         label:
-          "Urgent alerts",
+          "Critical alerts",
 
         value:
           tankAnalytics
@@ -2732,7 +2508,7 @@ export default function ReportsPage() {
               ph:
                 item
                   .normalized
-                  .phStatus,
+                  .phNumberLabel,
 
               waterClarity:
                 item
@@ -2744,6 +2520,8 @@ export default function ReportsPage() {
         return [
           ...alerts,
           ...readings,
+          ...tankAmmonia.map(item => ({ type: item.type, title: item.ammoniaLabel,
+            tankName: item.tankName, status: item.status, date: item.date })),
         ]
           .sort(
             (
@@ -2767,6 +2545,7 @@ export default function ReportsPage() {
       [
         tankAlerts,
         tankReadings,
+        tankAmmonia,
         datasets.tanks,
       ]
     );
@@ -2836,71 +2615,7 @@ export default function ReportsPage() {
   const tankExportRows =
     useMemo(
       () => {
-        const readingRows =
-          tankReadings.map(
-            (
-              item,
-              index
-            ) => ({
-              Type:
-                "Water Reading",
-
-              Tank:
-                item.name ||
-                `Tank ${
-                  index +
-                  1
-                }`,
-
-              Temperature:
-                item
-                  .normalized
-                  .temperatureLabel,
-
-              "Temperature Condition":
-                formatFriendlyText(
-                  item
-                    .normalized
-                    .temperatureStatus
-                ),
-
-              "pH Condition":
-                formatFriendlyText(
-                  item
-                    .normalized
-                    .phStatus
-                ),
-
-              "Water Clarity":
-                formatFriendlyText(
-                  item
-                    .normalized
-                    .turbidityStatus
-                ),
-
-              "Water Level":
-                item
-                  .normalized
-                  .waterLabel,
-
-              "Water Level Condition":
-                formatFriendlyText(
-                  item
-                    .normalized
-                    .waterStatus
-                ),
-
-              "Overall Condition":
-                getFriendlyReadingStatus(
-                  item.status
-                ),
-
-              Date:
-                formatDate(
-                  item.date
-                ),
-            })
-          );
+        const readingRows = buildTankHistoryExportRows(tankRecords, formatDate);
 
         const alertRows =
           tankAlerts.map(
@@ -2933,7 +2648,7 @@ export default function ReportsPage() {
                 }`,
 
               Priority:
-                getFriendlyAlertSeverity(
+                getSafetyStatusLabel(
                   getAlertSeverity(
                     alert
                   )
@@ -2972,7 +2687,7 @@ export default function ReportsPage() {
         ];
       },
       [
-        tankReadings,
+        tankRecords,
         tankAlerts,
         datasets.tanks,
       ]
@@ -3117,8 +2832,8 @@ export default function ReportsPage() {
       description:
         selectedTankId ===
         "all"
-          ? `Water readings, water conditions, and alert history for all tanks. Date range: ${dateRangeLabel}.`
-          : `Water readings, water conditions, and alert history for ${selectedTankName}. Date range: ${dateRangeLabel}.`,
+          ? `Sensor readings, ammonia results, water conditions, and alert history for all tanks. Date range: ${dateRangeLabel}.`
+          : `Sensor readings, ammonia results, water conditions, and alert history for ${selectedTankName}. Date range: ${dateRangeLabel}.`,
 
       rows:
         tankExportRows,
@@ -3279,7 +2994,7 @@ export default function ReportsPage() {
   ======================================================= */
 
   return (
-    <div className="cray-reports-page">
+    <div className="cray-reports-page" data-report={activeReport}>
 
       {/* ===============================================
           HERO
@@ -3532,6 +3247,10 @@ export default function ReportsPage() {
           />
         )}
 
+        {activeReport === "tanks" && <ReportFilterDropdown ariaLabel="Filter monitoring records by condition"
+          icon={Gauge} value={conditionFilter} onChange={setConditionFilter}
+          options={[{ value: "all", label: "All" }, ...["normal", "warning", "critical"].map(value => ({ value, label: getSafetyStatusLabel(value) }))]} />}
+
         {(fromDate ||
           toDate) && (
           <button
@@ -3702,19 +3421,13 @@ export default function ReportsPage() {
               icon={
                 AlertTriangle
               }
-              label="Urgent Alerts"
+              label="Critical Alerts"
               value={
                 tankAnalytics
                   .alertCritical
               }
               helper={`${tankAnalytics.totalAlerts} total alert records`}
-              tone={
-                tankAnalytics
-                  .alertCritical >
-                0
-                  ? "danger"
-                  : "success"
-              }
+              tone="danger"
             />
 
             <SummaryCard
@@ -3735,6 +3448,19 @@ export default function ReportsPage() {
                   : "success"
               }
             />
+          </section>
+
+          <section className="cray-report-panel monitoring-ammonia-history">
+            <div className="cray-report-panel-heading"><div><p className="dashboard-eyebrow">Ammonia Results</p>
+              <h3>{tankAmmonia.length} manual scan records</h3></div><FlaskConical size={22} /></div>
+            {tankAmmonia.length === 0 ? <p>No ammonia scans in this tank/date/condition selection.</p> :
+              <div className="cray-report-list">{tankAmmonia.slice(0, 8).map(item => (
+                <div className="cray-report-row" key={item.recordId}>
+                  <div><strong>Ammonia Reading - {item.tankName}</strong>
+                    <span>{item.ammoniaLabel} - {formatDate(item.date)}</span></div>
+                  <SafetyBadge severity={item.status} emptyLabel="No Scan" />
+                </div>
+              ))}</div>}
           </section>
 
           {/* =============================================
@@ -3765,90 +3491,24 @@ export default function ReportsPage() {
                 />
               </div>
 
+              <SafetyBadge severity={getSafetySeverity(currentSafety)} />
+              <p>Latest available condition for {currentTankName}. Each reading keeps its own timestamp.</p>
               <div className="cray-report-metric-grid">
-                <div>
-                  <Thermometer
-                    size={20}
-                  />
-
-                  <strong>
-                    {tankAnalytics
-                      .avgTemp ===
-                    "N/A"
-                      ? "No Data"
-                      : `${tankAnalytics.avgTemp}°C`}
-                  </strong>
-
-                  <span>
-                    Average Temperature
-                  </span>
-
-                  <small>
-                    {formatFriendlyText(
-                      tankAnalytics
-                        .latestTemperatureStatus
-                    )}
-                  </small>
-                </div>
-
-                <div>
-                  <Droplets
-                    size={20}
-                  />
-
-                  <strong>
-                    {formatFriendlyText(
-                      tankAnalytics
-                        .latestPhStatus
-                    )}
-                  </strong>
-
-                  <span>
-                    Latest pH Condition
-                  </span>
-                </div>
-
-                <div>
-                  <Waves
-                    size={20}
-                  />
-
-                  <strong>
-                    {formatFriendlyText(
-                      tankAnalytics
-                        .latestWaterClarityStatus
-                    )}
-                  </strong>
-
-                  <span>
-                    Water Clarity
-                  </span>
-                </div>
-
-                <div>
-                  <Gauge
-                    size={20}
-                  />
-
-                  <strong>
-                    {tankAnalytics
-                      .avgWaterLevel ===
-                    "N/A"
-                      ? "No Data"
-                      : `${tankAnalytics.avgWaterLevel} cm`}
-                  </strong>
-
-                  <span>
-                    Average Water Level
-                  </span>
-
-                  <small>
-                    {formatFriendlyText(
-                      tankAnalytics
-                        .latestWaterStatus
-                    )}
-                  </small>
-                </div>
+                {[
+                  ["Temperature", latestReading?.normalized.temperatureLabel || "No Data", "temperature", Thermometer, latestReading?.date],
+                  ["pH Level", latestReading?.normalized.phNumberLabel || "No Data", "ph", Droplets, latestReading?.date],
+                  ["Water Clarity", latestReading?.normalized.turbidityNumberLabel || "No Data", "turbidity", Waves, latestReading?.date],
+                  ["Water Level", latestReading?.normalized.waterLabel || "No Data", "waterLevel", Gauge, latestReading?.date],
+                  ["Latest Ammonia", latestAmmonia?.ammoniaLabel || "No Scan", "ammonia", FlaskConical, latestAmmonia?.date],
+                ].map(([label, value, key, Icon, date]) => (
+                  <div key={key}>
+                    <Icon size={20} /><strong>{value}</strong><span>{label}</span>
+                    <SafetyBadge severity={currentSafety.parameters[key].severity} emptyLabel={key === "ammonia" ? "No Scan" : "No Data"} />
+                    {getParameterExplanation(currentSafety.parameters[key], key === "ammonia" ? "Ammonia" : label) &&
+                      <small className="safety-explanation">{getParameterExplanation(currentSafety.parameters[key], key === "ammonia" ? "Ammonia" : label)}</small>}
+                    <small>{date ? formatDate(date) : "No record"}</small>
+                  </div>
+                ))}
               </div>
             </article>
 
@@ -3908,7 +3568,7 @@ export default function ReportsPage() {
                   </p>
 
                   <h3>
-                    Water reading
+                    Monitoring record
                     percentage
                   </h3>
                 </div>
@@ -3920,40 +3580,40 @@ export default function ReportsPage() {
 
               <div className="cray-report-donut-grid">
                 <DonutStat
-                  label="Good"
+                  label="Normal"
                   value={
                     tankAnalytics
                       .normal
                   }
                   total={
                     tankAnalytics
-                      .totalReadings
+                      .totalRecords
                   }
                   tone="success"
                 />
 
                 <DonutStat
-                  label="Needs Checking"
+                  label="Warning"
                   value={
                     tankAnalytics
                       .warning
                   }
                   total={
                     tankAnalytics
-                      .totalReadings
+                      .totalRecords
                   }
                   tone="warning"
                 />
 
                 <DonutStat
-                  label="Urgent"
+                  label="Critical"
                   value={
                     tankAnalytics
                       .critical
                   }
                   total={
                     tankAnalytics
-                      .totalReadings
+                      .totalRecords
                   }
                   tone="danger"
                 />
@@ -4046,18 +3706,7 @@ export default function ReportsPage() {
                           </span>
                         </div>
 
-                        <b
-                          className={`cray-report-chip ${record.status}`}
-                        >
-                          {record.type ===
-                          "Alert"
-                            ? getFriendlyAlertSeverity(
-                                record.status
-                              )
-                            : getFriendlyReadingStatus(
-                                record.status
-                              )}
-                        </b>
+                        <SafetyBadge className="cray-report-chip" severity={record.status} />
                       </div>
                     )
                   )
@@ -4574,8 +4223,9 @@ const reportDropdownTriggerStyle =
   padding:
     "0 12px",
 
-  border:
-    "1px solid var(--ct-border, var(--border, #e5e4e7))",
+  borderWidth: "1px",
+  borderStyle: "solid",
+  borderColor: "var(--ct-border, var(--border, #e5e4e7))",
 
   borderRadius:
     "12px",

@@ -14,6 +14,7 @@ export function getFirstValue(...values) {
 
 export function toNumberOrNull(value) {
   if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "string" && value.trim() === "") return null;
 
   const numberValue = Number(value);
 
@@ -86,11 +87,11 @@ export function normalizeSensorReading(reading, thresholds = getLocalThresholds(
     reading.raw_turbidity_value
   );
 
-  const waterValue = getFirstValue(
+  const waterValue = [
     reading.water_depth_cm,
     reading.water_level,
     reading.waterValue
-  );
+  ].find(value => toNumberOrNull(value) !== null) ?? null;
 
   const safety = evaluateReadingSafety({
     temperature: temperatureValue, ph: phValue,

@@ -1,3 +1,4 @@
+import { getAmmoniaNumericValue, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
 import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
 import { getSafetyLabelSeverity, getSafetySeverity, getParameterExplanation, getSafetyStatusLabel } from "../../utils/statusHelpers";
 import { useEffect, useMemo, useState } from "react";
@@ -32,6 +33,7 @@ import { isSupabaseConfigured, supabase } from "../../lib/supabase";
 import {
   formatReadingTime,
   normalizeSensorReading,
+  toNumberOrNull,
 } from "../../utils/sensorReadingUtils";
 
 import {
@@ -113,10 +115,10 @@ function formatFriendlyText(value) {
 ========================================================= */
 
 function getPhNumericLabel(reading) {
-  const raw = reading?.ph_value ?? reading?.ph;
-  const numberValue = Number(raw);
+  const raw = reading?.ph ?? reading?.ph_value;
+  const numberValue = toNumberOrNull(raw);
 
-  return Number.isFinite(numberValue)
+  return numberValue !== null
     ? numberValue.toFixed(1)
     : null;
 }
@@ -125,21 +127,6 @@ function getPhNumericLabel(reading) {
    AMMONIA NUMERIC VALUE
 ========================================================= */
 
-function getAmmoniaNumericValue(row) {
-  const raw =
-    row?.ammonia_mg_l ??
-    row?.ammonia_level ??
-    row?.ammonia_ppm ??
-    row?.ammonia_value ??
-    row?.value ??
-    row?.ppm;
-
-  const numberValue = Number(raw);
-
-  return Number.isFinite(numberValue)
-    ? numberValue
-    : null;
-}
 
 /* =========================================================
    STATUS
@@ -331,25 +318,6 @@ function getTankMatchKeys(tank) {
     .map(String);
 }
 
-function getRecordMatchKeys(row) {
-  return [
-    row?.tank_id,
-    row?.tankId,
-    row?.tank_uuid,
-    row?.tank_profile_id,
-    row?.iot_device_id,
-    row?.device_id,
-    row?.device_uid,
-  ]
-    .filter(
-      (value) =>
-        value !== null &&
-        value !== undefined &&
-        value !== ""
-    )
-    .map(String);
-}
-
 function getRecordDate(row) {
   return (
     row?.created_at ||
@@ -364,15 +332,7 @@ function recordMatchesTank(
   row,
   tank
 ) {
-  const tankKeys =
-    getTankMatchKeys(tank);
-
-  const rowKeys =
-    getRecordMatchKeys(row);
-
-  return rowKeys.some((key) =>
-    tankKeys.includes(key)
-  );
+  return recordMatchesMonitoringTank(row, tank);
 }
 
 function rowMatchesUser(
@@ -624,7 +584,8 @@ function isCompletedPumpCommand(
 ========================================================= */
 
 function getWaterCmFromReading(item) {
-  const raw = item?.reading?.water_depth_cm ?? item?.reading?.water_level ?? item?.normalized?.waterValue;
+  const raw = [item?.reading?.water_depth_cm, item?.reading?.water_level, item?.normalized?.waterValue]
+    .find(value => toNumberOrNull(value) !== null);
 
   const number =
     Number(raw);
@@ -1585,7 +1546,7 @@ function DetailMetricCard({ icon: Icon, label, value, severity, statusLabel }) {
     <article className="modern-tank-detail-metric">
       <span><Icon size={22} /></span>
       <div>
-        <strong>{formatFriendlyText(value)}</strong>
+        <strong>{value ?? "No Data"}</strong>
         <p>{label}</p>
         <SafetyBadge className="modern-tank-status" severity={severity} />
         {explanation && <small className="safety-explanation">{explanation}</small>}
@@ -2222,11 +2183,11 @@ export default function TankDetailsPage() {
 
   const latestSafety =
     useMemo(() => {
-      if (!latestReading || !thresholds) {
+      if (!thresholds) {
         return null;
       }
 
-      const row = latestReading.reading;
+      const row = latestReading?.reading;
 
       return evaluateReadingSafety(
         {
@@ -2236,7 +2197,7 @@ export default function TankDetailsPage() {
           turbidityVoltage:
             latestReading?.normalized?.turbidityValue,
           waterDepth:
-            latestReading.normalized.waterValue,
+            latestReading?.normalized?.waterValue,
           ammonia: latestAmmoniaValue,
         },
         thresholds
@@ -2411,10 +2372,7 @@ export default function TankDetailsPage() {
           ?.action
     );
 
-  const tankStatus =
-    latestReading
-      ? getSafetySeverity(latestSafety)
-      : "no-data";
+  const tankStatus = getSafetySeverity(latestSafety);
 
   const actuatorState =
     getActuatorConnectionState(
@@ -3322,7 +3280,7 @@ export default function TankDetailsPage() {
               />
             </div>
 
-            {latestReading ? (
+            {latestReading || latestAmmoniaValue !== null ? (
               <div className="modern-tank-detail-metric-grid">
 
                 <DetailMetricCard
@@ -3332,8 +3290,8 @@ export default function TankDetailsPage() {
                   label="Temperature"
                   value={
                     latestReading
-                      .normalized
-                      .temperatureLabel
+                      ?.normalized
+                      ?.temperatureLabel || "N/A"
                   }
                   severity={
                     latestSafety
@@ -3356,11 +3314,11 @@ export default function TankDetailsPage() {
                   label="pH Level"
                   value={
                     getPhNumericLabel(
-                      latestReading.reading
+                      latestReading?.reading
                     ) ||
                     latestReading
-                      .normalized
-                      .phStatus
+                      ?.normalized
+                      ?.phStatus || "N/A"
                   }
                   severity={
                     latestSafety
@@ -3383,8 +3341,8 @@ export default function TankDetailsPage() {
                   label="Water Clarity"
                   value={
                     latestReading
-                      .normalized
-                      .turbidityStatus
+                      ?.normalized
+                      ?.turbidityStatus || "No Data"
                   }
                   severity={
                     latestSafety
@@ -3407,8 +3365,8 @@ export default function TankDetailsPage() {
                   label="Water Level"
                   value={
                     latestReading
-                      .normalized
-                      .waterLabel
+                      ?.normalized
+                      ?.waterLabel || "N/A"
                   }
                   severity={
                     latestSafety
@@ -4274,6 +4232,7 @@ export default function TankDetailsPage() {
                           {getValue(
                             item,
                             [
+                              "ammonia",
                               "ammonia_mg_l",
                               "ammonia_level",
                               "ammonia_ppm",

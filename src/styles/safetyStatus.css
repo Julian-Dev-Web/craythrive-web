@@ -38,3 +38,12 @@
   background: rgba(var(--safety-rgb), 0.14);
 }
 .safety-summary.safety-summary > div > p { color: rgb(var(--safety-rgb)); }
+.safety-surface .farmer-status-icon {
+  color: rgb(var(--safety-rgb));
+  background: rgba(var(--safety-rgb), 0.14);
+}
+.safety-surface .farmer-status-content h2 { color: rgb(var(--safety-rgb)); }
+.safety-surface .farmer-summary-icon {
+  color: rgb(var(--safety-rgb));
+  background: rgba(var(--safety-rgb), 0.14);
+}

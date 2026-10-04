@@ -1071,7 +1071,8 @@ export function evaluateReadingSafety(
     temp !== null ||
     phValue !== null ||
     hasTurbidityData ||
-    waterValue !== null;
+    waterValue !== null ||
+    ammoniaValue !== null;
 
   return {
     isSafe:

@@ -219,11 +219,7 @@ function buildTable(
                     .map(
                       (header) => `
                         <td>
-                          ${escapeHtml(
-                            row?.[
-                              header
-                            ]
-                          )}
+                          ${formatPrintCell(header, row?.[header])}
                         </td>
                       `
                     )
@@ -236,6 +232,15 @@ function buildTable(
       </table>
     </div>
   `;
+}
+
+// Only monitoring condition columns get safety badges; marketplace statuses stay unchanged.
+function formatPrintCell(header, value) {
+  const levels = { Normal: "normal", Warning: "warning", Critical: "critical", "No Data": "neutral", "No Scan": "neutral" };
+  const level = levels[value];
+  if (!header.endsWith("Condition") || !level) return escapeHtml(value);
+  const icon = { normal: "&#10003;", warning: "&#9888;", critical: "&#9888;", neutral: "&#8212;" }[level];
+  return `<span class="condition ${level}"><span aria-hidden="true">${icon}</span> ${escapeHtml(value)}</span>`;
 }
 
 /* =========================================================
@@ -270,6 +275,8 @@ function getLongestCellLength(
 function estimateRowUnits(
   row
 ) {
+  // Wide monitoring tables wrap more cells even when their text is short.
+  const minimumUnits = Object.keys(row || {}).length >= 12 ? 2 : 1;
   const longest =
     getLongestCellLength(
       row
@@ -287,7 +294,7 @@ function estimateRowUnits(
     return 2;
   }
 
-  return 1;
+  return minimumUnits;
 }
 
 /*
@@ -966,6 +973,12 @@ export function printReport({
             background:
               #ffffff;
           }
+
+          .condition { display: inline-block; padding: 2px 3px; border: 1px solid; border-radius: 4px; font-weight: 800; }
+          .condition.normal { color: #115e59; background: #ccfbf1; border-color: #0d9488; }
+          .condition.warning { color: #854d0e; background: #fef3c7; border-color: #d97706; }
+          .condition.critical { color: #991b1b; background: #fee2e2; border-color: #dc2626; }
+          .condition.neutral { color: #475569; background: #f1f5f9; border-color: #94a3b8; }
 
           tbody tr:nth-child(even)
             td {

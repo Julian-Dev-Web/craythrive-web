@@ -593,6 +593,17 @@
   color: var(--ct-brand);
 }
 
+.cray-report-metric-grid .safety-status.safety-status { margin-top: 8px; }
+.cray-report-metric-grid .safety-status.safety-status svg { margin-bottom: 0; }
+.monitoring-ammonia-history { margin-bottom: 18px; }
+
+/* Monitoring palettes do not affect marketplace reports. */
+.cray-reports-page[data-report="tanks"] { --ct-danger: #f87171; }
+.cray-reports-page[data-report="tanks"] .cray-report-donut.danger > div {
+  background: radial-gradient(circle at center, var(--ct-surface) 0 55%, transparent 56%),
+    conic-gradient(#f87171 var(--percent), rgba(248, 113, 113, 0.1) 0);
+}
+
 .cray-report-metric-grid
   strong {
   display: block;
