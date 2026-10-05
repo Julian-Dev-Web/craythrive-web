@@ -445,16 +445,7 @@ function numberOrDefault(
   value,
   fallback
 ) {
-  const parsed =
-    Number(
-      value
-    );
-
-  return Number.isFinite(
-    parsed
-  )
-    ? parsed
-    : fallback;
+  return toNumberOrNull(value) ?? fallback;
 }
 
 export function normalizeThresholds(

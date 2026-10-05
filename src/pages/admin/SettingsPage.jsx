@@ -1,3 +1,4 @@
+import { DEFAULT_THRESHOLDS, normalizeThresholds } from "../../utils/thresholdEvaluation";
 import { logDiagnostic } from "../../utils/securityDiagnostics";
 import { useEffect, useMemo, useState } from "react";
 
@@ -41,38 +42,6 @@ const THRESHOLD_TABLE =
    DEFAULT VALUES
 ========================================================= */
 
-const DEFAULT_THRESHOLDS = {
-  temperatureMin: 20,
-  temperatureMax: 30,
-
-  phMin: 6.5,
-  phMax: 8.5,
-
-  /*
-   * Existing database key is kept
-   * for compatibility.
-   *
-   * User-facing meaning:
-   * Minimum voltage considered clear.
-   */
-  turbidityMax: 2.5,
-
-  /*
-   * Tank-specific refill trigger.
-   */
-  waterLevelMin: 4.5,
-
-  /*
-   * Prototype operational threshold.
-   *
-   * This must NOT be described as
-   * directly equal to published NH3,
-   * NH4+-N, ammonia-N, or TAN limits
-   * until the strip measurement method
-   * is confirmed.
-   */
-  ammoniaMax: 0.25,
-};
 
 /* =========================================================
    THRESHOLD BASIS OVERVIEW
@@ -567,98 +536,6 @@ function formatFriendlyText(value) {
     );
 }
 
-function toNumber(
-  value,
-  fallback
-) {
-  const numberValue =
-    Number(value);
-
-  return Number.isFinite(
-    numberValue
-  )
-    ? numberValue
-    : fallback;
-}
-
-/* =========================================================
-   NORMALIZE VALUES
-========================================================= */
-
-function normalizeThresholds(data) {
-  if (!data) {
-    return {
-      ...DEFAULT_THRESHOLDS,
-    };
-  }
-
-  const source =
-    data.thresholds ||
-    data.safe_thresholds ||
-    data;
-
-  return {
-    temperatureMin:
-      toNumber(
-        source.temperatureMin ??
-          source.temperature_min,
-
-        DEFAULT_THRESHOLDS.temperatureMin
-      ),
-
-    temperatureMax:
-      toNumber(
-        source.temperatureMax ??
-          source.temperature_max,
-
-        DEFAULT_THRESHOLDS.temperatureMax
-      ),
-
-    phMin:
-      toNumber(
-        source.phMin ??
-          source.ph_min,
-
-        DEFAULT_THRESHOLDS.phMin
-      ),
-
-    phMax:
-      toNumber(
-        source.phMax ??
-          source.ph_max,
-
-        DEFAULT_THRESHOLDS.phMax
-      ),
-
-    turbidityMax:
-      toNumber(
-        source.turbidityMax ??
-          source.turbidity_max,
-
-        DEFAULT_THRESHOLDS.turbidityMax
-      ),
-
-    waterLevelMin:
-      toNumber(
-        source.waterLevelMin ??
-          source.water_level_min,
-
-        DEFAULT_THRESHOLDS.waterLevelMin
-      ),
-
-    ammoniaMax:
-      toNumber(
-        source.ammoniaMax ??
-          source.ammonia_max,
-
-        DEFAULT_THRESHOLDS.ammoniaMax
-      ),
-  };
-}
-
-/* =========================================================
-   LOCAL STORAGE
-========================================================= */
 
 function getLocalThresholds() {
   try {

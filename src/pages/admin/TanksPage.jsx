@@ -43,7 +43,6 @@ import {
 import {
   formatReadingTime,
   normalizeSensorReading,
-  toNumberOrNull,
 } from "../../utils/sensorReadingUtils";
 
 /* =========================================================
@@ -108,12 +107,7 @@ function formatFriendlyText(value) {
 ========================================================= */
 
 function getPhNumericLabel(reading) {
-  const raw =
-    reading?.ph ??
-    reading?.ph_value;
-
-  const numberValue =
-    toNumberOrNull(raw);
+  const numberValue = normalizeSensorReading(reading).phValue;
 
   return numberValue !== null
     ? numberValue.toFixed(1)
@@ -1166,17 +1160,8 @@ export default function TanksPage() {
             thresholds
               ? evaluateReadingSafety(
                   {
-                    temperature:
-                      latestReading
-                        ?.temperature_c ??
-                      latestReading
-                        ?.temperature,
-
-                    ph:
-                      latestReading
-                        ?.ph ??
-                      latestReading
-                        ?.ph_value,
+                    temperature: normalized.temperatureValue,
+                    ph: normalized.phValue,
 
                     turbidityVoltage:
                       normalized.turbidityValue,
@@ -1778,7 +1763,7 @@ export default function TanksPage() {
                         item.latestReading
                       ) ||
                       item.normalized
-                        .phStatus
+                        .phNumberLabel
                     }
                     parameter={item.normalized.safety?.parameters.ph}
                   />
@@ -1910,9 +1895,6 @@ export default function TanksPage() {
 const compactToolbarStyle = {
   display:
     "grid",
-
-  gridTemplateColumns:
-    "minmax(260px, 1fr) minmax(180px, 210px) minmax(180px, 210px)",
 
   gap:
     "10px",

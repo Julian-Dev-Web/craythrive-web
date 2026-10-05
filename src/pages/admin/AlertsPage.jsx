@@ -2256,9 +2256,6 @@ const alertToolbarStyle = {
   display:
     "grid",
 
-  gridTemplateColumns:
-    "minmax(260px, 1fr) repeat(3, minmax(160px, 190px))",
-
   alignItems:
     "center",
 

@@ -116,8 +116,7 @@ function formatFriendlyText(value) {
 ========================================================= */
 
 function getPhNumericLabel(reading) {
-  const raw = reading?.ph ?? reading?.ph_value;
-  const numberValue = toNumberOrNull(raw);
+  const numberValue = normalizeSensorReading(reading).phValue;
 
   return numberValue !== null
     ? numberValue.toFixed(1)
@@ -1677,9 +1676,7 @@ export default function TankDetailsPage() {
   const [
     nowMs,
     setNowMs,
-  ] = useState(
-    Date.now()
-  );
+  ] = useState(Date.now);
 
   const [
     thresholds,
@@ -2188,13 +2185,10 @@ export default function TankDetailsPage() {
         return null;
       }
 
-      const row = latestReading?.reading;
-
       return evaluateReadingSafety(
         {
-          temperature:
-            row?.temperature_c ?? row?.temperature,
-          ph: row?.ph ?? row?.ph_value,
+          temperature: latestReading?.normalized?.temperatureValue,
+          ph: latestReading?.normalized?.phValue,
           turbidityVoltage:
             latestReading?.normalized?.turbidityValue,
           waterDepth:

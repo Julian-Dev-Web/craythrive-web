@@ -574,17 +574,11 @@ export default function AddMarketplaceListingPage() {
 
   useEffect(() => {
     loadInitialData();
-
-    return () => {
-      if (
-        imagePreview
-      ) {
-        URL.revokeObjectURL(
-          imagePreview
-        );
-      }
-    };
   }, []);
+
+  useEffect(() => () => {
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+  }, [imagePreview]);
 
   async function loadInitialData() {
     if (

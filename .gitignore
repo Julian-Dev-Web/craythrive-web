@@ -16,6 +16,8 @@ dist-ssr
 .env*
 !.env.example
 .security-*
+test-results/
+playwright-report/
 
 # Editor directories and files
 .vscode/*

@@ -1,7 +1,7 @@
 import { logDiagnostic } from "../../utils/securityDiagnostics";
 import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
 import { getSafetySeverity, getSafetyStatusLabel, getParameterExplanation } from "../../utils/statusHelpers";
-import { buildMonitoringRecords, evaluateCurrentTankSafety, getLatestAmmoniaForTank, getAmmoniaNumericValue } from "../../utils/monitoringRecords";
+import { buildMonitoringRecords, evaluateCurrentTankSafety, getLatestAmmoniaForTank, getAmmoniaNumericValue, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
 import { evaluateReadingSafety } from "../../utils/thresholdEvaluation";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -632,6 +632,12 @@ export default function DashboardOverview() {
     (!latestReading || item.tankKey === latestReading.tankKey)) || null;
   const latestAmmoniaForReading = latestAmmoniaRecord?.ammoniaValue ?? null;
   const latestTankSafety = evaluateCurrentTankSafety(latestReading, latestAmmoniaRecord, thresholds);
+  const currentTankSeverities = useMemo(() => datasets.tanks.map(tank => {
+    const records = monitoringRecords.filter(item => recordMatchesMonitoringTank(item.reading, tank));
+    const water = records.find(item => item.type === "Water Reading");
+    const ammonia = records.find(item => item.type === "Ammonia Reading");
+    return getSafetySeverity(evaluateCurrentTankSafety(water, ammonia, thresholds));
+  }), [datasets.tanks, monitoringRecords, thresholds]);
 
   /* =======================================================
      AMMONIA STATUS
@@ -962,19 +968,11 @@ export default function DashboardOverview() {
      SIMPLE HEALTH STATUS
   ======================================================= */
 
-  const hasCriticalProblem =
-    stats.criticalAlerts > 0 || stats.ammoniaElevated > 0 ||
-    recentSensorIssues.some(
-      (item) =>
-        item.status === "critical"
-    );
-
-  const hasWarning =
-    stats.sensorIssues > 0 ||
-    stats.activeAlerts > 0;
+  const hasCriticalProblem = currentTankSeverities.includes("critical");
+  const hasWarning = currentTankSeverities.includes("warning");
 
   const simpleHealthSeverity = hasCriticalProblem ? "critical" : hasWarning ? "warning"
-    : monitoringRecords.some(item => item.normalized.safety.hasData) ? "normal" : "no-data";
+    : currentTankSeverities.includes("normal") ? "normal" : "no-data";
   const simpleHealthTitle = getSafetyStatusLabel(simpleHealthSeverity);
 
   const simpleHealthText =
@@ -982,7 +980,7 @@ export default function DashboardOverview() {
       ? "One or more tank conditions need to be checked as soon as possible."
       : hasWarning
         ? "Some tank conditions need your attention. CrayThrive is continuing to monitor them."
-        : "No active problems were detected in your monitored tanks.";
+        : "The latest evaluated tank readings are within your configured thresholds.";
 
   /* =======================================================
      UI

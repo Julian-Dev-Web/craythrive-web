@@ -1313,6 +1313,7 @@ function ReportFilterDropdown({
 
   return (
     <div
+      className="cray-report-dropdown"
       ref={
         dropdownRef
       }
@@ -1521,6 +1522,7 @@ export default function ReportsPage() {
 
   const [thresholds, setThresholds] = useState(null);
   const [conditionFilter, setConditionFilter] = useState("all");
+  const [exportScope, setExportScope] = useState("current");
 
   const loadReports =
     async (
@@ -2855,6 +2857,9 @@ export default function ReportsPage() {
   }
 
   function getSelectedReportSections() {
+    if (exportScope === "combined") {
+      return [getTankReportSection(), getMarketplaceReportSection()];
+    }
     if (
       activeReport ===
       "tanks"
@@ -2907,7 +2912,9 @@ export default function ReportsPage() {
 
     let filename;
 
-    if (
+    if (exportScope === "combined") {
+      filename = `craythrive-combined-report${dateFilePart}.csv`;
+    } else if (
       activeReport ===
       "tanks"
     ) {
@@ -2936,7 +2943,10 @@ export default function ReportsPage() {
     let title;
     let subtitle;
 
-    if (
+    if (exportScope === "combined") {
+      title = "CrayThrive Combined Report";
+      subtitle = `${selectedTankId === "all" ? "All Tanks" : selectedTankName} · Marketplace · ${dateRangeLabel}`;
+    } else if (
       activeReport ===
       "tanks"
     ) {
@@ -3014,11 +3024,8 @@ export default function ReportsPage() {
           </h2>
 
           <p>
-            Choose a report type
-            and date range. Tank
-            and marketplace reports
-            are now kept separate
-            for clearer exports.
+            Choose a report type and date range. Export the current report
+            or combine tank and marketplace sections in one file.
           </p>
 
           <div className="cray-report-actions">
@@ -3138,6 +3145,7 @@ export default function ReportsPage() {
         }
       >
         <div
+          className="cray-report-date-field"
           style={
             reportDateFieldStyle
           }
@@ -3175,6 +3183,7 @@ export default function ReportsPage() {
         </div>
 
         <div
+          className="cray-report-date-field"
           style={
             reportDateFieldStyle
           }
@@ -3252,6 +3261,10 @@ export default function ReportsPage() {
           icon={Gauge} value={conditionFilter} onChange={setConditionFilter}
           options={[{ value: "all", label: "All" }, ...["normal", "warning", "critical"].map(value => ({ value, label: getSafetyStatusLabel(value) }))]} />}
 
+        <ReportFilterDropdown ariaLabel="Choose export scope" icon={FileText}
+          value={exportScope} onChange={setExportScope}
+          options={[{ value: "current", label: "Export: Current Report" }, { value: "combined", label: "Export: Tanks + Marketplace" }]} />
+
         {(fromDate ||
           toDate) && (
           <button
@@ -3279,6 +3292,7 @@ export default function ReportsPage() {
 
         <button
           type="button"
+          title="Open the report, then use the browser print dialog to print or Save as PDF"
           onClick={
             handlePrintReports
           }
@@ -4142,9 +4156,6 @@ const reportDateInputStyle =
   boxShadow:
     "var(--ct-shadow-soft, 0 4px 14px rgba(15, 23, 42, 0.04))",
 
-  colorScheme:
-    "light dark",
-
   font:
     "inherit",
 
@@ -4206,10 +4217,7 @@ const reportDropdownTriggerStyle =
   width:
     "100%",
 
-  minWidth:
-    "180px",
-
-  height:
+  minHeight:
     "46px",
 
   display:
@@ -4222,7 +4230,7 @@ const reportDropdownTriggerStyle =
     "8px",
 
   padding:
-    "0 12px",
+    "10px 12px",
 
   borderWidth: "1px",
   borderStyle: "solid",
@@ -4285,14 +4293,10 @@ const reportDropdownSelectedTextStyle =
   minWidth:
     0,
 
-  overflow:
-    "hidden",
-
-  textOverflow:
-    "ellipsis",
-
   whiteSpace:
-    "nowrap",
+    "normal",
+
+  overflowWrap: "anywhere",
 };
 
 const reportDropdownChevronStyle =
@@ -4364,7 +4368,7 @@ const reportDropdownItemStyle =
     "100%",
 
   minHeight:
-    "38px",
+    "44px",
 
   display:
     "flex",
@@ -4379,7 +4383,7 @@ const reportDropdownItemStyle =
     "10px",
 
   padding:
-    "0 10px",
+    "8px 10px",
 
   border:
     "none",

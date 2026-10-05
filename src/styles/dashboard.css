@@ -1925,6 +1925,8 @@ html[data-theme="dark"] .modern-admin-topbar {
 .modern-admin-content {
   min-width: 0;
   padding: 26px;
+  /* User-entered names can contain long words without spaces. */
+  overflow-wrap: anywhere;
 }
 
 .modern-admin-content h1,

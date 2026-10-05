@@ -13,6 +13,7 @@ export function getFirstValue(...values) {
 }
 
 export function toNumberOrNull(value) {
+  if (typeof value !== "number" && typeof value !== "string") return null;
   if (value === null || value === undefined || value === "") return null;
   if (typeof value === "string" && value.trim() === "") return null;
 
@@ -44,23 +45,24 @@ export function normalizeSensorReading(reading, thresholds = getLocalThresholds(
   if (!reading) {
     return {
       raw: null,
+      safety: evaluateReadingSafety({}, thresholds),
 
       temperatureValue: null,
-      temperatureLabel: "N/A",
+      temperatureLabel: "No Data",
       temperatureStatus: "No Reading",
 
       phValue: null,
-      phNumberLabel: "N/A",
+      phNumberLabel: "No Data",
       phLabel: "No Reading",
       phStatus: "No Reading",
 
       turbidityValue: null,
-      turbidityNumberLabel: "N/A",
+      turbidityNumberLabel: "No Data",
       turbidityLabel: "No Reading",
       turbidityStatus: "No Reading",
 
       waterValue: null,
-      waterLabel: "N/A",
+      waterLabel: "No Data",
       waterStatus: "No Reading",
 
       createdAt: null,
@@ -68,30 +70,25 @@ export function normalizeSensorReading(reading, thresholds = getLocalThresholds(
     };
   }
 
-  const temperatureValue = getFirstValue(
+  const temperatureValue = [
     reading.temperature_c,
     reading.temperature
-  );
+  ].map(toNumberOrNull).find(value => value !== null) ?? null;
 
-  // IMPORTANT:
-  // Use ph first because this is the more correct/actual pH reading in your DB.
-  // ph_value is only fallback because some old rows/code may still use it.
-  const phValue = getFirstValue(
-    reading.ph,
-    reading.ph_value
-  );
+  const phValue = [reading.ph_value, reading.ph]
+    .map(toNumberOrNull).find(value => value !== null) ?? null;
 
-  const turbidityValue = getFirstValue(
+  const turbidityValue = [
     reading.turbidity_voltage,
     reading.turbidity,
     reading.raw_turbidity_value
-  );
+  ].map(toNumberOrNull).find(value => value !== null) ?? null;
 
   const waterValue = [
     reading.water_depth_cm,
     reading.water_level,
     reading.waterValue
-  ].find(value => toNumberOrNull(value) !== null) ?? null;
+  ].map(toNumberOrNull).find(value => value !== null) ?? null;
 
   const safety = evaluateReadingSafety({
     temperature: temperatureValue, ph: phValue,
@@ -109,20 +106,20 @@ export function normalizeSensorReading(reading, thresholds = getLocalThresholds(
     temperatureValue,
     temperatureLabel:
       toNumberOrNull(temperatureValue) === null
-        ? "N/A"
+        ? "No Data"
         : `${formatNumber(temperatureValue, 1)}°C`,
     temperatureStatus,
 
     phValue,
     phNumberLabel:
-      toNumberOrNull(phValue) === null ? "N/A" : formatNumber(phValue, 2),
+      toNumberOrNull(phValue) === null ? "No Data" : formatNumber(phValue, 2),
     phLabel: phStatus,
     phStatus,
 
     turbidityValue,
     turbidityNumberLabel:
       toNumberOrNull(turbidityValue) === null
-        ? "N/A"
+        ? "No Data"
         : `${formatNumber(turbidityValue, 2)} V`,
     turbidityLabel: turbidityStatus,
     turbidityStatus,
@@ -130,7 +127,7 @@ export function normalizeSensorReading(reading, thresholds = getLocalThresholds(
     waterValue,
     waterLabel:
       toNumberOrNull(waterValue) === null
-        ? "N/A"
+        ? "No Data"
         : `${formatNumber(waterValue, 1)} cm`,
     waterStatus,
 

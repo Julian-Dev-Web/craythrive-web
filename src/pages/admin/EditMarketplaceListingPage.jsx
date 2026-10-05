@@ -412,19 +412,13 @@ export default function EditMarketplaceListingPage() {
 
   useEffect(() => {
     loadListing();
-
-    return () => {
-      if (
-        imagePreview
-      ) {
-        URL.revokeObjectURL(
-          imagePreview
-        );
-      }
-    };
   }, [
     listingId,
   ]);
+
+  useEffect(() => () => {
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+  }, [imagePreview]);
 
   async function loadListing() {
     if (

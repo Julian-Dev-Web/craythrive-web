@@ -9,6 +9,7 @@
 
   display: grid;
   gap: 20px;
+  grid-template-columns: minmax(0, 1fr);
 
   color: var(--ct-text);
 }
@@ -138,6 +139,8 @@
 }
 
 .cray-report-hero-card strong {
+  max-width: 100%;
+  overflow-wrap: anywhere;
   display: block;
 
   margin-top: 10px;
@@ -608,14 +611,12 @@
   strong {
   display: block;
 
-  overflow: hidden;
-
   color: var(--ct-text);
 
   font-size: 0.95rem;
 
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .cray-report-metric-grid
@@ -967,19 +968,37 @@
 
 .cray-report-row > div {
   min-width: 0;
+  max-width: 100%;
 }
 
 .cray-report-row strong {
   display: block;
 
-  overflow: hidden;
-
   color: var(--ct-text);
 
   font-size: 0.75rem;
 
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.cray-report-dropdown {
+  min-width: 180px;
+  max-width: 100%;
+  flex: 0 1 240px;
+}
+
+.cray-report-dropdown [role="option"] > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cray-report-date-field input {
+  color-scheme: light;
+}
+
+html[data-theme="dark"] .cray-report-date-field input {
+  color-scheme: dark;
 }
 
 .cray-report-row span {
@@ -1251,6 +1270,7 @@
 
   .cray-report-tabs button {
     width: 100%;
+    min-height: 44px;
   }
 
   .cray-report-actions {
@@ -1279,6 +1299,20 @@
 
   .cray-report-exportbar label {
     min-width: 0;
+  }
+
+  .cray-report-dropdown {
+    width: 100%;
+    min-width: 0;
+    flex: auto;
+  }
+
+  .cray-report-date-field {
+    width: 100%;
+  }
+
+  .cray-report-row > div {
+    width: 100%;
   }
 
   .cray-report-row {

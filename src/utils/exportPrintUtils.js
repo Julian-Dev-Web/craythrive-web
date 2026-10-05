@@ -1,1182 +1,175 @@
-// src/utils/exportPrintUtils.js
-
-/* =========================================================
-   GENERAL HELPERS
-========================================================= */
-
+﻿// CSV keeps complete raw field text; print uses its own readable presentation.
 function cleanValue(value) {
-  if (
-    value === null ||
-    value === undefined
-  ) {
-    return "";
-  }
-
-  return String(value)
-    .replace(/\s+/g, " ")
-    .trim();
+  return value == null ? "" : String(value).replace(/\s+/g, " ").trim();
 }
-
 function escapeCsv(value) {
-  let text =
-    cleanValue(value);
-
-  // Spreadsheet applications can interpret untrusted titles/messages as formulas.
-  // Preserve ordinary signed numeric readings; make formula-like text a literal.
-  if (/^[=+@-]/.test(text) && !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(text)) {
-    text = `'${text}`;
-  }
-
-  if (
-    text.includes(",") ||
-    text.includes('"') ||
-    text.includes("\n")
-  ) {
-    return `"${text.replaceAll(
-      '"',
-      '""'
-    )}"`;
-  }
-
-  return text;
+  let text = value == null ? "" : String(value);
+  if (/^[=+@-]/.test(text.trimStart()) && !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(text.trim())) text = `'${text}`;
+  return /[,"\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
-
 function escapeHtml(value) {
-  return cleanValue(value)
-    .replaceAll(
-      "&",
-      "&amp;"
-    )
-    .replaceAll(
-      "<",
-      "&lt;"
-    )
-    .replaceAll(
-      ">",
-      "&gt;"
-    )
-    .replaceAll(
-      '"',
-      "&quot;"
-    )
-    .replaceAll(
-      "'",
-      "&#039;"
-    );
+  return cleanValue(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 }
-
-/* =========================================================
-   CSV EXPORT
-========================================================= */
-
-export function downloadCsv(
-  filename,
-  rows
-) {
-  if (
-    !Array.isArray(rows) ||
-    rows.length === 0
-  ) {
-    alert(
-      "No records available to export."
-    );
-
+function getHeaders(rows) {
+  return [...new Set(rows.flatMap(row => Object.keys(row || {})))];
+}
+export function downloadCsv(filename, rows) {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    alert("No records available to export.");
     return;
   }
-
-  const headers =
-    Array.from(
-      rows.reduce(
-        (set, row) => {
-          Object.keys(
-            row || {}
-          ).forEach(
-            (key) =>
-              set.add(key)
-          );
-
-          return set;
-        },
-        new Set()
-      )
-    );
-
-  const csv = [
-    headers
-      .map(escapeCsv)
-      .join(","),
-
-    ...rows.map((row) =>
-      headers
-        .map((header) =>
-          escapeCsv(
-            row?.[header]
-          )
-        )
-        .join(",")
-    ),
-  ].join("\n");
-
-  const blob =
-    new Blob(
-      [csv],
-      {
-        type:
-          "text/csv;charset=utf-8;",
-      }
-    );
-
-  const url =
-    URL.createObjectURL(
-      blob
-    );
-
-  const link =
-    document.createElement(
-      "a"
-    );
-
+  const headers = getHeaders(rows);
+  const csv = [headers.map(escapeCsv).join(","), ...rows.map(row => headers.map(header => escapeCsv(row?.[header])).join(","))].join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
   link.href = url;
-
-  link.download =
-    filename;
-
-  document.body.appendChild(
-    link
-  );
-
+  link.download = filename;
+  document.body.appendChild(link);
   link.click();
-
-  document.body.removeChild(
-    link
-  );
-
-  URL.revokeObjectURL(
-    url
-  );
+  document.body.removeChild(link);
+  // Let phone browsers start consuming the Blob before releasing it.
+  const revoke = URL.revokeObjectURL.bind(URL);
+  const cleanup = setTimeout(() => revoke(url), 60_000);
+  cleanup.unref?.();
 }
-
-/* =========================================================
-   TABLE HELPERS
-========================================================= */
-
-function getHeaders(rows) {
-  if (
-    !Array.isArray(rows) ||
-    rows.length === 0
-  ) {
-    return [];
-  }
-
-  return Array.from(
-    rows.reduce(
-      (set, row) => {
-        Object.keys(
-          row || {}
-        ).forEach(
-          (key) =>
-            set.add(key)
-        );
-
-        return set;
-      },
-      new Set()
-    )
-  );
-}
-
-function buildTable(
-  rows,
-  headers
-) {
-  if (
-    !rows ||
-    rows.length === 0
-  ) {
-    return `
-      <div class="empty">
-        No records available.
-      </div>
-    `;
-  }
-
-  return `
-    <div class="table-wrapper">
-      <table>
-        <thead>
-          <tr>
-            ${headers
-              .map(
-                (header) =>
-                  `<th>${escapeHtml(
-                    header
-                  )}</th>`
-              )
-              .join("")}
-          </tr>
-        </thead>
-
-        <tbody>
-          ${rows
-            .map(
-              (row) => `
-                <tr>
-                  ${headers
-                    .map(
-                      (header) => `
-                        <td>
-                          ${formatPrintCell(header, row?.[header])}
-                        </td>
-                      `
-                    )
-                    .join("")}
-                </tr>
-              `
-            )
-            .join("")}
-        </tbody>
-      </table>
-    </div>
-  `;
-}
-
-// Only monitoring condition columns get safety badges; marketplace statuses stay unchanged.
 function formatPrintCell(header, value) {
-  const levels = { Normal: "normal", Warning: "warning", Critical: "critical", "No Data": "neutral", "No Scan": "neutral" };
+  const levels = { Normal: "normal", Warning: "warning", Critical: "critical", "No Data": "neutral", "No Scan": "neutral", Waiting: "neutral", Unpaired: "neutral" };
   const level = levels[value];
-  if (!header.endsWith("Condition") || !level) return escapeHtml(value);
-  const icon = { normal: "&#10003;", warning: "&#9888;", critical: "&#9888;", neutral: "&#8212;" }[level];
+  if ((!header.endsWith("Condition") && header !== "Priority") || !level) return escapeHtml(value);
+  const icon = level === "normal" ? "&#10003;" : level === "neutral" ? "&#8212;" : "&#9888;";
   return `<span class="condition ${level}"><span aria-hidden="true">${icon}</span> ${escapeHtml(value)}</span>`;
 }
-
-/* =========================================================
-   PAGINATION HELPERS
-
-   We create actual print pages ourselves instead of relying
-   on browser page counters.
-
-   Long rows use more "space units", so pages with long
-   messages automatically receive fewer records.
-========================================================= */
-
-function getLongestCellLength(
-  row
-) {
-  if (!row) {
-    return 0;
-  }
-
-  return Math.max(
-    0,
-    ...Object.values(
-      row
-    ).map(
-      (value) =>
-        cleanValue(value)
-          .length
-    )
-  );
+function buildTable(rows, columns) {
+  if (!rows.length) return '<p class="empty">No records available.</p>';
+  return `<table><thead><tr>${columns.map(({ key, label = key }) => `<th scope="col">${escapeHtml(label)}</th>`).join("")}</tr></thead>
+    <tbody>${rows.map(row => `<tr>${columns.map(({ key, label = key, condition }) => `<td data-label="${escapeHtml(label)}">${formatPrintCell(key, row[key])}${condition ? `<br>${formatPrintCell(condition, row[condition])}` : ""}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
 }
-
-function estimateRowUnits(
-  row
-) {
-  // Wide monitoring tables wrap more cells even when their text is short.
-  const minimumUnits = Object.keys(row || {}).length >= 12 ? 2 : 1;
-  const longest =
-    getLongestCellLength(
-      row
-    );
-
-  if (longest > 260) {
-    return 4;
-  }
-
-  if (longest > 170) {
-    return 3;
-  }
-
-  if (longest > 90) {
-    return 2;
-  }
-
-  return minimumUnits;
+function buildRecordCards(rows) {
+  return rows.map(row => `<article class="record-card"><dl>${Object.entries(row).map(([key, value]) => `<div><dt>${escapeHtml(key)}</dt><dd>${formatPrintCell(key, value)}</dd></div>`).join("")}</dl></article>`).join("");
 }
-
-/*
- * A4 landscape has limited vertical space.
- * A page budget of 16 gives us enough room for:
- *
- * - CrayThrive report header
- * - Section title
- * - Table header
- * - Rows
- * - Page number footer
- */
-const PAGE_ROW_UNIT_LIMIT =
-  16;
-
-function splitRowsIntoPages(
-  rows
-) {
-  if (
-    !Array.isArray(rows) ||
-    rows.length === 0
-  ) {
-    return [[]];
-  }
-
-  const pages = [];
-
-  let currentPage = [];
-  let currentUnits = 0;
-
-  rows.forEach((row) => {
-    const rowUnits =
-      estimateRowUnits(
-        row
-      );
-
-    if (
-      currentPage.length >
-        0 &&
-      currentUnits +
-        rowUnits >
-        PAGE_ROW_UNIT_LIMIT
-    ) {
-      pages.push(
-        currentPage
-      );
-
-      currentPage = [];
-      currentUnits = 0;
+function buildSection(section, index) {
+  const rows = Array.isArray(section?.rows) ? section.rows : [];
+  const water = rows.filter(row => row.Type === "Water Reading");
+  const ammonia = rows.filter(row => row.Type === "Ammonia Reading");
+  const other = rows.filter(row => !["Water Reading", "Ammonia Reading"].includes(row.Type));
+  let content = "";
+  if (water.length) content += `<h3>Water Readings</h3>${buildTable(water, [
+    { key: "Date" }, { key: "Tank" },
+    { key: "Temperature", condition: "Temperature Condition" },
+    { key: "pH", condition: "pH Condition" },
+    { key: "Water Clarity", condition: "Water Clarity Condition" },
+    { key: "Water Level", condition: "Water Level Condition" },
+    { key: "Overall Condition", label: "Overall" },
+  ])}`;
+  if (water.length || ammonia.length) content += `<h3>Ammonia Readings</h3><p class="section-note">Each scan has its own timestamp; scans are separate from water reading history.</p>${ammonia.length ? buildTable(ammonia, [
+    { key: "Date" }, { key: "Tank" }, { key: "Ammonia" }, { key: "Ammonia Condition", label: "Condition" },
+  ]) : '<p class="empty">No Scan — no ammonia scans in this selection.</p>'}`;
+  if (other.length) {
+    // Separate listings and orders to avoid sparse, wide union tables.
+    for (const group of [...new Set(other.map(row => row.Type || "Records"))]) {
+      const groupRows = other.filter(row => (row.Type || "Records") === group);
+      const headers = getHeaders(groupRows);
+      content += `<h3>${escapeHtml(group)}</h3>`;
+      content += headers.length > 7 || groupRows.some(row => "Message" in row)
+        ? buildRecordCards(groupRows)
+        : buildTable(groupRows, headers.map(key => ({ key })));
     }
-
-    currentPage.push(
-      row
-    );
-
-    currentUnits +=
-      rowUnits;
-  });
-
-  if (
-    currentPage.length >
-    0
-  ) {
-    pages.push(
-      currentPage
-    );
   }
-
-  return pages;
+  if (!rows.length) content = '<p class="empty">No records available for this selection.</p>';
+  return `<section class="report-section"><div class="section-heading"><h2>${escapeHtml(section?.title || `Report ${index + 1}`)}</h2>${section?.description ? `<p>${escapeHtml(section.description)}</p>` : ""}</div>${content}</section>`;
 }
-
-/* =========================================================
-   BUILD PRINT PAGES
-========================================================= */
-
-function buildPrintablePages(
-  sections
-) {
-  const pages = [];
-
-  sections.forEach(
-    (
-      section,
-      sectionIndex
-    ) => {
-      const rows =
-        Array.isArray(
-          section?.rows
-        )
-          ? section.rows
-          : [];
-
-      const headers =
-        getHeaders(rows);
-
-      const rowPages =
-        splitRowsIntoPages(
-          rows
-        );
-
-      rowPages.forEach(
-        (
-          pageRows,
-          sectionPageIndex
-        ) => {
-          pages.push({
-            sectionTitle:
-              section?.title ||
-              `Report ${
-                sectionIndex + 1
-              }`,
-
-            description:
-              section
-                ?.description ||
-              "",
-
-            rows:
-              pageRows,
-
-            headers,
-
-            sectionPage:
-              sectionPageIndex +
-              1,
-
-            sectionPageCount:
-              rowPages.length,
+// Browser pagination uses actual rendered row heights, including long names.
+// CSV fields and evaluated statuses remain unchanged; only print presentation changes.
+export function buildPrintableReport({ title, subtitle, sections }) {
+  const generatedAt = new Date().toLocaleString("en-PH", { dateStyle: "long", timeStyle: "short" });
+  return `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>${escapeHtml(subtitle ? `${title} - ${subtitle}` : title)}</title>
+    <style>
+      @page {
+        size: A4 portrait; margin: 12mm;
+        @bottom-left { content: "CrayThrive"; font: 9pt Arial, sans-serif; color: #465b62; }
+        @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 9pt Arial, sans-serif; color: #465b62; }
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; background: #fff; color: #172c32; font-family: Arial, Helvetica, sans-serif; color-scheme: light; }
+      body { font-size: 10pt; line-height: 1.4; }
+      .print-report { width: 100%; overflow-wrap: anywhere; }
+      .report-header { border-bottom: 2px solid #11877e; padding-bottom: 12px; margin-bottom: 18px; }
+      .brand { color: #14665f; font-size: 10pt; font-weight: bold; letter-spacing: .1em; }
+      h1 { font-size: 20pt; line-height: 1.2; margin: 6px 0 10px; }
+      .report-subtitle, .generated { margin-top: 5px; }
+      .generated, .section-note, .section-heading p { color: #465b62; }
+      h2 { font-size: 14pt; margin: 0 0 6px; }
+      h3 { font-size: 11pt; margin: 18px 0 8px; break-after: avoid; page-break-after: avoid; }
+      .report-section { margin-bottom: 24px; }
+      .section-heading { break-inside: avoid; break-after: avoid; page-break-after: avoid; }
+      .section-heading p, .section-note { margin: 0 0 10px; }
+      table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 9pt; }
+      th, td { border: 1px solid #b8c6ca; padding: 7px 5px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+      th { background: #f0f5f5; font-weight: bold; }
+      thead { display: table-header-group; }
+      tr, .record-card { break-inside: avoid; page-break-inside: avoid; }
+      .condition { display: inline-block; margin-top: 3px; font-weight: bold; font-size: 9pt; }
+      .normal { color: #176357; } .warning { color: #875100; } .critical { color: #a51d30; } .neutral { color: #52636b; }
+      .empty { border: 1px dashed #b8c6ca; padding: 12px; color: #465b62; }
+      .record-card { border: 1px solid #b8c6ca; padding: 10px; margin: 8px 0; }
+      dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; margin: 0; }
+      dt { color: #465b62; font-size: 9pt; } dd { margin: 2px 0 0; }
+      .report-footer { border-top: 1px solid #b8c6ca; padding-top: 8px; color: #465b62; font-size: 9pt; }
+      .print-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 auto 12px; max-width: 186mm; }
+      .print-actions button { min-height: 44px; padding: 8px 16px; border: 1px solid #b8c6ca; border-radius: 8px; background: #fff; color: #172c32; font: inherit; cursor: pointer; }
+      @media screen {
+        body { padding: 16px; background: #edf3f4; }
+        .print-report { max-width: 186mm; margin: 0 auto; padding: 20px; background: #fff; box-shadow: 0 4px 20px #172c321a; }
+      }
+      @media screen and (max-width: 600px) {
+        body { padding: 10px; } .print-report { padding: 14px; }
+        table, tbody, tr, td { display: block; } thead { display: none; }
+        tr { margin-bottom: 12px; border: 1px solid #b8c6ca; }
+        td { border: 0; border-bottom: 1px solid #edf3f4; }
+        td::before { content: attr(data-label); display: block; font-weight: bold; color: #465b62; }
+        dl { grid-template-columns: minmax(0, 1fr); }
+      }
+      @media print {
+        html, body { background: #fff !important; }
+        .print-report { max-width: none; margin: 0; padding: 0; box-shadow: none; }
+        .print-actions { display: none; }
+        .report-footer { display: none; }
+        .report-section:last-of-type { margin-bottom: 0; }
+      }
+    </style></head><body>
+    <div class="print-actions"><button type="button" onclick="window.print()">Print / Save PDF</button></div>
+    <main class="print-report"><header class="report-header"><div class="brand">CRAYTHRIVE</div><h1>${escapeHtml(title)}</h1>
+    ${subtitle ? `<div class="report-subtitle">Report For: <strong>${escapeHtml(subtitle)}</strong></div>` : ""}
+    <div class="generated">Generated: ${escapeHtml(generatedAt)}</div></header>
+    ${sections.map(buildSection).join("")}<footer class="report-footer">CrayThrive · Monitoring and marketplace report</footer></main>
+    <script>
+      (function () {
+        function startPrint() {
+          Promise.resolve(document.fonts && document.fonts.ready).then(function() {
+            requestAnimationFrame(function() { requestAnimationFrame(function() {
+              setTimeout(function() { window.focus(); window.print(); }, 250);
+            }); });
           });
         }
-      );
-    }
-  );
-
-  return pages;
+        if (document.readyState === 'complete') startPrint();
+        else window.addEventListener('load', startPrint, { once: true });
+      })();
+    </script></body></html>`;
 }
-
-/* =========================================================
-   REPORT HEADER
-========================================================= */
-
-function buildReportHeader({
-  title,
-  subtitle,
-  generatedAt,
-}) {
-  return `
-    <header class="report-header">
-
-      <div class="brand-row">
-
-        <div>
-          <div class="brand">
-            CRAYTHRIVE
-          </div>
-
-          <h1>
-            ${escapeHtml(
-              title
-            )}
-          </h1>
-        </div>
-
-        <div class="report-badge">
-          REPORT
-        </div>
-      </div>
-
-      ${
-        subtitle
-          ? `
-            <div class="report-subtitle">
-              <span>
-                Report For
-              </span>
-
-              <strong>
-                ${escapeHtml(
-                  subtitle
-                )}
-              </strong>
-            </div>
-          `
-          : ""
-      }
-
-      <div class="generated">
-        Generated:
-        ${escapeHtml(
-          generatedAt
-        )}
-      </div>
-
-    </header>
-  `;
-}
-
-/* =========================================================
-   PRINT REPORT
-========================================================= */
-
-export function printReport({
-  title,
-  subtitle,
-  sections,
-}) {
-  if (
-    !Array.isArray(
-      sections
-    ) ||
-    sections.length === 0
-  ) {
-    alert(
-      "No report sections available to print."
-    );
-
+export function printReport(report) {
+  if (!Array.isArray(report.sections) || !report.sections.length) {
+    alert("No report sections available to print.");
     return;
   }
-
-  const printableWindow =
-    window.open(
-      "",
-      "_blank"
-    );
-
+  // Open synchronously during the click to retain browser user activation.
+  const printableWindow = window.open("", "_blank");
   if (!printableWindow) {
-    alert(
-      "Popup blocked. Please allow popups to print this report."
-    );
-
+    alert("Popup blocked. Please allow popups to print this report.");
     return;
   }
-
-  const printablePages =
-    buildPrintablePages(
-      sections
-    );
-
-  const totalPages =
-    Math.max(
-      printablePages.length,
-      1
-    );
-
-  const generatedAt =
-    new Date().toLocaleString(
-      "en-PH",
-      {
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: true,
-      }
-    );
-
-  const documentTitle =
-    subtitle
-      ? `${title} - ${subtitle}`
-      : title;
-
-  const pagesHtml =
-    printablePages
-      .map(
-        (
-          page,
-          index
-        ) => {
-          const pageNumber =
-            index + 1;
-
-          return `
-            <article class="print-page">
-
-              ${buildReportHeader(
-                {
-                  title,
-                  subtitle,
-                  generatedAt,
-                }
-              )}
-
-              <main class="page-content">
-
-                <section class="report-section">
-
-                  <div class="section-heading">
-
-                    <div>
-                      <h2>
-                        ${escapeHtml(
-                          page.sectionTitle
-                        )}
-                      </h2>
-
-                      ${
-                        page.description
-                          ? `
-                            <p>
-                              ${escapeHtml(
-                                page.description
-                              )}
-                            </p>
-                          `
-                          : ""
-                      }
-                    </div>
-
-                    ${
-                      page.sectionPageCount >
-                      1
-                        ? `
-                          <div class="section-page-label">
-                            Part
-                            ${page.sectionPage}
-                            of
-                            ${page.sectionPageCount}
-                          </div>
-                        `
-                        : ""
-                    }
-
-                  </div>
-
-                  ${buildTable(
-                    page.rows,
-                    page.headers
-                  )}
-
-                </section>
-
-              </main>
-
-              <footer class="report-footer">
-
-                <span>
-                  CrayThrive
-                  ${
-                    subtitle
-                      ? ` • ${escapeHtml(
-                          subtitle
-                        )}`
-                      : ""
-                  }
-                </span>
-
-                <strong>
-                  Page
-                  ${pageNumber}
-                  of
-                  ${totalPages}
-                </strong>
-
-              </footer>
-
-            </article>
-          `;
-        }
-      )
-      .join("");
-
-  printableWindow.document.write(`
-    <!doctype html>
-
-    <html>
-      <head>
-
-        <meta charset="UTF-8" />
-
-        <meta
-          name="viewport"
-          content="width=device-width, initial-scale=1"
-        />
-
-        <title>
-          ${escapeHtml(
-            documentTitle
-          )}
-        </title>
-
-        <style>
-
-          /* ===============================================
-             PRINT PAGE
-          =============================================== */
-
-          @page {
-            size: A4 landscape;
-            margin: 10mm;
-          }
-
-          * {
-            box-sizing: border-box;
-          }
-
-          html,
-          body {
-            margin: 0;
-            padding: 0;
-
-            color: #102a32;
-
-            background: #ffffff;
-
-            font-family:
-              Arial,
-              Helvetica,
-              sans-serif;
-          }
-
-          body {
-            font-size: 10px;
-          }
-
-          .print-page {
-            width: 100%;
-            min-height: 185mm;
-
-            display: flex;
-            flex-direction: column;
-
-            page-break-after: always;
-            break-after: page;
-
-            background: #ffffff;
-          }
-
-          .print-page:last-child {
-            page-break-after: auto;
-            break-after: auto;
-          }
-
-          /* ===============================================
-             HEADER
-          =============================================== */
-
-          .report-header {
-            flex: 0 0 auto;
-
-            padding-bottom: 12px;
-
-            margin-bottom: 14px;
-
-            border-bottom:
-              2px solid
-              #0bd1c4;
-          }
-
-          .brand-row {
-            display: flex;
-
-            align-items:
-              flex-start;
-
-            justify-content:
-              space-between;
-
-            gap: 20px;
-          }
-
-          .brand {
-            margin-bottom: 5px;
-
-            color: #0a9f97;
-
-            font-size: 9px;
-            font-weight: 800;
-
-            letter-spacing:
-              0.14em;
-          }
-
-          h1 {
-            margin: 0;
-
-            color: #102a32;
-
-            font-size: 22px;
-            line-height: 1.15;
-          }
-
-          .report-badge {
-            display: inline-flex;
-
-            align-items: center;
-            justify-content: center;
-
-            min-height: 27px;
-
-            padding:
-              0 11px;
-
-            color: #087f78;
-
-            border:
-              1px solid
-              #a9e9e3;
-
-            border-radius:
-              999px;
-
-            background:
-              #eefaf8;
-
-            font-size: 8px;
-            font-weight: 800;
-
-            letter-spacing:
-              0.1em;
-          }
-
-          .report-subtitle {
-            display: flex;
-
-            align-items: center;
-
-            gap: 7px;
-
-            margin-top: 9px;
-          }
-
-          .report-subtitle span {
-            color: #65787e;
-
-            font-size: 9px;
-          }
-
-          .report-subtitle strong {
-            color: #102a32;
-
-            font-size: 10px;
-          }
-
-          .generated {
-            margin-top: 5px;
-
-            color: #6a7e84;
-
-            font-size: 8px;
-          }
-
-          /* ===============================================
-             CONTENT
-          =============================================== */
-
-          .page-content {
-            flex: 1 1 auto;
-
-            min-height: 0;
-          }
-
-          .report-section {
-            margin: 0;
-          }
-
-          .section-heading {
-            display: flex;
-
-            align-items:
-              flex-start;
-
-            justify-content:
-              space-between;
-
-            gap: 16px;
-
-            margin-bottom: 10px;
-          }
-
-          h2 {
-            margin:
-              0 0 4px;
-
-            color: #102a32;
-
-            font-size: 14px;
-          }
-
-          .section-heading p {
-            max-width: 720px;
-
-            margin: 0;
-
-            color: #5c6f76;
-
-            font-size: 8px;
-            line-height: 1.45;
-          }
-
-          .section-page-label {
-            flex: 0 0 auto;
-
-            padding:
-              5px 8px;
-
-            color: #0a817a;
-
-            border:
-              1px solid
-              #c4ece8;
-
-            border-radius:
-              999px;
-
-            background:
-              #f2fbfa;
-
-            font-size: 8px;
-            font-weight: 700;
-          }
-
-          /* ===============================================
-             TABLE
-          =============================================== */
-
-          .table-wrapper {
-            width: 100%;
-          }
-
-          table {
-            width: 100%;
-
-            border-collapse:
-              collapse;
-
-            table-layout:
-              fixed;
-
-            font-size: 8px;
-          }
-
-          thead {
-            display:
-              table-header-group;
-          }
-
-          th,
-          td {
-            padding:
-              5px 6px;
-
-            border:
-              1px solid
-              #d7e5e8;
-
-            text-align:
-              left;
-
-            vertical-align:
-              top;
-
-            overflow-wrap:
-              anywhere;
-
-            word-break:
-              break-word;
-
-            line-height: 1.35;
-          }
-
-          th {
-            color: #102a32;
-
-            background:
-              #eefaf8;
-
-            font-size: 7.5px;
-            font-weight: 800;
-          }
-
-          td {
-            color: #354b52;
-
-            background:
-              #ffffff;
-          }
-
-          .condition { display: inline-block; padding: 2px 3px; border: 1px solid; border-radius: 4px; font-weight: 800; }
-          .condition.normal { color: #115e59; background: #ccfbf1; border-color: #0d9488; }
-          .condition.warning { color: #854d0e; background: #fef3c7; border-color: #d97706; }
-          .condition.critical { color: #991b1b; background: #fee2e2; border-color: #dc2626; }
-          .condition.neutral { color: #475569; background: #f1f5f9; border-color: #94a3b8; }
-
-          tbody tr:nth-child(even)
-            td {
-            background:
-              #fbfdfd;
-          }
-
-          tr {
-            break-inside:
-              avoid;
-
-            page-break-inside:
-              avoid;
-          }
-
-          /* ===============================================
-             EMPTY
-          =============================================== */
-
-          .empty {
-            padding: 18px;
-
-            color: #5c6f76;
-
-            border:
-              1px dashed
-              #b7c8ce;
-
-            border-radius:
-              10px;
-
-            background:
-              #fbfdfd;
-
-            text-align: center;
-
-            font-size: 9px;
-          }
-
-          /* ===============================================
-             FOOTER
-          =============================================== */
-
-          .report-footer {
-            flex: 0 0 auto;
-
-            display: flex;
-
-            align-items: center;
-
-            justify-content:
-              space-between;
-
-            gap: 12px;
-
-            margin-top: 14px;
-
-            padding-top: 8px;
-
-            border-top:
-              1px solid
-              #dbe7e9;
-
-            color: #6a7e84;
-
-            font-size: 8px;
-          }
-
-          .report-footer span {
-            overflow: hidden;
-
-            text-overflow:
-              ellipsis;
-
-            white-space:
-              nowrap;
-          }
-
-          .report-footer strong {
-            flex: 0 0 auto;
-
-            color: #102a32;
-
-            font-size: 8px;
-          }
-
-          /* ===============================================
-             SCREEN PREVIEW
-          =============================================== */
-
-          @media screen {
-            body {
-              padding: 20px;
-
-              background:
-                #edf3f4;
-            }
-
-            .print-page {
-              max-width:
-                1120px;
-
-              min-height:
-                760px;
-
-              margin:
-                0 auto 20px;
-
-              padding: 28px;
-
-              box-shadow:
-                0 12px 40px
-                rgba(
-                  16,
-                  42,
-                  50,
-                  0.12
-                );
-            }
-          }
-
-          /* ===============================================
-             PRINT
-          =============================================== */
-
-          @media print {
-
-            html,
-            body {
-              width: 100%;
-
-              background:
-                #ffffff !important;
-
-              -webkit-print-color-adjust:
-                exact;
-
-              print-color-adjust:
-                exact;
-            }
-
-            body {
-              margin: 0;
-
-              padding: 0;
-            }
-
-            .print-page {
-              min-height:
-                185mm;
-
-              margin: 0;
-
-              padding: 0;
-
-              box-shadow: none;
-            }
-          }
-
-        </style>
-      </head>
-
-      <body>
-
-        ${pagesHtml}
-
-        <script>
-          (function () {
-            function startPrint() {
-              setTimeout(function () {
-                window.focus();
-                window.print();
-              }, 250);
-            }
-
-            if (
-              document.readyState ===
-              "complete"
-            ) {
-              startPrint();
-            } else {
-              window.addEventListener(
-                "load",
-                startPrint
-              );
-            }
-          })();
-        </script>
-
-      </body>
-    </html>
-  `);
-
+  printableWindow.document.write(buildPrintableReport(report));
   printableWindow.document.close();
 }
