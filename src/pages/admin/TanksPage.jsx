@@ -1,5 +1,6 @@
 import { logDiagnostic } from "../../utils/securityDiagnostics";
-import { getAmmoniaNumericValue, getLatestAmmoniaForTank, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
+import { getAmmoniaLabel, getAmmoniaNumericValue, getAmmoniaScanDate, getLatestAmmoniaForTank, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
+import { loadCurrentTankRows } from "../../services/tankSnapshotService";
 import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
 import { getSafetySeverity, getParameterExplanation, getSafetyStatusLabel } from "../../utils/statusHelpers";
 import {
@@ -20,6 +21,7 @@ import {
   ChevronDown,
   Database,
   Droplets,
+  FlaskConical,
   Filter,
   Gauge,
   Loader2,
@@ -646,15 +648,17 @@ function SummaryCard({
   );
 }
 
-function SensorMiniCard({ icon: Icon, label, value, parameter }) {
+function SensorMiniCard({ icon: Icon, label, value, parameter, scanDate, manualScan = false }) {
   const explanation = getParameterExplanation(parameter, label);
   return (
     <div className="modern-tank-sensor-card">
       <Icon size={19} />
       <span>{label}</span>
       <strong>{value ?? "No Data"}</strong>
-      <SafetyBadge className="modern-tank-status" severity={parameter?.severity} />
+      <SafetyBadge className="modern-tank-status" severity={parameter?.severity} emptyLabel={manualScan ? "No Scan" : "No Data"} />
       {explanation && <small className="safety-explanation">{explanation}</small>}
+      {manualScan && <small>Latest available ammonia scan</small>}
+      {manualScan && value !== "No Scan" && <small>Scanned: {scanDate ? formatReadingTime(scanDate) : "Scan time unavailable"}</small>}
     </div>
   );
 }
@@ -879,21 +883,10 @@ function FilterDropdown({
 ========================================================= */
 
 export default function TanksPage() {
+  const [currentRows, setCurrentRows] = useState({ sensor: [], ammonia: [] });
   const [
     tanks,
     setTanks,
-  ] =
-    useState([]);
-
-  const [
-    readings,
-    setReadings,
-  ] =
-    useState([]);
-
-  const [
-    ammoniaReadings,
-    setAmmoniaReadings,
   ] =
     useState([]);
 
@@ -989,14 +982,6 @@ export default function TanksPage() {
             []
           );
 
-          setReadings(
-            []
-          );
-
-          setAmmoniaReadings(
-            []
-          );
-
           setProfiles(
             []
           );
@@ -1034,16 +1019,9 @@ export default function TanksPage() {
             ),
           ]);
 
+        setCurrentRows(await loadCurrentTankRows(tankResult.rows, currentUser, { sensor: readingResult.rows, ammonia: ammoniaResult.rows }));
         setTanks(
           tankResult.rows
-        );
-
-        setReadings(
-          readingResult.rows
-        );
-
-        setAmmoniaReadings(
-          ammoniaResult.rows
         );
 
         setProfiles(
@@ -1130,7 +1108,7 @@ export default function TanksPage() {
           const latestReading =
             getLatestReadingForTank(
               tank,
-              readings
+              currentRows.sensor
             );
 
           const normalized =
@@ -1146,7 +1124,7 @@ export default function TanksPage() {
           const latestAmmoniaRow =
             getLatestAmmoniaForTank(
               tank,
-              ammoniaReadings
+              currentRows.ammonia
             );
 
           const latestAmmoniaValue =
@@ -1201,6 +1179,8 @@ export default function TanksPage() {
             index,
 
             latestReading,
+            latestAmmoniaRow,
+            latestAmmoniaValue,
 
             normalized,
 
@@ -1249,8 +1229,7 @@ export default function TanksPage() {
       );
     }, [
       tanks,
-      readings,
-      ammoniaReadings,
+      currentRows,
       thresholds,
       profileMap,
     ]);
@@ -1791,6 +1770,10 @@ export default function TanksPage() {
                     }
                     parameter={item.normalized.safety?.parameters.waterLevel}
                   />
+                  <SensorMiniCard icon={FlaskConical} label="Ammonia"
+                    value={getAmmoniaLabel(item.latestAmmoniaValue)}
+                    parameter={item.safety?.parameters.ammonia} manualScan
+                    scanDate={getAmmoniaScanDate(item.latestAmmoniaRow)} />
                 </div>
 
                 {/* SAFE RANGE */}

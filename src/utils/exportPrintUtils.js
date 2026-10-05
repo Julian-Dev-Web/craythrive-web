@@ -49,13 +49,26 @@ function buildTable(rows, columns) {
 function buildRecordCards(rows) {
   return rows.map(row => `<article class="record-card"><dl>${Object.entries(row).map(([key, value]) => `<div><dt>${escapeHtml(key)}</dt><dd>${formatPrintCell(key, value)}</dd></div>`).join("")}</dl></article>`).join("");
 }
+function buildSnapshotCards(rows) {
+  return rows.map(row => `<article class="record-card snapshot-card"><h3>${escapeHtml(row.Tank)}</h3>
+    <p>Overall: ${formatPrintCell("Overall Condition", row["Overall Condition"])}</p><div class="snapshot-grid">
+    <section><h3>Latest Sensor Reading</h3><p>Recorded: ${escapeHtml(row["Sensor Date"] || "No Data")}</p><dl>
+    ${["Temperature", "pH", "Water Clarity", "Water Level"].map(key => `<div><dt>${escapeHtml(key)}</dt><dd>${escapeHtml(row[key])}<br>${formatPrintCell(`${key} Condition`, row[`${key} Condition`])}</dd></div>`).join("")}</dl></section>
+    <section><h3>Latest Available Ammonia Scan</h3><p>${escapeHtml(row.Ammonia)}</p>
+    ${formatPrintCell("Ammonia Condition", row["Ammonia Condition"])}
+    <p>Scanned: ${escapeHtml(row["Ammonia Scan Date"] || (row.Ammonia === "No Scan" ? "No Scan" : "Scan time unavailable"))}</p>
+    <p class="section-note">Manual scan; may be older than the latest sensor reading.</p></section></div></article>`).join("");
+}
 function buildSection(section, index) {
   const rows = Array.isArray(section?.rows) ? section.rows : [];
   const water = rows.filter(row => row.Type === "Water Reading");
   const ammonia = rows.filter(row => row.Type === "Ammonia Reading");
-  const other = rows.filter(row => !["Water Reading", "Ammonia Reading"].includes(row.Type));
+  const current = rows.filter(row => row.Type === "Current Tank Status");
+  const other = rows.filter(row => !["Water Reading", "Ammonia Reading", "Current Tank Status"].includes(row.Type));
   let content = "";
-  if (water.length) content += `<h3>Water Readings</h3>${buildTable(water, [
+  if (current.length) content += buildSnapshotCards(current);
+  const history = section?.kind === "monitoring-history" || water.length || ammonia.length;
+  if (history) content += `<h3>Water Readings</h3>${buildTable(water, [
     { key: "Date" }, { key: "Tank" },
     { key: "Temperature", condition: "Temperature Condition" },
     { key: "pH", condition: "pH Condition" },
@@ -63,9 +76,9 @@ function buildSection(section, index) {
     { key: "Water Level", condition: "Water Level Condition" },
     { key: "Overall Condition", label: "Overall" },
   ])}`;
-  if (water.length || ammonia.length) content += `<h3>Ammonia Readings</h3><p class="section-note">Each scan has its own timestamp; scans are separate from water reading history.</p>${ammonia.length ? buildTable(ammonia, [
+  if (history) content += `<h3>Ammonia Scans</h3><p class="section-note">Manual ammonia readings keep their own scan timestamps; scans are separate from water reading history.</p>${ammonia.length ? buildTable(ammonia, [
     { key: "Date" }, { key: "Tank" }, { key: "Ammonia" }, { key: "Ammonia Condition", label: "Condition" },
-  ]) : '<p class="empty">No Scan — no ammonia scans in this selection.</p>'}`;
+  ]) : `<p class="empty">No Scan — ${escapeHtml(section?.ammoniaEmptyMessage || "No ammonia scan recorded during this period.")}</p>`}`;
   if (other.length) {
     // Separate listings and orders to avoid sparse, wide union tables.
     for (const group of [...new Set(other.map(row => row.Type || "Records"))]) {
@@ -77,7 +90,7 @@ function buildSection(section, index) {
         : buildTable(groupRows, headers.map(key => ({ key })));
     }
   }
-  if (!rows.length) content = '<p class="empty">No records available for this selection.</p>';
+  if (!rows.length && !history) content = '<p class="empty">No records available for this selection.</p>';
   return `<section class="report-section"><div class="section-heading"><h2>${escapeHtml(section?.title || `Report ${index + 1}`)}</h2>${section?.description ? `<p>${escapeHtml(section.description)}</p>` : ""}</div>${content}</section>`;
 }
 // Browser pagination uses actual rendered row heights, including long names.
@@ -116,6 +129,8 @@ export function buildPrintableReport({ title, subtitle, sections }) {
       .empty { border: 1px dashed #b8c6ca; padding: 12px; color: #465b62; }
       .record-card { border: 1px solid #b8c6ca; padding: 10px; margin: 8px 0; }
       dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; margin: 0; }
+      .snapshot-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+      .snapshot-card h3 { margin-top: 4px; }
       dt { color: #465b62; font-size: 9pt; } dd { margin: 2px 0 0; }
       .report-footer { border-top: 1px solid #b8c6ca; padding-top: 8px; color: #465b62; font-size: 9pt; }
       .print-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 auto 12px; max-width: 186mm; }
@@ -131,6 +146,7 @@ export function buildPrintableReport({ title, subtitle, sections }) {
         td { border: 0; border-bottom: 1px solid #edf3f4; }
         td::before { content: attr(data-label); display: block; font-weight: bold; color: #465b62; }
         dl { grid-template-columns: minmax(0, 1fr); }
+        .snapshot-grid { grid-template-columns: minmax(0, 1fr); }
       }
       @media print {
         html, body { background: #fff !important; }

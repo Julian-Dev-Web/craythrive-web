@@ -1,5 +1,6 @@
 import { logDiagnostic, getSafeErrorMessage } from "../../utils/securityDiagnostics";
-import { getAmmoniaNumericValue, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
+import { getAmmoniaLabel, getAmmoniaNumericValue, getAmmoniaScanDate, getLatestAmmoniaForTank, recordMatchesAmmoniaTank, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
+import { loadAmmoniaHistory, loadCurrentTankRows } from "../../services/tankSnapshotService";
 import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
 import { getSafetyLabelSeverity, getSafetySeverity, getParameterExplanation, getSafetyStatusLabel } from "../../utils/statusHelpers";
 import { useEffect, useMemo, useState } from "react";
@@ -48,7 +49,6 @@ import {
 
 const tankTables = ["tanks"];
 const readingTables = ["sensor_readings"];
-const ammoniaTables = ["ammonia_readings"];
 const alertTables = ["alerts"];
 const controlLogTables = ["device_commands"];
 
@@ -1540,7 +1540,7 @@ async function fetchTodaysFeedCommands(
    SMALL COMPONENTS
 ========================================================= */
 
-function DetailMetricCard({ icon: Icon, label, value, severity, statusLabel }) {
+function DetailMetricCard({ icon: Icon, label, value, severity, statusLabel, scanDate, manualScan = false }) {
   const explanation = getParameterExplanation({ severity, label: statusLabel }, label);
   return (
     <article className="modern-tank-detail-metric">
@@ -1548,8 +1548,10 @@ function DetailMetricCard({ icon: Icon, label, value, severity, statusLabel }) {
       <div>
         <strong>{value ?? "No Data"}</strong>
         <p>{label}</p>
-        <SafetyBadge className="modern-tank-status" severity={severity} />
+        <SafetyBadge className="modern-tank-status" severity={severity} emptyLabel={manualScan ? "No Scan" : "No Data"} />
         {explanation && <small className="safety-explanation">{explanation}</small>}
+        {manualScan && <small>Latest available ammonia scan</small>}
+        {manualScan && value !== "No Scan" && <small>Scanned: {scanDate ? formatReadingTime(scanDate) : "Scan time unavailable"}</small>}
       </div>
     </article>
   );
@@ -1580,6 +1582,8 @@ function EmptyBlock({
 ========================================================= */
 
 export default function TankDetailsPage() {
+  const [ammoniaHistoryError, setAmmoniaHistoryError] = useState(false);
+  const [currentRows, setCurrentRows] = useState({ sensor: [], ammonia: [] });
   const { tankId } =
     useParams();
 
@@ -1764,11 +1768,7 @@ export default function TankDetailsPage() {
               400
             ),
 
-            fetchRowsByScope(
-              ammoniaTables,
-              loadedUser,
-              300
-            ),
+            loadAmmoniaHistory(loadedUser),
 
             fetchRowsByScope(
               alertTables,
@@ -1818,6 +1818,8 @@ export default function TankDetailsPage() {
             }
           ) || null;
 
+        setCurrentRows(await loadCurrentTankRows(selectedTank ? [selectedTank] : [], loadedUser, { sensor: readingResult.rows, ammonia: ammoniaResult.rows }));
+        setAmmoniaHistoryError(ammoniaResult.error);
         setTank(
           selectedTank
         );
@@ -1882,7 +1884,7 @@ export default function TankDetailsPage() {
           setAmmoniaReadings(
             ammoniaResult.rows
               .filter((row) =>
-                recordMatchesTank(
+                recordMatchesAmmoniaTank(
                   row,
                   selectedTank
                 )
@@ -1890,12 +1892,12 @@ export default function TankDetailsPage() {
               .sort(
                 (a, b) =>
                   new Date(
-                    getRecordDate(
+                    getAmmoniaScanDate(
                       b
                     )
                   ) -
                   new Date(
-                    getRecordDate(
+                    getAmmoniaScanDate(
                       a
                     )
                   )
@@ -2170,14 +2172,15 @@ export default function TankDetailsPage() {
       );
     }, [readings, thresholds]);
 
-  const latestReading =
-    enrichedReadings[0] ||
-    null;
+  const latestReading = useMemo(() => {
+    const reading = currentRows.sensor[0];
+    if (!reading) return null;
+    const normalized = normalizeSensorReading(reading, thresholds);
+    return { reading, normalized, date: normalized.createdAt };
+  }, [currentRows.sensor, thresholds]);
 
-  const latestAmmoniaValue =
-    ammoniaReadings.length > 0
-      ? getAmmoniaNumericValue(ammoniaReadings[0])
-      : null;
+  const latestAmmoniaRow = useMemo(() => getLatestAmmoniaForTank(tank, currentRows.ammonia), [tank, currentRows.ammonia]);
+  const latestAmmoniaValue = useMemo(() => getAmmoniaNumericValue(latestAmmoniaRow), [latestAmmoniaRow]);
 
   const latestSafety =
     useMemo(() => {
@@ -3272,7 +3275,6 @@ export default function TankDetailsPage() {
               />
             </div>
 
-            {latestReading || latestAmmoniaValue !== null ? (
               <div className="modern-tank-detail-metric-grid">
 
                 <DetailMetricCard
@@ -3283,7 +3285,7 @@ export default function TankDetailsPage() {
                   value={
                     latestReading
                       ?.normalized
-                      ?.temperatureLabel || "N/A"
+                      ?.temperatureLabel || "No Data"
                   }
                   severity={
                     latestSafety
@@ -3310,7 +3312,7 @@ export default function TankDetailsPage() {
                     ) ||
                     latestReading
                       ?.normalized
-                      ?.phStatus || "N/A"
+                      ?.phStatus || "No Data"
                   }
                   severity={
                     latestSafety
@@ -3358,7 +3360,7 @@ export default function TankDetailsPage() {
                   value={
                     latestReading
                       ?.normalized
-                      ?.waterLabel || "N/A"
+                      ?.waterLabel || "No Data"
                   }
                   severity={
                     latestSafety
@@ -3379,6 +3381,7 @@ export default function TankDetailsPage() {
                     FlaskConical
                   }
                   label="Ammonia"
+                  manualScan scanDate={getAmmoniaScanDate(latestAmmoniaRow)}
                   value={
                     latestAmmoniaValue ===
                       null
@@ -3401,7 +3404,7 @@ export default function TankDetailsPage() {
                   }
                 />
               </div>
-            ) : (
+            {!latestReading && (
               <EmptyBlock
                 icon={Database}
                 title="No water reading yet"
@@ -4180,18 +4183,18 @@ export default function TankDetailsPage() {
               />
             </div>
 
+            {ammoniaHistoryError && ammoniaReadings.length > 0 && <p role="alert">Ammonia history could not be fully loaded. Refresh to try again.</p>}
             {ammoniaReadings.length ===
             0 ? (
               <EmptyBlock
                 icon={
                   AlertTriangle
                 }
-                title="No ammonia scan yet"
-                text="Ammonia test-strip results scanned using the mobile app will appear here."
+                title={ammoniaHistoryError ? "Ammonia history unavailable" : "No ammonia scan yet"}
+                text={ammoniaHistoryError ? "Refresh to try loading the manual scans again." : "Ammonia test-strip results scanned using the mobile app will appear here."}
               />
             ) : (
               <div className="modern-tank-detail-list">
-
                 {ammoniaReadings
                   .slice(0, 8)
                   .map(
@@ -4208,32 +4211,18 @@ export default function TankDetailsPage() {
                       >
                         <div>
                           <strong>
-                            <SafetyBadge severity={evaluateReadingSafety({ ammonia: getAmmoniaNumericValue(item) }, thresholds).parameters.ammonia.severity} />
+                            <SafetyBadge severity={evaluateReadingSafety({ ammonia: getAmmoniaNumericValue(item) }, thresholds).parameters.ammonia.severity} emptyLabel="No Scan" />
                           </strong>
 
                           <span>
                             {formatDate(
-                              getRecordDate(
-                                item
-                              )
+                              getAmmoniaScanDate(item)
                             )}
                           </span>
                         </div>
 
                         <b>
-                          {getValue(
-                            item,
-                            [
-                              "ammonia",
-                              "ammonia_mg_l",
-                              "ammonia_level",
-                              "ammonia_ppm",
-                              "ammonia_value",
-                              "value",
-                              "ppm",
-                            ],
-                            "N/A"
-                          )}
+                          {getAmmoniaLabel(getAmmoniaNumericValue(item))}
                         </b>
                       </div>
                     )

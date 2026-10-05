@@ -3,6 +3,7 @@ import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
 import { getSafetySeverity, getSafetyStatusLabel, getParameterExplanation } from "../../utils/statusHelpers";
 import { buildMonitoringRecords, evaluateCurrentTankSafety, getLatestAmmoniaForTank, getAmmoniaNumericValue, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
 import { evaluateReadingSafety } from "../../utils/thresholdEvaluation";
+import { loadCurrentTankRows } from "../../services/tankSnapshotService";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -484,6 +485,7 @@ function MiniBar({
 ========================================================= */
 
 export default function DashboardOverview() {
+  const [currentRows, setCurrentRows] = useState({ sensor: [], ammonia: [] });
   const [datasets, setDatasets] = useState({
     tanks: [],
     readings: [],
@@ -594,6 +596,7 @@ export default function DashboardOverview() {
         ),
       ]);
 
+      setCurrentRows(await loadCurrentTankRows(tanks.rows, currentUser, { sensor: readings.rows, ammonia: ammonia.rows }));
       setDatasets({
         tanks: tanks.rows,
         readings: readings.rows,
@@ -627,17 +630,18 @@ export default function DashboardOverview() {
     [datasets.readings, datasets.ammonia, datasets.tanks, thresholds]
   );
   const enrichedReadings = useMemo(() => monitoringRecords.filter(item => item.type === "Water Reading"), [monitoringRecords]);
-  const latestReading = enrichedReadings[0] || null;
-  const latestAmmoniaRecord = monitoringRecords.find(item => item.type === "Ammonia Reading" &&
+  const currentRecords = useMemo(() => buildMonitoringRecords(currentRows.sensor, currentRows.ammonia, datasets.tanks, thresholds), [currentRows, datasets.tanks, thresholds]);
+  const latestReading = currentRecords.find(item => item.type === "Water Reading") || null;
+  const latestAmmoniaRecord = currentRecords.find(item => item.type === "Ammonia Reading" &&
     (!latestReading || item.tankKey === latestReading.tankKey)) || null;
   const latestAmmoniaForReading = latestAmmoniaRecord?.ammoniaValue ?? null;
   const latestTankSafety = evaluateCurrentTankSafety(latestReading, latestAmmoniaRecord, thresholds);
   const currentTankSeverities = useMemo(() => datasets.tanks.map(tank => {
-    const records = monitoringRecords.filter(item => recordMatchesMonitoringTank(item.reading, tank));
+    const records = currentRecords.filter(item => recordMatchesMonitoringTank(item.reading, tank));
     const water = records.find(item => item.type === "Water Reading");
     const ammonia = records.find(item => item.type === "Ammonia Reading");
     return getSafetySeverity(evaluateCurrentTankSafety(water, ammonia, thresholds));
-  }), [datasets.tanks, monitoringRecords, thresholds]);
+  }), [datasets.tanks, currentRecords, thresholds]);
 
   /* =======================================================
      AMMONIA STATUS
@@ -647,14 +651,14 @@ export default function DashboardOverview() {
     let elevated = 0;
     let noScan = 0;
     datasets.tanks.forEach(tank => {
-      const row = getLatestAmmoniaForTank(tank, datasets.ammonia);
+      const row = getLatestAmmoniaForTank(tank, currentRows.ammonia);
       const value = getAmmoniaNumericValue(row);
       if (value === null) { noScan += 1; return; }
       const parameter = evaluateReadingSafety({ ammonia: value }, thresholds).parameters.ammonia;
       if (["warning", "critical"].includes(parameter.severity)) elevated += 1;
     });
     return { elevated, noScan };
-  }, [datasets.tanks, datasets.ammonia, thresholds]);
+  }, [datasets.tanks, currentRows.ammonia, thresholds]);
 
   /* =======================================================
      STATS
@@ -1213,7 +1217,7 @@ export default function DashboardOverview() {
 
             <div>
               <span>
-                Latest Water Check
+                Latest Tank Status
               </span>
 
               <h3>
@@ -1228,18 +1232,18 @@ export default function DashboardOverview() {
             </Link>
           </div>
 
-          {latestReading ? (
+          {latestReading || latestAmmoniaRecord ? (
             <>
               <div className="farmer-reading-header">
 
                 <div>
                   <strong>
-                    {latestReading.tankName}
+                    {latestReading?.tankName || latestAmmoniaRecord?.tankName}
                   </strong>
 
                   <span>
                     {formatReadingTime(
-                      latestReading.date
+                      latestReading?.date
                     )}
                   </span>
                 </div>
@@ -1249,10 +1253,10 @@ export default function DashboardOverview() {
 
               <div className="farmer-water-grid">
                 {[
-                  ["Temperature", latestReading.normalized.temperatureLabel, "temperature", Thermometer],
-                  ["pH Level", latestReading.normalized.phNumberLabel, "ph", Droplets],
-                  ["Water Clarity", latestReading.normalized.turbidityStatus, "turbidity", Waves],
-                  ["Water Level", latestReading.normalized.waterLabel, "waterLevel", Database],
+                  ["Temperature", latestReading?.normalized.temperatureLabel || "No Data", "temperature", Thermometer],
+                  ["pH Level", latestReading?.normalized.phNumberLabel || "No Data", "ph", Droplets],
+                  ["Water Clarity", latestReading?.normalized.turbidityStatus || "No Data", "turbidity", Waves],
+                  ["Water Level", latestReading?.normalized.waterLabel || "No Data", "waterLevel", Database],
                   ["Ammonia", latestAmmoniaForReading === null ? "No Scan" : latestAmmoniaForReading.toFixed(2) + " mg/L", "ammonia", FlaskConical],
                 ].map(([label, value, key, Icon]) => (
                   <div className="farmer-water-item" key={key}>
@@ -1261,7 +1265,8 @@ export default function DashboardOverview() {
                       <SafetyBadge severity={latestTankSafety.parameters[key].severity} emptyLabel={key === "ammonia" ? "No Scan" : "No Data"} />
                       {getParameterExplanation(latestTankSafety.parameters[key], label) &&
                         <span>{getParameterExplanation(latestTankSafety.parameters[key], label)}</span>}
-                      {key === "ammonia" && latestAmmoniaRecord?.date && <span>Latest scan: {formatReadingTime(latestAmmoniaRecord.date)}</span>}
+                      {key === "ammonia" && <span>Latest available ammonia scan</span>}
+                      {key === "ammonia" && latestAmmoniaForReading !== null && <span>Scanned: {latestAmmoniaRecord?.date ? formatReadingTime(latestAmmoniaRecord.date) : "Scan time unavailable"}</span>}
                     </div>
                   </div>
                 ))}
@@ -1275,6 +1280,9 @@ export default function DashboardOverview() {
               <strong>
                 No water reading yet
               </strong>
+              <SafetyBadge severity="no-data" />
+              <span>Latest available ammonia scan: No Scan</span>
+              <SafetyBadge severity="no-data" emptyLabel="No Scan" />
 
               <span>
                 The latest tank condition

@@ -1,7 +1,8 @@
 import { logDiagnostic } from "../../utils/securityDiagnostics";
 import SafetyBadge from "../../components/SafetyBadge";
 import { getSafetySeverity, getSafetyStatusLabel, getParameterExplanation } from "../../utils/statusHelpers";
-import { buildMonitoringRecords, buildTankHistoryExportRows, evaluateCurrentTankSafety, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
+import { buildMonitoringRecords, buildTankHistoryExportRows, buildTankSnapshotExportRows, getCurrentTankSnapshot, recordMatchesAmmoniaTank, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
+import { loadAmmoniaHistory, loadCurrentTankRows } from "../../services/tankSnapshotService";
 import { loadActiveThresholds } from "../../utils/thresholdEvaluation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -15,6 +16,7 @@ import {
   ChevronDown,
   DollarSign,
   Download,
+  Database,
   Droplets,
   FileText,
   Gauge,
@@ -1447,6 +1449,9 @@ function ReportFilterDropdown({
 ========================================================= */
 
 export default function ReportsPage() {
+  const [ammoniaHistoryError, setAmmoniaHistoryError] = useState(false);
+  const [currentRows, setCurrentRows] = useState({ sensor: [], ammonia: [] });
+  const [monitoringExportMode, setMonitoringExportMode] = useState("history");
   const [
     activeReport,
     setActiveReport,
@@ -1614,9 +1619,11 @@ export default function ReportsPage() {
               currentUser,
               1000
             ),
-            fetchRowsByScope(tableGroups.ammonia, currentUser, 1000),
+            loadAmmoniaHistory(currentUser),
           ]);
 
+        setCurrentRows(await loadCurrentTankRows(tanks.rows, currentUser, { sensor: readings.rows, ammonia: ammonia.rows }));
+        setAmmoniaHistoryError(ammonia.error);
         setDatasets({
           tanks:
             tanks.rows,
@@ -1853,10 +1860,9 @@ export default function ReportsPage() {
      DATE + TANK SCOPED DATA
   ======================================================= */
 
-  const scopedTankRecords = useMemo(() => monitoringRecords.filter(item =>
-    (selectedTankId === "all" || (selectedTank && recordMatchesMonitoringTank(item.reading, selectedTank))) &&
-    isWithinDateRange(item.date, fromDate, toDate)),
-    [monitoringRecords, selectedTankId, selectedTank, fromDate, toDate]);
+  const currentRecords = useMemo(() => buildMonitoringRecords(currentRows.sensor, currentRows.ammonia, datasets.tanks, thresholds), [currentRows, datasets.tanks, thresholds]);
+  const snapshots = useMemo(() => (selectedTankId === "all" ? datasets.tanks : selectedTank ? [selectedTank] : [])
+    .map(tank => getCurrentTankSnapshot(currentRecords, tank, thresholds)), [currentRecords, datasets.tanks, selectedTankId, selectedTank, thresholds]);
 
   const tankReadings =
     useMemo(
@@ -1904,7 +1910,7 @@ export default function ReportsPage() {
     );
 
   const tankAmmonia = useMemo(() => enrichedAmmonia.filter(item =>
-    (selectedTankId === "all" || (selectedTank && recordMatchesMonitoringTank(item.reading, selectedTank))) &&
+    (selectedTankId === "all" || (selectedTank && recordMatchesAmmoniaTank(item.reading, selectedTank))) &&
     isWithinDateRange(item.date, fromDate, toDate) &&
     (conditionFilter === "all" || item.status === conditionFilter)),
     [enrichedAmmonia, selectedTankId, selectedTank, fromDate, toDate, conditionFilter]);
@@ -2008,11 +2014,11 @@ export default function ReportsPage() {
       ]
     );
 
-  const latestReading = scopedTankRecords.find(item => item.type === "Water Reading") || null;
-
-  const latestAmmonia = scopedTankRecords.filter(item => item.type === "Ammonia Reading").find(item => !latestReading || item.tankKey === latestReading.tankKey) || null;
-  const currentSafety = evaluateCurrentTankSafety(latestReading, latestAmmonia, thresholds);
-  const currentTankName = latestReading?.tankName || latestAmmonia?.tankName || selectedTankName;
+  const snapshot = getCurrentTankSnapshot(currentRecords, selectedTankId === "all" ? null : selectedTank, thresholds);
+  const latestReading = snapshot.waterRecord;
+  const latestAmmonia = snapshot.ammoniaRecord;
+  const currentSafety = snapshot.safety;
+  const currentTankName = snapshot.tankName;
 
   /* =======================================================
      TANK ANALYTICS
@@ -2824,8 +2830,19 @@ export default function ReportsPage() {
      EXPORT HELPERS
   ======================================================= */
 
+  const ammoniaEmptyMessage = ammoniaHistoryError ? "Ammonia history could not be fully loaded. Refresh to try again." : !enrichedAmmonia.some(item =>
+    (selectedTankId === "all" || selectedTank && recordMatchesAmmoniaTank(item.reading, selectedTank)) && isWithinDateRange(item.date, fromDate, toDate))
+    ? "No ammonia scan recorded during this period." : "No ammonia scans match the selected condition filter.";
+
   function getTankReportSection() {
+    if (monitoringExportMode === "current") {
+      return { title: "Latest Tank Status", dateRange: "Latest available records; not date-filtered", kind: "current",
+        description: "Latest sensor readings and latest available manual ammonia scans for the selected tanks. Each record keeps its own timestamp. Historical date and condition filters do not limit this snapshot.",
+        rows: buildTankSnapshotExportRows(snapshots, formatDate) };
+    }
     return {
+      kind: "monitoring-history",
+      ammoniaEmptyMessage,
       title:
         selectedTankId ===
         "all"
@@ -2875,6 +2892,10 @@ export default function ReportsPage() {
   }
 
   function handleExportReportsCsv() {
+    if (ammoniaHistoryError && monitoringExportMode === "history" && (activeReport === "tanks" || exportScope === "combined")) {
+      alert("Ammonia history could not be fully loaded. Refresh before exporting historical records.");
+      return;
+    }
     const sections =
       getSelectedReportSections();
 
@@ -2891,7 +2912,7 @@ export default function ReportsPage() {
                 section.title,
 
               "Date Range":
-                dateRangeLabel,
+                section.dateRange || dateRangeLabel,
 
               ...row,
             })
@@ -2899,8 +2920,7 @@ export default function ReportsPage() {
       );
 
     const dateFilePart =
-      fromDate ||
-      toDate
+      (fromDate || toDate) && !(monitoringExportMode === "current" && activeReport === "tanks" && exportScope !== "combined")
         ? `-${
             fromDate ||
             "start"
@@ -2911,6 +2931,7 @@ export default function ReportsPage() {
         : "";
 
     let filename;
+    const snapshotFilePart = monitoringExportMode === "current" && (activeReport === "tanks" || exportScope === "combined") ? "-latest-status" : "";
 
     if (exportScope === "combined") {
       filename = `craythrive-combined-report${dateFilePart}.csv`;
@@ -2931,12 +2952,16 @@ export default function ReportsPage() {
     }
 
     downloadCsv(
-      filename,
+      filename.replace(/\.csv$/, `${snapshotFilePart}.csv`),
       rows
     );
   }
 
   function handlePrintReports() {
+    if (ammoniaHistoryError && monitoringExportMode === "history" && (activeReport === "tanks" || exportScope === "combined")) {
+      alert("Ammonia history could not be fully loaded. Refresh before printing historical records.");
+      return;
+    }
     const sections =
       getSelectedReportSections();
 
@@ -2968,7 +2993,8 @@ export default function ReportsPage() {
 
     printReport({
       title,
-      subtitle,
+      subtitle: monitoringExportMode === "current" && (activeReport === "tanks" || exportScope === "combined")
+        ? `${selectedTankName} · Latest available tank status${exportScope === "combined" ? ` · Marketplace period: ${dateRangeLabel}` : ""}` : subtitle,
       sections,
     });
   }
@@ -3265,6 +3291,10 @@ export default function ReportsPage() {
           value={exportScope} onChange={setExportScope}
           options={[{ value: "current", label: "Export: Current Report" }, { value: "combined", label: "Export: Tanks + Marketplace" }]} />
 
+        {(activeReport === "tanks" || exportScope === "combined") && <ReportFilterDropdown ariaLabel="Choose monitoring export data"
+          icon={Database} value={monitoringExportMode} onChange={setMonitoringExportMode}
+          options={[{ value: "history", label: "Tank data: Historical Records" }, { value: "current", label: "Tank data: Latest Tank Status" }]} />}
+
         {(fromDate ||
           toDate) && (
           <button
@@ -3327,7 +3357,7 @@ export default function ReportsPage() {
           <span>
             {activeReport ===
             "tanks"
-              ? "Tank readings, alerts, analytics, CSV, and print output use this date range."
+              ? "Historical records, alerts, and analytics use this date range. Latest Tank Status keeps each tank's latest available records."
               : "Marketplace listings, orders, sales analytics, CSV, and print output use this date range."}
           </span>
         </div>
@@ -3466,9 +3496,10 @@ export default function ReportsPage() {
           </section>
 
           <section className="cray-report-panel monitoring-ammonia-history">
-            <div className="cray-report-panel-heading"><div><p className="dashboard-eyebrow">Ammonia Results</p>
+            {ammoniaHistoryError && tankAmmonia.length > 0 && <p role="alert">Ammonia history could not be fully loaded. Refresh to try again.</p>}
+            <div className="cray-report-panel-heading"><div><p className="dashboard-eyebrow">Historical Records — Ammonia Scans</p>
               <h3>{tankAmmonia.length} manual scan records</h3></div><FlaskConical size={22} /></div>
-            {tankAmmonia.length === 0 ? <p>No ammonia scans in this tank/date/condition selection.</p> :
+            {tankAmmonia.length === 0 ? <p>{ammoniaEmptyMessage}</p> :
               <div className="cray-report-list">{tankAmmonia.slice(0, 8).map(item => (
                 <div className="cray-report-row" key={item.recordId}>
                   <div><strong>Ammonia Reading - {item.tankName}</strong>
@@ -3490,14 +3521,11 @@ export default function ReportsPage() {
               <div className="cray-report-panel-heading">
                 <div>
                   <p className="dashboard-eyebrow">
-                    Water Overview
+                    Latest Tank Status
                   </p>
 
                   <h3>
-                    {selectedTankId ===
-                    "all"
-                      ? "General water condition"
-                      : `${selectedTankName} water condition`}
+                    {currentTankName}
                   </h3>
                 </div>
 
@@ -3507,21 +3535,21 @@ export default function ReportsPage() {
               </div>
 
               <SafetyBadge severity={getSafetySeverity(currentSafety)} />
-              <p>Latest available condition for {currentTankName}. Each reading keeps its own timestamp.</p>
+              <p>Latest available records for {currentTankName}. This current snapshot is independent of the historical date and condition filters.</p>
               <div className="cray-report-metric-grid">
                 {[
                   ["Temperature", latestReading?.normalized.temperatureLabel || "No Data", "temperature", Thermometer, latestReading?.date],
                   ["pH Level", latestReading?.normalized.phNumberLabel || "No Data", "ph", Droplets, latestReading?.date],
                   ["Water Clarity", latestReading?.normalized.turbidityNumberLabel || "No Data", "turbidity", Waves, latestReading?.date],
                   ["Water Level", latestReading?.normalized.waterLabel || "No Data", "waterLevel", Gauge, latestReading?.date],
-                  ["Latest Ammonia", latestAmmonia?.ammoniaLabel || "No Scan", "ammonia", FlaskConical, latestAmmonia?.date],
+                  ["Latest available ammonia scan", latestAmmonia?.ammoniaLabel || "No Scan", "ammonia", FlaskConical, latestAmmonia?.date],
                 ].map(([label, value, key, Icon, date]) => (
                   <div key={key}>
                     <Icon size={20} /><strong>{value}</strong><span>{label}</span>
                     <SafetyBadge severity={currentSafety.parameters[key].severity} emptyLabel={key === "ammonia" ? "No Scan" : "No Data"} />
                     {getParameterExplanation(currentSafety.parameters[key], key === "ammonia" ? "Ammonia" : label) &&
                       <small className="safety-explanation">{getParameterExplanation(currentSafety.parameters[key], key === "ammonia" ? "Ammonia" : label)}</small>}
-                    <small>{date ? formatDate(date) : "No record"}</small>
+                    <small>{date ? `${key === "ammonia" ? "Scanned: " : "Recorded: "}${formatDate(date)}` : key === "ammonia" ? "No scan timestamp available" : "No record"}</small>
                   </div>
                 ))}
               </div>

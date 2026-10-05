@@ -1,5 +1,6 @@
 import { logDiagnostic } from "../../utils/securityDiagnostics";
-import { buildMonitoringRecords, evaluateCurrentTankSafety } from "../../utils/monitoringRecords";
+import { buildMonitoringRecords, getCurrentTankSnapshot } from "../../utils/monitoringRecords";
+import { loadAmmoniaHistory, loadCurrentTankRows } from "../../services/tankSnapshotService";
 import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
 import { getSafetySeverity, getParameterExplanation, getSafetyStatusLabel } from "../../utils/statusHelpers";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -604,7 +605,8 @@ function MetricCard({ icon: Icon, label, value, parameter, scanDate }) {
         <strong>{value}</strong>
         <SafetyBadge className="modern-reading-status" severity={parameter?.severity} emptyLabel={label === "Ammonia" ? "No Scan" : "No Data"} />
         {explanation && <small className="safety-explanation">{explanation}</small>}
-        {scanDate && <small>Latest ammonia scan: {formatReadingTime(scanDate)}</small>}
+        {label === "Ammonia" && <small>Latest available ammonia scan</small>}
+        {label === "Ammonia" && value !== "No Scan" && <small>Scanned: {scanDate ? formatReadingTime(scanDate) : "Scan time unavailable"}</small>}
       </div>
     </div>
   );
@@ -813,6 +815,8 @@ function ReadingFilterDropdown({
 }
 
 export default function SensorReadingsPage() {
+  const [ammoniaHistoryError, setAmmoniaHistoryError] = useState(false);
+  const [currentRows, setCurrentRows] = useState({ sensor: [], ammonia: [] });
   const [
     readings,
     setReadings,
@@ -945,11 +949,10 @@ export default function SensorReadingsPage() {
                   currentUser.id,
                   300
                 ),
-            currentUser.isAdmin
-              ? fetchAdminRows(["ammonia_readings"])
-              : fetchUserRows(["ammonia_readings"], currentUser.id),
+            loadAmmoniaHistory(currentUser),
           ]);
 
+        setCurrentRows(await loadCurrentTankRows(tankResult.rows, currentUser, { sensor: readingResult.rows, ammonia: ammoniaResult.rows }));
         setReadings(
           readingResult.rows
         );
@@ -958,6 +961,7 @@ export default function SensorReadingsPage() {
           tankResult.rows
         );
         setAmmoniaReadings(ammoniaResult.rows);
+        setAmmoniaHistoryError(ammoniaResult.error);
 
         setLastUpdated(
           new Date()
@@ -995,6 +999,11 @@ export default function SensorReadingsPage() {
       const optionMap =
         new Map();
 
+      tanks.forEach(tank => {
+        const id = tank.id || tank.tank_id || tank.uuid;
+        if (id) optionMap.set(String(id), tank.name || tank.tank_name || "Unnamed Tank");
+      });
+
       enrichedReadings.forEach(
         (item) => {
           if (
@@ -1019,6 +1028,7 @@ export default function SensorReadingsPage() {
         })
       );
     }, [
+      tanks,
       enrichedReadings,
     ]);
 
@@ -1331,21 +1341,22 @@ export default function SensorReadingsPage() {
       tankScopedReadings,
     ]);
 
-  const latestReading = tankScopedReadings.find(item => item.type === "Water Reading") || null;
-  const latestAmmonia = tankScopedReadings.find(item => item.type === "Ammonia Reading" &&
-    (!latestReading || item.tankKey === latestReading.tankKey)) || null;
+  const currentRecords = useMemo(() => buildMonitoringRecords(currentRows.sensor, currentRows.ammonia, tanks, thresholds), [currentRows, tanks, thresholds]);
+  const snapshot = getCurrentTankSnapshot(tankFilter === "all" ? currentRecords : currentRecords.filter(item => item.tankKey === tankFilter), null, thresholds);
+  const latestReading = snapshot.waterRecord;
+  const latestAmmonia = snapshot.ammoniaRecord;
 
   const latestWaterDepth = toNumberOrNull(latestReading?.normalized.waterValue);
   const latestTemperature = toNumberOrNull(latestReading?.normalized.temperatureValue);
   const latestPH = toNumberOrNull(latestReading?.normalized.phValue);
 
-  const latestSafety = evaluateCurrentTankSafety(latestReading, latestAmmonia, thresholds);
+  const latestSafety = snapshot.safety;
 
   const selectedTankName =
     tankFilter ===
       "all"
       ? (
-          latestReading?.tankName ||
+          latestReading?.tankName || latestAmmonia?.tankName ||
           "Most Recent Tank"
         )
       : (
@@ -1644,7 +1655,7 @@ export default function SensorReadingsPage() {
             />
           </div>
 
-          {latestReading ? (
+          {latestReading || latestAmmonia ? (
             <div className="modern-latest-reading">
               <span className="modern-latest-reading-icon">
                 <Droplets
@@ -1655,13 +1666,13 @@ export default function SensorReadingsPage() {
               <div>
                 <strong>
                   {
-                    latestReading.tankName
+                    latestReading?.tankName || latestAmmonia?.tankName
                   }
                 </strong>
 
                 <span>
                   {formatReadingTime(
-                    latestReading.date
+                    latestReading?.date
                   )}
                 </span>
               </div>
@@ -1767,6 +1778,7 @@ export default function SensorReadingsPage() {
         />
       </section>
 
+      {ammoniaHistoryError && <p role="alert">Ammonia history could not be fully loaded. Refresh to try again.</p>}
       {filteredReadings.length ===
       0 ? (
         <section className="modern-reading-empty">

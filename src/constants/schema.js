@@ -72,7 +72,12 @@ export const SENSOR_READING_FIELDS = {
   WATER_STATUS: "water_status",
 };
 
-// ammonia_readings — mobile writes plain `ammonia` + `ammonia_status`; the
+// Existing frontend ammonia contract: `ammonia` + `ammonia_status`. The live
+// schema, primary key, ownership, RLS and indexes still require inspection.
+// These compatibility aliases describe existing readers; they are not a
+// proposal to create columns. Ammonia history is manual/event-based and must
+// remain in this table, with its own created_at, never in sensor_readings.
+// The documented mobile client writes plain `ammonia` + `ammonia_status`; the
 // web dashboard's older code also probed ammonia_mg_l / ammonia_level /
 // ammonia_ppm / ammonia_value as fallbacks. Kept as fallbacks below since
 // ammonia column naming wasn't as clearly pinned down as sensor_readings.

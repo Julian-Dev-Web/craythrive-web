@@ -34,7 +34,7 @@ export function datasets() {
 
 export const test = base.extend({
   qa: async ({ context, page }, use) => {
-    const state = { data: datasets(), authenticated: true, invalidLogin: false, expired: false, authDelay: 0, authRequests: [], writes: [], errors: [], warnings: [], localFailures: [], externalRequests: [] };
+    const state = { data: datasets(), authenticated: true, invalidLogin: false, expired: false, authDelay: 0, authRequests: [], reads: [], writes: [], errors: [], warnings: [], localFailures: [], externalRequests: [] };
     await context.addInitScript(({ session }) => {
       localStorage.setItem('sb-qa-auth-token', JSON.stringify(session));
       window.print = () => { window.__qaPrintCalled = true; };
@@ -65,6 +65,7 @@ export const test = base.extend({
       }
       if (url.pathname.startsWith('/rest/v1/')) {
         const table = url.pathname.split('/').at(-1);
+        if (request.method() === 'GET') state.reads.push({ table, filters: Object.fromEntries(url.searchParams) });
         let rows = structuredClone(state.data[table] || []);
         for (const [key, value] of url.searchParams) {
           if (value.startsWith('eq.')) rows = rows.filter(row => String(row[key]) === value.slice(3));
@@ -88,8 +89,10 @@ export const test = base.extend({
           }
         }
         if (url.searchParams.get('order')?.includes('created_at.desc')) rows.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        const total = rows.length;
+        if (url.searchParams.has('limit')) rows = rows.slice(Number(url.searchParams.get('offset') || 0), Number(url.searchParams.get('offset') || 0) + Number(url.searchParams.get('limit')));
         const singular = request.headers().accept?.includes('vnd.pgrst.object');
-        return route.fulfill({ status: 200, json: singular ? rows[0] || null : rows, headers: { 'content-range': `0-${Math.max(0, rows.length - 1)}/${rows.length}` } });
+        return route.fulfill({ status: 200, json: singular ? rows[0] || null : rows, headers: { 'content-range': `0-${Math.max(0, rows.length - 1)}/${total}` } });
       }
       return reply({});
     });

@@ -230,7 +230,7 @@ test('tank and marketplace report CSV downloads and print preparation', async ({
   expect(csv).toContain('Water Reading'); expect(csv).toContain('Ammonia Reading');
   expect(csv).toContain('0.6 cm,Critical');
   const allTanks = await print();
-  await expect(allTanks.locator('body')).toContainText('Ammonia Reading');
+  await expect(allTanks.locator('body')).toContainText('Ammonia Scans');
   await expect(allTanks.locator('body')).toContainText('0.60 mg/L');
   await allTanks.close();
   await choose(page, 'Choose which tank to include in the report', 'Tank A');
@@ -314,13 +314,13 @@ test('reports date/condition filters, refresh and empty export/print are handled
   await expect(page.locator('.monitoring-ammonia-history')).toContainText('No ammonia scans');
   await choose(page, 'Filter monitoring records by condition', 'All');
   await page.getByLabel('From Date', { exact: true }).fill('2099-01-01');
-  await expect(page.locator('.monitoring-ammonia-history')).toContainText('No ammonia scans');
+  await expect(page.locator('.monitoring-ammonia-history')).toContainText('No ammonia scan recorded during this period.');
   await page.getByRole('button', { name: 'Export CSV', exact: true }).click();
   await page.getByRole('button', { name: 'Print Report', exact: true }).click();
   await page.getByRole('button', { name: 'Clear Dates', exact: true }).click();
   qa.data.ammonia_readings = [];
   await page.getByRole('button', { name: /refresh/i }).first().click();
-  await expect(page.locator('.monitoring-ammonia-history')).toContainText('No ammonia scans');
+  await expect(page.locator('.monitoring-ammonia-history')).toContainText('No ammonia scan recorded during this period.');
   expect(qa.writes).toEqual([]);
 });
 

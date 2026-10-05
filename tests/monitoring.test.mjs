@@ -13,9 +13,109 @@ after(() => server.close());
 const { normalizeSensorReading, toNumberOrNull } = await server.ssrLoadModule('/src/utils/sensorReadingUtils.js');
 const { evaluateReadingSafety, normalizeThresholds, DEFAULT_THRESHOLDS } = await server.ssrLoadModule('/src/utils/thresholdEvaluation.js');
 const { getSafetySeverity, getSafetyStatusLabel } = await server.ssrLoadModule('/src/utils/statusHelpers.js');
-const { buildMonitoringRecords, buildTankHistoryExportRows, getLatestAmmoniaForTank, evaluateCurrentTankSafety } = await server.ssrLoadModule('/src/utils/monitoringRecords.js');
+const { buildMonitoringRecords, buildTankHistoryExportRows, buildTankSnapshotExportRows, getCurrentTankSnapshot, getLatestAmmoniaForTank, evaluateCurrentTankSafety, recordMatchesMonitoringTank } = await server.ssrLoadModule('/src/utils/monitoringRecords.js');
+const { buildMonitoringAIContext } = await server.ssrLoadModule('/src/utils/monitoringAIContext.js');
+const { loadAmmoniaHistory, loadCurrentTankRows } = await server.ssrLoadModule('/src/services/tankSnapshotService.js');
 const tanks = [{ id: 'tank-a', name: 'Tank A', device_uid: 'device-a' }, { id: 'tank-b', name: 'Tank B', device_uid: 'device-b' }];
 const normal = { temperature_c: 26.3, ph_value: 7.2, turbidity_voltage: 2.8, water_depth_cm: 5 };
+
+test('scan edits do not move scan history dates or override a newer scan', () => {
+  const scans = [
+    { id: 'old', tank_id: 'tank-a', ammonia: 0.7, created_at: '2025-01-01T00:00:00Z', updated_at: '2026-10-05T00:00:00Z' },
+    { id: 'new', tank_id: 'tank-a', ammonia: 0.1, created_at: '2025-02-01T00:00:00Z' },
+    { id: 'undated', tank_id: 'tank-a', ammonia: 0.8, updated_at: '2026-10-06T00:00:00Z' },
+  ];
+  assert.equal(getLatestAmmoniaForTank(tanks[0], scans).id, 'new');
+  const records = buildMonitoringRecords([], scans, tanks);
+  assert.equal(records.find(r => r.reading.id === 'old').date, scans[0].created_at);
+  assert.equal(records.find(r => r.reading.id === 'undated').date, null);
+  assert.equal(recordMatchesMonitoringTank({ tank_id: 'unknown', device_uid: 'device-a' }, tanks[0]), false);
+  assert.equal(getLatestAmmoniaForTank(tanks[0], [{ device_uid: 'device-a', ammonia: 9 }]), null);
+  assert.equal(buildMonitoringRecords([], [{ device_uid: 'device-a', ammonia: 9 }], tanks)[0].tankName, 'Unmatched tank');
+});
+
+test('old critical scan contributes only to the current same-tank snapshot', () => {
+  const water = [{ ...normal, id: 'water', tank_id: 'tank-a', ammonia: 99, created_at: '2026-10-05T00:00:00Z' }];
+  const scans = [{ id: 'scan', tank_id: 'tank-a', ammonia: 0.7, ammonia_status: 'Normal', created_at: '2025-01-01T00:00:00Z' }];
+  const before = JSON.stringify({ water, scans });
+  const records = buildMonitoringRecords(water, scans, tanks);
+  const snapshot = getCurrentTankSnapshot(records, tanks[0]);
+  assert.equal(getSafetySeverity(snapshot.safety), 'critical');
+  assert.equal(snapshot.waterRecord.status, 'normal');
+  assert.equal(snapshot.waterRecord.ammoniaValue, null);
+  const row = buildTankSnapshotExportRows([snapshot])[0];
+  assert.equal(row['Sensor Date'], water[0].created_at);
+  assert.equal(row['Ammonia Scan Date'], scans[0].created_at);
+  assert.equal(row['Ammonia Condition'], 'Critical');
+  assert.equal('Date' in row, false);
+  const history = buildTankHistoryExportRows(records.filter(r => r.date.startsWith('2026')));
+  assert.equal(history.length, 1);
+  assert.equal(history[0].Ammonia, '');
+  assert.equal(history[0]['Overall Condition'], 'Normal');
+  assert.equal(JSON.stringify({ water, scans }), before);
+});
+
+test('missing scan is unknown while an actual zero scan is valid', () => {
+  const water = [{ ...normal, tank_id: 'tank-a' }];
+  for (const ammonia of [null, '', false, 'invalid']) {
+    const snapshot = getCurrentTankSnapshot(buildMonitoringRecords(water, [{ tank_id: 'tank-a', ammonia }], tanks), tanks[0]);
+    assert.equal(getSafetySeverity(snapshot.safety), 'normal');
+    assert.equal(buildTankSnapshotExportRows([snapshot])[0]['Ammonia Condition'], 'No Scan');
+  }
+  const empty = getCurrentTankSnapshot([], tanks[0]);
+  assert.equal(getSafetySeverity(empty.safety), 'no-data');
+  const zero = getCurrentTankSnapshot(buildMonitoringRecords([], [{ tank_id: 'tank-a', ammonia: 0 }], tanks), tanks[0]);
+  assert.equal(zero.ammoniaRecord.ammoniaValue, 0);
+  assert.equal(buildTankSnapshotExportRows([zero])[0]['Ammonia Condition'], 'Normal');
+});
+
+test('latest per-tank fetch finds scans outside a bounded global history', async () => {
+  const requests = [];
+  const old = { id: 'quiet-scan', tank_id: 'tank-a', user_id: 'farmer', ammonia: 0.7, created_at: '2025-01-01T00:00:00Z' };
+  const client = { from(table) {
+    const filters = {};
+    const query = { select() { return query; }, eq(key, value) { filters[key] = value; return query; },
+      order(key, options) { assert.equal(key, 'created_at'); assert.equal(options.ascending, false); return query; },
+      async limit(value) { requests.push({ table, filters, limit: value }); return { data: table === 'ammonia_readings' ? [old] : [], error: null }; } };
+    return query;
+  } };
+  const rows = await loadCurrentTankRows([tanks[0]], { id: 'farmer', isAdmin: false }, { sensor: [], ammonia: [] }, client);
+  assert.equal(rows.ammonia[0].id, old.id);
+  assert.deepEqual(requests.map(r => r.table).sort(), ['ammonia_readings', 'sensor_readings']);
+  for (const request of requests) { assert.deepEqual(request.filters, { tank_id: 'tank-a', user_id: 'farmer' }); assert.equal(request.limit, 1); }
+});
+
+test('AI context keeps independent measurements and histories separate', () => {
+  const records = buildMonitoringRecords([{ ...normal, tank_id: 'tank-a', created_at: '2026-10-05T00:00:00Z' }],
+    [{ tank_id: 'tank-a', ammonia: 0.7, created_at: '2025-01-01T00:00:00Z' }, { tank_id: 'tank-b', ammonia: 9, created_at: '2026-10-06T00:00:00Z' }], tanks);
+  const context = buildMonitoringAIContext({ records, tank: tanks[0] });
+  assert.equal(context.latest_ammonia.value, 0.7);
+  assert.equal(context.latest_ammonia.timestamp, '2025-01-01T00:00:00Z');
+  assert.equal(context.latest_ammonia.condition, 'Critical');
+  assert.equal('ammonia' in context.latest_sensor, false);
+  assert.equal(context.recent_sensor_readings.length, 1);
+  assert.equal(context.recent_ammonia_scans.length, 1);
+  assert.match(context.instructions, /Mention the ammonia scan timestamp/);
+  assert.equal(buildMonitoringAIContext({ records, tank: tanks[0], thresholds: { ...DEFAULT_THRESHOLDS, ammoniaMax: 0.8 } }).latest_ammonia.condition, 'Normal');
+  assert.equal(buildMonitoringAIContext({ records: [], tank: tanks[0] }).latest_ammonia, null);
+});
+
+test('manual scan history pages past an API row limit without repeating events', async () => {
+  const scans = Array.from({ length: 1003 }, (_, id) => ({ id, tank_id: 'tank-a', ammonia: 0.1 }));
+  const pages = [];
+  const client = { from(table) {
+    assert.equal(table, 'ammonia_readings');
+    const query = { select() { return query; }, eq(key, value) { assert.equal(key, 'user_id'); assert.equal(value, 'farmer'); return query; },
+      order(key) { assert.equal(key, 'created_at'); return query; },
+      async range(start, end) { pages.push(start); return { data: scans.slice(start, end + 1), count: scans.length }; } };
+    return query;
+  } };
+  const result = await loadAmmoniaHistory({ id: 'farmer' }, client);
+  assert.equal(result.error, false);
+  assert.deepEqual(pages, [0, 1000]);
+  assert.equal(result.rows.length, 1003);
+  assert.equal(new Set(result.rows.map(r => r.id)).size, 1003);
+});
 
 test('numeric field priority and valid legacy fallbacks', () => {
   const r = normalizeSensorReading({ ...normal, temperature: 99, ph: 4.8, water_level: 0.6, water_distance_cm: 88 });
@@ -126,7 +226,7 @@ test('print preparation includes separate ammonia rows and escapes user content'
       { title: 'Tank Reports', rows: buildTankHistoryExportRows(records) },
       { title: 'Marketplace Reports', rows: [{ Title: '<img src=x onerror=alert(1)>', Status: 'Pending' }] },
     ] });
-    assert.match(html, /Ammonia Reading/);
+    assert.match(html, /Ammonia Scans/);
     assert.match(html, /0\.70 mg\/L/);
     assert.match(html, /condition critical/);
     assert.match(html, /Marketplace Reports/);

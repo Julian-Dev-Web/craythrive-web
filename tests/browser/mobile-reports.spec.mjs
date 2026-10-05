@@ -154,7 +154,7 @@ test.describe('phone exports', () => {
     await save('selected-long-tank', longTank, 'Tank B');
     qa.data.ammonia_readings = [];
     await page.getByRole('button', { name: 'Refresh', exact: true }).click();
-    await expect(page.locator('.monitoring-ammonia-history')).toContainText('No ammonia scans');
+    await expect(page.locator('.monitoring-ammonia-history')).toContainText('No ammonia scan recorded during this period.');
     await save('no-ammonia', 'No Scan');
     await page.getByRole('button', { name: 'Marketplace Report', exact: true }).click();
     const marketCsv = await download(page);
