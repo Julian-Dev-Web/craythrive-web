@@ -1,3 +1,4 @@
+import { logDiagnostic, getSafeErrorMessage } from "../utils/securityDiagnostics";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 
 /*
@@ -27,7 +28,7 @@ function getReadableAuthError(error) {
     return "Could not sign in. Please try again.";
   }
 
-  const message = String(error.message || "").toLowerCase();
+  const message = String(error?.message || "").toLowerCase();
 
   if (
     message.includes("invalid login credentials") ||
@@ -48,7 +49,7 @@ function getReadableAuthError(error) {
     return "Unable to connect to the server. Please check your internet connection.";
   }
 
-  return error.message || "Could not sign in. Please try again.";
+  return getSafeErrorMessage(error, "Could not sign in. Please try again.");
 }
 
 /*
@@ -108,7 +109,7 @@ async function fetchProfile(userId) {
    * return our own message.
    */
   if (profileByIdError && profileByUserIdError) {
-    console.error("Could not load user profile:", {
+    logDiagnostic("Could not load user profile:", {
       profileByIdError,
       profileByUserIdError,
     });
@@ -260,15 +261,14 @@ export async function signInWithDashboardAccess(email, password) {
       error: null,
     };
   } catch (error) {
-    console.error("CrayThrive login error:", error);
+    logDiagnostic("CrayThrive login error:", error);
 
     return {
       user: null,
       session: null,
       profile: null,
       error:
-        error?.message ||
-        "An unexpected error occurred while signing in.",
+        getSafeErrorMessage(error, "An unexpected error occurred while signing in."),
     };
   }
 }
@@ -288,13 +288,13 @@ export async function getCurrentUser() {
     } = await supabase.auth.getUser();
 
     if (error) {
-      console.error("Could not get current user:", error);
+      logDiagnostic("Could not get current user:", error);
       return null;
     }
 
     return data?.user ?? null;
   } catch (error) {
-    console.error("Could not get current user:", error);
+    logDiagnostic("Could not get current user:", error);
     return null;
   }
 }
@@ -314,13 +314,13 @@ export async function getCurrentSession() {
     } = await supabase.auth.getSession();
 
     if (error) {
-      console.error("Could not get current session:", error);
+      logDiagnostic("Could not get current session:", error);
       return null;
     }
 
     return data?.session ?? null;
   } catch (error) {
-    console.error("Could not get current session:", error);
+    logDiagnostic("Could not get current session:", error);
     return null;
   }
 }
@@ -340,7 +340,7 @@ export async function getCurrentProfile() {
     const { profile } = await fetchProfile(user.id);
     return { user, profile: profile ?? null };
   } catch (error) {
-    console.error("Could not get current profile:", error);
+    logDiagnostic("Could not get current profile:", error);
     return { user, profile: null };
   }
 }
@@ -369,26 +369,6 @@ export async function checkDashboardAccess() {
   return "authorized";
 }
 
-/* Used by ForgotPassword.jsx to confirm an email belongs to a real account. */
-export async function checkRegisteredProfileByEmail(email) {
-  if (!supabase) return false;
-
-  const cleanEmail = String(email || "").trim().toLowerCase();
-
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id,email")
-    .ilike("email", cleanEmail)
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error("Could not verify this email. Please try again.");
-  }
-
-  return Boolean(data);
-}
-
 /*
  * Logout
  */
@@ -403,10 +383,10 @@ export async function signOut() {
     const { error } = await supabase.auth.signOut();
 
     if (error) {
-      console.error("Sign out error:", error);
+      logDiagnostic("Sign out error:", error);
 
       return {
-        error: error.message,
+        error: "Could not sign out. Please try again.",
       };
     }
 
@@ -414,12 +394,11 @@ export async function signOut() {
       error: null,
     };
   } catch (error) {
-    console.error("Sign out error:", error);
+    logDiagnostic("Sign out error:", error);
 
     return {
       error:
-        error?.message ||
-        "Could not sign out. Please try again.",
+        getSafeErrorMessage(error, "Could not sign out. Please try again."),
     };
   }
 }

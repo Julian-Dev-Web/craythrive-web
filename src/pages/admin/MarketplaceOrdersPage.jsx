@@ -1,3 +1,4 @@
+import { logDiagnostic } from "../../utils/securityDiagnostics";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -984,7 +985,7 @@ export default function MarketplaceOrdersPage() {
           new Date()
         );
       } catch (error) {
-        console.error(
+        logDiagnostic(
           "Marketplace orders loading error:",
           error
         );

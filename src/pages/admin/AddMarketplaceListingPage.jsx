@@ -1,3 +1,4 @@
+import { logDiagnostic, getSafeErrorMessage } from "../../utils/securityDiagnostics";
 import {
   useEffect,
   useMemo,
@@ -703,7 +704,7 @@ export default function AddMarketplaceListingPage() {
     } catch (
       error
     ) {
-      console.error(
+      logDiagnostic(
         "Add marketplace listing load error:",
         error
       );
@@ -713,8 +714,7 @@ export default function AddMarketplaceListingPage() {
       );
 
       setMessage(
-        error?.message ||
-          "Unable to prepare the listing form."
+        getSafeErrorMessage(error, "Unable to prepare the listing form.")
       );
     } finally {
       setLoading(false);
@@ -1382,7 +1382,7 @@ export default function AddMarketplaceListingPage() {
     } catch (
       error
     ) {
-      console.error(
+      logDiagnostic(
         "Publish marketplace product error:",
         error
       );
@@ -1393,8 +1393,7 @@ export default function AddMarketplaceListingPage() {
 
       const text =
         String(
-          error?.message ||
-            ""
+          getSafeErrorMessage(error, "")
         ).toLowerCase();
 
       if (
@@ -1418,8 +1417,7 @@ export default function AddMarketplaceListingPage() {
         );
       } else {
         setMessage(
-          error?.message ||
-            "Unable to publish this product."
+          getSafeErrorMessage(error, "Unable to publish this product.")
         );
       }
     } finally {

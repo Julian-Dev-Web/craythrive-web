@@ -1,6 +1,6 @@
 export function normalizeExternalUrl(value) {
   const text = String(value || "").trim();
-  if (!text || /[\u0000-\u0020\u007f\\]/.test(text)) return null;
+  if (!text || [...text].some(char => char.charCodeAt(0) <= 32 || char.charCodeAt(0) === 127 || char === "\\")) return null;
   // Reject explicit non-HTTP schemes before adding HTTPS to a bare hostname.
   if (/^[a-z][a-z0-9+.-]*:/i.test(text) && !/^https?:\/\//i.test(text)) return null;
   try {

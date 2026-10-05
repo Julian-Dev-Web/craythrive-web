@@ -1,3 +1,4 @@
+import { logDiagnostic, getSafeErrorMessage } from "../../utils/securityDiagnostics";
 import { normalizeExternalUrl } from "../../utils/safeUrls";
 import {
   useEffect,
@@ -485,7 +486,7 @@ export default function SellerProfilePage() {
     } catch (
       error
     ) {
-      console.error(
+      logDiagnostic(
         "Seller profile load error:",
         error
       );
@@ -495,8 +496,7 @@ export default function SellerProfilePage() {
       );
 
       setMessage(
-        error?.message ||
-          "Unable to load seller profile."
+        getSafeErrorMessage(error, "Unable to load seller profile.")
       );
     } finally {
       setIsLoading(
@@ -579,7 +579,7 @@ export default function SellerProfilePage() {
     if (
       profileError
     ) {
-      console.warn(
+      logDiagnostic(
         "Profile identity load error:",
         profileError
       );
@@ -810,7 +810,7 @@ export default function SellerProfilePage() {
     } catch (
       error
     ) {
-      console.warn(
+      logDiagnostic(
         "Bulacan locality load error:",
         error
       );
@@ -936,7 +936,7 @@ export default function SellerProfilePage() {
     } catch (
       error
     ) {
-      console.warn(
+      logDiagnostic(
         "Barangay loading error:",
         error
       );
@@ -1330,7 +1330,7 @@ export default function SellerProfilePage() {
     } catch (
       error
     ) {
-      console.error(
+      logDiagnostic(
         "Seller profile save error:",
         error
       );
@@ -1341,8 +1341,7 @@ export default function SellerProfilePage() {
 
       const text =
         String(
-          error?.message ||
-            ""
+          getSafeErrorMessage(error, "")
         ).toLowerCase();
 
       if (
@@ -1358,8 +1357,7 @@ export default function SellerProfilePage() {
         );
       } else {
         setMessage(
-          error?.message ||
-            "Unable to save seller profile."
+          getSafeErrorMessage(error, "Unable to save seller profile.")
         );
       }
     } finally {

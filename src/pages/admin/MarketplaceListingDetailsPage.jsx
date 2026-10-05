@@ -1,3 +1,4 @@
+import { logDiagnostic, getSafeErrorMessage } from "../../utils/securityDiagnostics";
 import { normalizeExternalUrl } from "../../utils/safeUrls";
 import {
   useEffect,
@@ -435,7 +436,7 @@ export default function MarketplaceListingDetailsPage() {
       if (
         sellerError
       ) {
-        console.warn(
+        logDiagnostic(
           "Seller profile could not be loaded:",
           sellerError
         );
@@ -450,7 +451,7 @@ export default function MarketplaceListingDetailsPage() {
     } catch (
       error
     ) {
-      console.error(
+      logDiagnostic(
         "Marketplace listing load error:",
         error
       );
@@ -460,8 +461,7 @@ export default function MarketplaceListingDetailsPage() {
       );
 
       setMessage(
-        error?.message ||
-          "Unable to load this product."
+        getSafeErrorMessage(error, "Unable to load this product.")
       );
     } finally {
       setLoading(false);
@@ -547,7 +547,7 @@ export default function MarketplaceListingDetailsPage() {
     } catch (
       error
     ) {
-      console.error(
+      logDiagnostic(
         "Listing status error:",
         error
       );
@@ -557,8 +557,7 @@ export default function MarketplaceListingDetailsPage() {
       );
 
       setMessage(
-        error?.message ||
-          "Unable to update product status."
+        getSafeErrorMessage(error, "Unable to update product status.")
       );
     } finally {
       setUpdating(false);
@@ -673,7 +672,7 @@ export default function MarketplaceListingDetailsPage() {
     } catch (
       error
     ) {
-      console.error(
+      logDiagnostic(
         "Remove listing error:",
         error
       );
@@ -683,8 +682,7 @@ export default function MarketplaceListingDetailsPage() {
       );
 
       setMessage(
-        error?.message ||
-          "Unable to remove this product."
+        getSafeErrorMessage(error, "Unable to remove this product.")
       );
 
       setUpdating(false);

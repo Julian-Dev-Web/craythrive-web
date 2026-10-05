@@ -1,3 +1,4 @@
+import { logDiagnostic, getSafeErrorMessage } from "../../utils/securityDiagnostics";
 import {
   useEffect,
   useMemo,
@@ -644,7 +645,7 @@ async function getCurrentUser() {
     await supabase.auth.getSession();
 
   if (error) {
-    console.log(
+    logDiagnostic(
       "GET SESSION ERROR:",
       error
     );
@@ -1829,7 +1830,7 @@ export default function ThresholdSettingsPage() {
     } catch (
       error
     ) {
-      console.log(
+      logDiagnostic(
         "THRESHOLD SETTINGS LOAD ERROR:",
         error
       );
@@ -1849,8 +1850,7 @@ export default function ThresholdSettingsPage() {
       );
 
       setMessage(
-        error?.message ||
-          "Loaded local thresholds because Supabase was not available."
+        getSafeErrorMessage(error, "Loaded local thresholds because Supabase was not available.")
       );
     } finally {
       setIsLoading(
@@ -2015,7 +2015,7 @@ export default function ThresholdSettingsPage() {
     } catch (
       error
     ) {
-      console.log(
+      logDiagnostic(
         "THRESHOLD SETTINGS SAVE ERROR:",
         error
       );
@@ -2025,8 +2025,7 @@ export default function ThresholdSettingsPage() {
       );
 
       setMessage(
-        error?.message ||
-          "Could not save threshold settings to Supabase."
+        getSafeErrorMessage(error, "Could not save threshold settings to Supabase.")
       );
     } finally {
       setIsSaving(
@@ -2153,7 +2152,7 @@ export default function ThresholdSettingsPage() {
     } catch (
       error
     ) {
-      console.log(
+      logDiagnostic(
         "APPLY AI THRESHOLD ERROR:",
         error
       );
@@ -2163,8 +2162,7 @@ export default function ThresholdSettingsPage() {
       );
 
       setMessage(
-        error?.message ||
-          "The AI threshold suggestion could not be applied."
+        getSafeErrorMessage(error, "The AI threshold suggestion could not be applied.")
       );
     } finally {
       setIsApplyingAi(
@@ -2216,7 +2214,7 @@ export default function ThresholdSettingsPage() {
     } catch (
       error
     ) {
-      console.log(
+      logDiagnostic(
         "DISMISS AI THRESHOLD ERROR:",
         error
       );
@@ -2226,8 +2224,7 @@ export default function ThresholdSettingsPage() {
       );
 
       setMessage(
-        error?.message ||
-          "The AI suggestion could not be dismissed."
+        getSafeErrorMessage(error, "The AI suggestion could not be dismissed.")
       );
     } finally {
       setIsDismissingAi(

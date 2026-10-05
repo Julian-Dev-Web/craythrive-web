@@ -1,3 +1,4 @@
+import { logDiagnostic, getSafeErrorMessage } from "../../utils/securityDiagnostics";
 import { getAmmoniaNumericValue, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
 import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
 import { getSafetyLabelSeverity, getSafetySeverity, getParameterExplanation, getSafetyStatusLabel } from "../../utils/statusHelpers";
@@ -1970,7 +1971,7 @@ export default function TankDetailsPage() {
           loadedTodaysFeedCommands
         );
       } catch (error) {
-        console.error(
+        logDiagnostic(
           "Tank details loading error:",
           error
         );
@@ -2525,8 +2526,7 @@ export default function TankDetailsPage() {
       );
     } catch (error) {
       setCommandMessage(
-        error.message ||
-          "Could not reset the command."
+        getSafeErrorMessage(error, "Could not reset the command.")
       );
     } finally {
       setIsSendingCommand(
@@ -2627,8 +2627,7 @@ export default function TankDetailsPage() {
       );
     } catch (error) {
       setCommandMessage(
-        error.message ||
-          "Could not reset today's feed record."
+        getSafeErrorMessage(error, "Could not reset today's feed record.")
       );
     } finally {
       setIsSendingCommand(
@@ -2829,8 +2828,7 @@ export default function TankDetailsPage() {
       );
     } catch (error) {
       setCommandMessage(
-        error.message ||
-          "Could not send the action."
+        getSafeErrorMessage(error, "Could not send the action.")
       );
     } finally {
       setIsSendingCommand(

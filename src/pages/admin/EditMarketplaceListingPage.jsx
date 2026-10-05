@@ -1,3 +1,4 @@
+import { logDiagnostic, getSafeErrorMessage } from "../../utils/securityDiagnostics";
 import {
   useEffect,
   useMemo,
@@ -632,7 +633,7 @@ export default function EditMarketplaceListingPage() {
     } catch (
       error
     ) {
-      console.error(
+      logDiagnostic(
         "Edit marketplace load error:",
         error
       );
@@ -642,8 +643,7 @@ export default function EditMarketplaceListingPage() {
       );
 
       setMessage(
-        error?.message ||
-          "Unable to load this product."
+        getSafeErrorMessage(error, "Unable to load this product.")
       );
     } finally {
       setLoading(false);
@@ -1221,7 +1221,7 @@ export default function EditMarketplaceListingPage() {
     } catch (
       error
     ) {
-      console.error(
+      logDiagnostic(
         "Marketplace update error:",
         error
       );
@@ -1231,8 +1231,7 @@ export default function EditMarketplaceListingPage() {
       );
 
       setMessage(
-        error?.message ||
-          "Unable to update this product."
+        getSafeErrorMessage(error, "Unable to update this product.")
       );
     } finally {
       setSaving(false);

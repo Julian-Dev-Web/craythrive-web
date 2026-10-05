@@ -1,16 +1,13 @@
-# React + Vite
+# CrayThrive web dashboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Vite SPA using Supabase Auth, Database and Storage.
 
-Currently, two official plugins are available:
+Copy .env.example to .env.local and supply the actual Supabase project URL and publishable key. A legacy anon key remains supported. VITE_APP_SITE_URL optionally sets the canonical password recovery origin. These values are public browser configuration. Private provider, service-role, database and webhook credentials belong only in a server environment.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+The existing local .env was malformed JavaScript rather than dotenv configuration. It was removed from Git tracking and left intact locally. Actual runtime credentials were not fabricated or replaced.
 
-## React Compiler
+Commands: npm ci; npm run dev; npm run build; npm run lint; npm run test:security; npm run security:scan; npm audit.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+The build validates browser environment names/key types and scans dist for private credential signatures. These checks do not replace database authorization or a full secret scanner.
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+See [the pre-production security audit](security/PRE_PRODUCTION_AUDIT.md) for exact changes, validation, remaining risks and manual Supabase/Vercel steps. No deployment was performed. Live RLS, Storage and the AI backend remain unverified because their schema/source was absent from this workspace.

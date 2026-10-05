@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "../utils/securityDiagnostics";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AlertTriangle, Bell, Loader2 } from "lucide-react";
@@ -81,7 +82,7 @@ export default function NotificationBell() {
 
       setAlerts(data || []);
     } catch (error) {
-      setErrorMessage(error.message || "Could not load notifications.");
+      setErrorMessage(getSafeErrorMessage(error, "Could not load notifications."));
     } finally {
       setIsLoading(false);
       setHasLoadedOnce(true);

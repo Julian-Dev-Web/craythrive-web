@@ -1,3 +1,4 @@
+import { logDiagnostic } from "../../utils/securityDiagnostics";
 import SafetyBadge from "../../components/SafetyBadge";
 import {
   useEffect,
@@ -1227,7 +1228,7 @@ export default function AlertsPage() {
           new Date()
         );
       } catch (error) {
-        console.error(
+        logDiagnostic(
           "Alerts loading error:",
           error
         );

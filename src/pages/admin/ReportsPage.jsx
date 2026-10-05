@@ -1,3 +1,4 @@
+import { logDiagnostic } from "../../utils/securityDiagnostics";
 import SafetyBadge from "../../components/SafetyBadge";
 import { getSafetySeverity, getSafetyStatusLabel, getParameterExplanation } from "../../utils/statusHelpers";
 import { buildMonitoringRecords, buildTankHistoryExportRows, evaluateCurrentTankSafety, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
@@ -1639,7 +1640,7 @@ export default function ReportsPage() {
       } catch (
         error
       ) {
-        console.error(
+        logDiagnostic(
           "Reports loading error:",
           error
         );

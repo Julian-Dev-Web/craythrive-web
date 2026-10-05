@@ -18,8 +18,14 @@ function cleanValue(value) {
 }
 
 function escapeCsv(value) {
-  const text =
+  let text =
     cleanValue(value);
+
+  // Spreadsheet applications can interpret untrusted titles/messages as formulas.
+  // Preserve ordinary signed numeric readings; make formula-like text a literal.
+  if (/^[=+@-]/.test(text) && !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(text)) {
+    text = `'${text}`;
+  }
 
   if (
     text.includes(",") ||

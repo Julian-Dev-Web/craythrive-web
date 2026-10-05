@@ -1,3 +1,4 @@
+import { logDiagnostic } from "../../utils/securityDiagnostics";
 import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
 import { getSafetySeverity, getSafetyStatusLabel, getParameterExplanation } from "../../utils/statusHelpers";
 import { buildMonitoringRecords, evaluateCurrentTankSafety, getLatestAmmoniaForTank, getAmmoniaNumericValue } from "../../utils/monitoringRecords";
@@ -604,7 +605,7 @@ export default function DashboardOverview() {
 
       setLastUpdated(new Date());
     } catch (error) {
-      console.error(
+      logDiagnostic(
         "Dashboard loading error:",
         error
       );

@@ -1,3 +1,4 @@
+import { logDiagnostic } from "../../utils/securityDiagnostics";
 import { getAmmoniaNumericValue, getLatestAmmoniaForTank, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
 import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
 import { getSafetySeverity, getParameterExplanation, getSafetyStatusLabel } from "../../utils/statusHelpers";
@@ -1057,7 +1058,7 @@ export default function TanksPage() {
       } catch (
         error
       ) {
-        console.error(
+        logDiagnostic(
           "Tanks loading error:",
           error
         );

@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "../../utils/securityDiagnostics";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -77,29 +78,29 @@ export default function ResetPassword() {
         return;
       }
 
-      const { data } = await supabase.auth.getSession();
-
-      if (data?.session?.user && isMounted) {
-        setCanReset(true);
+      try {
+        const { data, error } = await supabase.auth.getUser();
+        if (!error && data?.user && isMounted) setCanReset(true);
+      } catch {
+        if (isMounted) setCanReset(false);
+      } finally {
+        if (isMounted) setIsCheckingSession(false);
       }
-
-      if (isMounted) setIsCheckingSession(false);
     };
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY") {
+    const subscription = supabase?.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY" && isMounted) {
         setCanReset(true);
         setIsCheckingSession(false);
       }
-    });
+      if (event === "SIGNED_OUT" && isMounted) setCanReset(false);
+    }).data.subscription;
 
     checkRecoverySession();
 
     return () => {
       isMounted = false;
-      subscription.unsubscribe();
+      subscription?.unsubscribe();
     };
   }, []);
 
@@ -155,7 +156,7 @@ export default function ResetPassword() {
         navigate("/login", { replace: true });
       }, 1200);
     } catch (error) {
-      setErrorMessage(error.message || "Could not update password. Please try again.");
+      setErrorMessage(getSafeErrorMessage(error, "Could not update password. Please try again."));
     } finally {
       setIsSubmitting(false);
     }

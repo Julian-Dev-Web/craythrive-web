@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "../../utils/securityDiagnostics";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -61,7 +62,7 @@ export default function ForgotPassword() {
         "If an account exists for this email, a password reset link will be sent. Please check your inbox and spam folder."
       );
     } catch (error) {
-      setErrorMessage(error.message || "Could not send reset email. Please try again.");
+      setErrorMessage(getSafeErrorMessage(error, "Could not send reset email. Please try again."));
     } finally {
       setIsSubmitting(false);
     }

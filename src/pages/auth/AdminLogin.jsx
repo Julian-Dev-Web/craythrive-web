@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "../../utils/securityDiagnostics";
 import { useState } from "react";
 import {
   Link,
@@ -154,8 +155,7 @@ export default function AdminLogin() {
         error
       ) {
         setErrorMessage(
-          error?.message ||
-            "Could not sign in. Please try again."
+          getSafeErrorMessage(error, "Could not sign in. Please try again.")
         );
       } finally {
         setIsSigningIn(

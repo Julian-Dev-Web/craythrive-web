@@ -1,3 +1,4 @@
+import { logDiagnostic } from "../../utils/securityDiagnostics";
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -910,7 +911,7 @@ async function loadThresholdsFromSupabase(
       .maybeSingle();
 
   if (error) {
-    console.log(
+    logDiagnostic(
       "LOAD THRESHOLDS ERROR:",
       error
     );
@@ -1691,7 +1692,7 @@ export default function SettingsPage() {
           )
         );
       } catch (error) {
-        console.error(
+        logDiagnostic(
           "Settings loading error:",
           error
         );
@@ -1881,7 +1882,7 @@ export default function SettingsPage() {
             "Water safety settings were saved successfully.",
         });
       } catch (error) {
-        console.error(
+        logDiagnostic(
           "Settings saving error:",
           error
         );

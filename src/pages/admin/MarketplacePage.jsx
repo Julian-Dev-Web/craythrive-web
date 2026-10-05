@@ -1,3 +1,4 @@
+import { logDiagnostic, getSafeErrorMessage } from "../../utils/securityDiagnostics";
 import {
   useEffect,
   useMemo,
@@ -630,7 +631,7 @@ export default function MarketplacePage() {
       if (
         sellerResult.error
       ) {
-        console.warn(
+        logDiagnostic(
           "Seller profile load:",
           sellerResult.error
         );
@@ -648,7 +649,7 @@ export default function MarketplacePage() {
       if (
         orderResult.error
       ) {
-        console.warn(
+        logDiagnostic(
           "Marketplace orders load:",
           orderResult.error
         );
@@ -665,7 +666,7 @@ export default function MarketplacePage() {
         new Date()
       );
     } catch (error) {
-      console.error(
+      logDiagnostic(
         "Marketplace page load error:",
         error
       );
@@ -675,8 +676,7 @@ export default function MarketplacePage() {
       );
 
       setMessage(
-        error?.message ||
-          "Unable to load Marketplace."
+        getSafeErrorMessage(error, "Unable to load Marketplace.")
       );
     } finally {
       setIsLoading(
@@ -951,7 +951,7 @@ export default function MarketplacePage() {
         false
       );
     } catch (error) {
-      console.error(
+      logDiagnostic(
         "Listing status update error:",
         error
       );
@@ -961,8 +961,7 @@ export default function MarketplacePage() {
       );
 
       setMessage(
-        error?.message ||
-          "Unable to update this listing."
+        getSafeErrorMessage(error, "Unable to update this listing.")
       );
     } finally {
       setUpdatingListingId(
@@ -1081,7 +1080,7 @@ export default function MarketplacePage() {
         false
       );
     } catch (error) {
-      console.error(
+      logDiagnostic(
         "Marketplace delete error:",
         error
       );
@@ -1091,8 +1090,7 @@ export default function MarketplacePage() {
       );
 
       setMessage(
-        error?.message ||
-          "Unable to remove this listing."
+        getSafeErrorMessage(error, "Unable to remove this listing.")
       );
     } finally {
       setUpdatingListingId(

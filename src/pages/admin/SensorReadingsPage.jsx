@@ -1,3 +1,4 @@
+import { logDiagnostic } from "../../utils/securityDiagnostics";
 import { buildMonitoringRecords, evaluateCurrentTankSafety } from "../../utils/monitoringRecords";
 import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
 import { getSafetySeverity, getParameterExplanation, getSafetyStatusLabel } from "../../utils/statusHelpers";
@@ -962,7 +963,7 @@ export default function SensorReadingsPage() {
           new Date()
         );
       } catch (error) {
-        console.error(
+        logDiagnostic(
           "Readings loading error:",
           error
         );

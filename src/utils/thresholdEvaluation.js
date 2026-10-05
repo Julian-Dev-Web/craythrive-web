@@ -1,3 +1,4 @@
+import { logDiagnostic } from "./securityDiagnostics";
 // src/utils/thresholdEvaluation.js
 //
 // CrayThrive threshold evaluation + reference guidance.
@@ -592,7 +593,7 @@ export async function loadActiveThresholds() {
       await supabase.auth.getSession();
 
     if (sessionError) {
-      console.log(
+      logDiagnostic(
         "LOAD ACTIVE THRESHOLDS SESSION ERROR:",
         sessionError
       );
@@ -628,7 +629,7 @@ export async function loadActiveThresholds() {
       !data
     ) {
       if (error) {
-        console.log(
+        logDiagnostic(
           "LOAD ACTIVE THRESHOLDS DB ERROR:",
           error
         );
@@ -655,7 +656,7 @@ export async function loadActiveThresholds() {
 
     return normalized;
   } catch (error) {
-    console.log(
+    logDiagnostic(
       "LOAD ACTIVE THRESHOLDS ERROR:",
       error
     );
