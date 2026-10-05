@@ -20,11 +20,11 @@ The exact manifest appears at the end. `.env` was removed from Git tracking and 
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | Safe client configuration | Preferred browser API key |
 | `VITE_SUPABASE_ANON_KEY` | Safe client configuration / unused when publishable is set | Legacy fallback |
 | `VITE_APP_SITE_URL` | Safe client configuration, optional | Canonical recovery origin; existing fallback retained |
-| Documented public Vercel framework variables | Safe platform metadata | Explicit allowlist in `publicConfig.js`; includes repo/commit/environment/URL metadata, excludes credentials and OIDC tokens |
+| Noncredential `VITE_VERCEL_*` variables | Build-only platform metadata | Accepted during validation but excluded from automatic browser exposure; credential/token names remain rejected |
 | Any other `VITE_*` | Unsupported / remove from client configuration | Rejected until explicitly reviewed |
 | Vite `MODE`, `BASE_URL`, `DEV`, `PROD`, `SSR` | Nonsecret built-ins | Build/runtime flags |
 
-**VITE values are public browser data.** The build/runtime reject unsupported names, non-public Supabase key types and URLs containing credentials/query strings/fragments. HTTPS is required except localhost development. The anon JWT check classifies key type; it does not verify a signature. Supabase verifies sessions.
+**The four VITE app values are public browser data.** Vite's explicit `envPrefix` exposes only these app prefixes, and validation rejects unknown suffixes. Unused Vercel platform metadata is excluded from `import.meta.env`. Private credentials still must not use VITE names. The build/runtime reject unsupported app names, credential-like platform names, non-public Supabase key types and URLs containing credentials/query strings/fragments. HTTPS is required except localhost development. The anon JWT check classifies key type; it does not verify a signature. Supabase verifies sessions.
 
 The existing `.env` contains JavaScript declarations referencing `import.meta.env`, not dotenv assignments. Vite loaded no VITE values from it. Configure actual values before authenticated testing; no fake runtime credentials were introduced. `.env.example` has blank values. Missing configuration now reaches the existing not-configured screen instead of a module-load crash.
 
@@ -76,9 +76,9 @@ Password recovery no longer queries profiles to disclose account existence and g
 
 Initial npm audit: 9 affected packages (6 high, 1 moderate, 2 low), no critical. Compatible `npm audit fix --ignore-scripts` updates used no force/major upgrades. Vite is 8.3.2; React Router/DOM is 7.18.4. Final audit: **zero vulnerabilities**. Commit the lockfile, use `npm ci` and recheck advisories before release.
 
-Production build and final dist credential scan passed. Eight security regression tests passed. ESLint retains **25 existing errors and 6 warnings**, with no new findings. The JS bundle still triggers Vite's 500 kB warning. Local headless Chrome checks passed on landing, login, forgot-password, protected and reset-password routes using the production bundle and configured headers, with no runtime exceptions. Live Supabase was not contacted. These checks do not verify live RLS, email delivery or Edge Function authorization.
+Production build and final dist credential scan passed. Nine security regression tests passed. ESLint retains **25 existing errors and 6 warnings**, with no new findings. The JS bundle still triggers Vite's 500 kB warning. Local headless Chrome checks passed on landing, login, forgot-password, protected and reset-password routes using the production bundle and configured headers, with no runtime exceptions. Live Supabase was not contacted. These checks do not verify live RLS, email delivery or Edge Function authorization.
 
-Vercel build follow-up: the original strict allowlist rejected automatically injected public repo metadata. The shared build/runtime validator now explicitly permits Vercel's documented public framework metadata. Unknown variables and Vercel-prefixed credentials/OIDC tokens remain rejected. A local production build with all 16 documented metadata names injected passed, including the bundle scan; no real credentials or deployment settings were changed.
+Vercel build follow-up: the original strict allowlist rejected automatically injected repo metadata, and the first fixed list missed observability client configuration. Validation now accepts noncredential names in Vercel's build namespace without enumerating each metadata field. Vite exposes only the four app prefixes, keeping present/future platform metadata outside the browser environment. Credential/token names, unknown app names and private Supabase keys remain rejected. Tests using Vite's real resolved configuration and a production build with repo, observability and future metadata passed; platform marker values were absent from browser JavaScript and the bundle scan passed. No real credentials or deployment settings were changed.
 
 ## 13-14. Remaining risks and manual steps
 
@@ -97,6 +97,7 @@ Vercel build follow-up: the original strict allowlist rejected automatically inj
 - [Supabase keys](https://supabase.com/docs/guides/getting-started/api-keys), [RLS](https://supabase.com/docs/guides/database/postgres/row-level-security), [Storage](https://supabase.com/docs/guides/storage/security/access-control)
 - [Authenticated Edge Functions](https://supabase.com/docs/guides/functions/auth-legacy-jwt)
 - [Vercel CSP](https://vercel.com/docs/cdn-security/security-headers)
+- [Vercel observability client configuration](https://vercel.com/docs/analytics/package), [Vite environment exposure](https://vite.dev/config/shared-options.html#envprefix)
 - [OWASP CSV injection](https://community.owasp.org/attacks/CSV_Injection)
 
 ## Exact change manifest

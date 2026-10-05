@@ -5,27 +5,13 @@ export const PUBLIC_ENV_NAMES = new Set([
   "VITE_APP_SITE_URL",
 ]);
 
-// Vercel injects these public framework variables during Vite builds.
-// Keep an explicit list: VERCEL-prefixed tokens/secrets must not be exempted.
-// https://vercel.com/docs/environment-variables/framework-environment-variables
-export const VERCEL_PUBLIC_ENV_NAMES = new Set([
-  "VITE_VERCEL_ENV",
-  "VITE_VERCEL_TARGET_ENV",
-  "VITE_VERCEL_URL",
-  "VITE_VERCEL_BRANCH_URL",
-  "VITE_VERCEL_PROJECT_PRODUCTION_URL",
-  "VITE_VERCEL_HASH_SALT",
-  "VITE_VERCEL_GIT_PROVIDER",
-  "VITE_VERCEL_GIT_REPO_SLUG",
-  "VITE_VERCEL_GIT_REPO_OWNER",
-  "VITE_VERCEL_GIT_REPO_ID",
-  "VITE_VERCEL_GIT_COMMIT_REF",
-  "VITE_VERCEL_GIT_COMMIT_SHA",
-  "VITE_VERCEL_GIT_COMMIT_MESSAGE",
-  "VITE_VERCEL_GIT_COMMIT_AUTHOR_LOGIN",
-  "VITE_VERCEL_GIT_COMMIT_AUTHOR_NAME",
-  "VITE_VERCEL_GIT_PULL_REQUEST_ID",
-]);
+// Vercel adds build metadata beyond its documented Git/URL fields.
+// vite.config.js excludes this entire namespace from automatic client exposure.
+// Accept unused metadata without maintaining a growing list; reject credential names.
+function isBuildOnlyVercelEnvName(name) {
+  return name.startsWith("VITE_VERCEL_") &&
+    !/(?:^|_)(?:KEY|SECRET|TOKEN|PASSWORD|CREDENTIALS?|AUTH|JWT|OIDC|PRIVATE|SERVICE_ROLE)(?:_|$)/i.test(name);
+}
 
 // This checks the key type, not JWT authenticity. Supabase verifies sessions.
 export function isPublicSupabaseKey(value) {
@@ -43,7 +29,7 @@ export function isPublicSupabaseKey(value) {
 
 export function validatePublicEnv(env) {
   for (const name of Object.keys(env)) {
-    if (name.startsWith("VITE_") && !PUBLIC_ENV_NAMES.has(name) && !VERCEL_PUBLIC_ENV_NAMES.has(name)) {
+    if (name.startsWith("VITE_") && !PUBLIC_ENV_NAMES.has(name) && !isBuildOnlyVercelEnvName(name)) {
       throw new Error(`Unsupported public environment variable: ${name}. Keep private credentials server-side.`);
     }
   }

@@ -1,21 +1,49 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { validatePublicEnv, isPublicSupabaseKey, VERCEL_PUBLIC_ENV_NAMES } from "../src/utils/publicConfig.js";
+import { validatePublicEnv, isPublicSupabaseKey, PUBLIC_ENV_NAMES } from "../src/utils/publicConfig.js";
+import { resolveConfig } from "vite";
 import { normalizeExternalUrl } from "../src/utils/safeUrls.js";
 import { logDiagnostic, getSafeErrorMessage } from "../src/utils/securityDiagnostics.js";
 import { downloadCsv } from "../src/utils/exportPrintUtils.js";
 
 const jwt = role => [Buffer.from('{}').toString('base64url'), Buffer.from(JSON.stringify({role})).toString('base64url'), 'test'].join('.');
 
-test("Vercel's documented public build metadata is accepted without exempting secrets", () => {
+test("Vercel build metadata is accepted without exempting secrets", () => {
   assert.doesNotThrow(() => validatePublicEnv({VITE_VERCEL_GIT_REPO_ID:'123456'}));
-  const metadata = Object.fromEntries([...VERCEL_PUBLIC_ENV_NAMES].map(name => [name, 'test-metadata']));
+  const metadata = {
+    VITE_VERCEL_GIT_REPO_ID: '123456',
+    VITE_VERCEL_ENV: 'production',
+    VITE_VERCEL_OBSERVABILITY_CLIENT_CONFIG: JSON.stringify({analytics:{scriptSrc:'/_vercel/insights/script.js'}}),
+    VITE_VERCEL_FUTURE_METADATA: 'unused-build-metadata',
+  };
   assert.doesNotThrow(() => validatePublicEnv(metadata));
   for (const name of ['VITE_VERCEL_OIDC_TOKEN', 'VITE_VERCEL_API_KEY', 'VITE_VERCEL_AI_API_KEY', 'VITE_UNKNOWN_CONFIG']) {
     assert.throws(() => validatePublicEnv({...metadata, [name]:'test-only-value'}));
   }
   assert.throws(() => validatePublicEnv({...metadata, VITE_SUPABASE_ANON_KEY:jwt('service_role')}));
+  assert.throws(() => validatePublicEnv({VITE_SUPABASE_URL_PRIVATE_TOKEN:'test-only-value'}));
+});
+
+test("Vite exposes app configuration but excludes present and future Vercel metadata", async () => {
+  const fixture = {
+    VITE_VERCEL_OBSERVABILITY_CLIENT_CONFIG:'unused-platform-marker',
+    VITE_VERCEL_FUTURE_METADATA:'unused-platform-marker',
+    VITE_APP_SITE_URL:'https://example.com',
+  };
+  const previous = Object.fromEntries(Object.keys(fixture).map(name=>[name,process.env[name]]));
+  try {
+    Object.assign(process.env,fixture);
+    const config = await resolveConfig({},'build','production');
+    assert.deepEqual(config.envPrefix,[...PUBLIC_ENV_NAMES]);
+    assert.equal(config.env.VITE_APP_SITE_URL,fixture.VITE_APP_SITE_URL);
+    assert.equal(Object.hasOwn(config.env,'VITE_VERCEL_OBSERVABILITY_CLIENT_CONFIG'),false);
+    assert.equal(Object.hasOwn(config.env,'VITE_VERCEL_FUTURE_METADATA'),false);
+  } finally {
+    for (const [name,value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[name]; else process.env[name] = value;
+    }
+  }
 });
 
 test("public config rejects service-role and unknown public secret variables", () => {
