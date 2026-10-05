@@ -1,3 +1,4 @@
+import { normalizeExternalUrl } from "../../utils/safeUrls";
 import {
   useEffect,
   useMemo,
@@ -152,22 +153,7 @@ function getUnit(listing) {
 }
 
 function normalizeUrl(value) {
-  const text =
-    clean(value);
-
-  if (!text) {
-    return "";
-  }
-
-  if (
-    /^https?:\/\//i.test(
-      text
-    )
-  ) {
-    return text;
-  }
-
-  return `https://${text}`;
+  return normalizeExternalUrl(value);
 }
 
 /* =========================================================
@@ -327,12 +313,7 @@ export default function MarketplaceListingDetailsPage() {
           icon:
             Globe2,
         },
-      ].filter(
-        (item) =>
-          clean(
-            item.value
-          )
-      );
+      ].map(item => ({ ...item, value: normalizeExternalUrl(item.value) })).filter(item => item.value);
     }, [
       seller,
     ]);
@@ -1385,7 +1366,7 @@ export default function MarketplaceListingDetailsPage() {
                     )
                   }
                   target="_blank"
-                  rel="noreferrer"
+                  rel="noopener noreferrer"
                 >
                   <Icon
                     size={16}

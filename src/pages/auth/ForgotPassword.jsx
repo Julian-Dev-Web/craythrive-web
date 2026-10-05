@@ -9,7 +9,6 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "../../lib/supabase";
-import { checkRegisteredProfileByEmail } from "../../services/authService";
 
 const DEFAULT_LIVE_SITE_URL = "https://www.craythrive.site";
 
@@ -50,25 +49,16 @@ export default function ForgotPassword() {
     try {
       setIsSubmitting(true);
 
-      const isRegistered = await checkRegisteredProfileByEmail(cleanEmail);
-
-      if (!isRegistered) {
-        setErrorMessage(
-          "This email is not registered in CrayThrive. Please use the email you used in the mobile app."
-        );
-        return;
-      }
-
       const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
         redirectTo: resetRedirectUrl,
       });
 
       if (error) {
-        throw new Error(error.message);
+        throw new Error(error.status === 429 ? "Too many reset requests. Please wait before trying again." : "Could not send the reset request. Please try again later.");
       }
 
       setSuccessMessage(
-        "Password reset link sent. Please check your inbox or spam folder, then open the reset link."
+        "If an account exists for this email, a password reset link will be sent. Please check your inbox and spam folder."
       );
     } catch (error) {
       setErrorMessage(error.message || "Could not send reset email. Please try again.");
@@ -103,8 +93,8 @@ export default function ForgotPassword() {
             <h1>Forgot your password?</h1>
 
             <p className="admin-showcase-description">
-              Enter your registered CrayThrive account email. We will only send
-              a reset link if the email exists in your CrayThrive profile.
+              Enter your CrayThrive account email. If an account exists,
+              you will receive a password reset link.
             </p>
           </div>
 

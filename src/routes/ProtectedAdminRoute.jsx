@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 import { Navigate, Outlet } from "react-router-dom";
 import { Loader2, ShieldAlert } from "lucide-react";
-import { isSupabaseConfigured, supabase } from "../lib/supabase";
-
-const ALLOWED_DASHBOARD_ROLES = ["user"];
+import { supabase } from "../lib/supabase";
+import { checkDashboardAccess } from "../services/authService";
 
 export default function ProtectedAdminRoute() {
   const [status, setStatus] = useState("checking");
@@ -11,49 +10,25 @@ export default function ProtectedAdminRoute() {
   useEffect(() => {
     let isMounted = true;
 
-    const checkDashboardAccess = async () => {
-      if (!isSupabaseConfigured || !supabase) {
-        if (isMounted) setStatus("not-configured");
-        return;
-      }
-
-      const { data: sessionData, error: sessionError } =
-        await supabase.auth.getSession();
-
-      if (sessionError || !sessionData?.session?.user) {
+    const verifyAccess = async () => {
+      try {
+        const result = await checkDashboardAccess();
+        if (isMounted) setStatus(result);
+      } catch {
         if (isMounted) setStatus("unauthenticated");
-        return;
       }
-
-      const userId = sessionData.session.user.id;
-
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("id, role")
-        .eq("id", userId)
-        .single();
-
-      if (profileError) {
-        await supabase.auth.signOut();
-        if (isMounted) setStatus("unauthenticated");
-        return;
-      }
-
-      const role = String(profile?.role || "").toLowerCase();
-
-      if (!ALLOWED_DASHBOARD_ROLES.includes(role)) {
-        await supabase.auth.signOut();
-        if (isMounted) setStatus("unauthenticated");
-        return;
-      }
-
-      if (isMounted) setStatus("authorized");
     };
-
-    checkDashboardAccess();
+    verifyAccess();
+    const subscription = supabase?.auth.onAuthStateChange(event => {
+      if (event === "SIGNED_OUT" && isMounted) {
+        isMounted = false;
+        setStatus("unauthenticated");
+      }
+    }).data.subscription;
 
     return () => {
       isMounted = false;
+      subscription?.unsubscribe();
     };
   }, []);
 
@@ -76,7 +51,7 @@ export default function ProtectedAdminRoute() {
           <ShieldAlert size={32} />
           <h2>Supabase is not configured.</h2>
           <p>
-            Add your Supabase URL and anon key inside the .env file before
+            Add your Supabase URL and publishable key inside the .env file before
             opening the dashboard.
           </p>
         </div>

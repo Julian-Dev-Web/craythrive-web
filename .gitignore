@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Local credentials; only the empty template belongs in Git.
+.env*
+!.env.example
+.security-*
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

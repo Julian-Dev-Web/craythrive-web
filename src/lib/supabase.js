@@ -1,21 +1,18 @@
 import { createClient } from "@supabase/supabase-js";
+import { validatePublicEnv } from "../utils/publicConfig";
+
+validatePublicEnv(import.meta.env);
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabasePublicKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 export const isSupabaseConfigured = Boolean(
-  supabaseUrl && supabaseAnonKey
+  supabaseUrl && supabasePublicKey
 );
 
-if (!isSupabaseConfigured) {
-  throw new Error(
-    "Supabase configuration is missing. Check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY."
-  );
-}
-
-export const supabase = createClient(
+export const supabase = isSupabaseConfigured ? createClient(
   supabaseUrl,
-  supabaseAnonKey,
+  supabasePublicKey,
   {
     auth: {
       persistSession: true,
@@ -23,4 +20,4 @@ export const supabase = createClient(
       detectSessionInUrl: true,
     },
   }
-);
+) : null;

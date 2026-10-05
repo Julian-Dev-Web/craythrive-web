@@ -1,3 +1,4 @@
+import { normalizeExternalUrl } from "../../utils/safeUrls";
 import {
   useEffect,
   useMemo,
@@ -297,57 +298,12 @@ function mobileOnly(value) {
     );
 }
 
-function normalizeOptionalUrl(
-  value
-) {
-  const text =
-    clean(value);
-
-  if (!text) {
-    return null;
-  }
-
-  if (
-    /^https?:\/\//i.test(
-      text
-    )
-  ) {
-    return text;
-  }
-
-  return `https://${text}`;
+function normalizeOptionalUrl(value) {
+  return normalizeExternalUrl(value);
 }
 
-function isValidOptionalUrl(
-  value
-) {
-  const text =
-    clean(value);
-
-  if (!text) {
-    return true;
-  }
-
-  try {
-    const normalized =
-      normalizeOptionalUrl(
-        text
-      );
-
-    const url =
-      new URL(
-        normalized
-      );
-
-    return (
-      url.protocol ===
-        "http:" ||
-      url.protocol ===
-        "https:"
-    );
-  } catch {
-    return false;
-  }
+function isValidOptionalUrl(value) {
+  return !clean(value) || Boolean(normalizeExternalUrl(value));
 }
 
 /* =========================================================
