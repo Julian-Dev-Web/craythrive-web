@@ -1,12 +1,22 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { validatePublicEnv, isPublicSupabaseKey } from "../src/utils/publicConfig.js";
+import { validatePublicEnv, isPublicSupabaseKey, VERCEL_PUBLIC_ENV_NAMES } from "../src/utils/publicConfig.js";
 import { normalizeExternalUrl } from "../src/utils/safeUrls.js";
 import { logDiagnostic, getSafeErrorMessage } from "../src/utils/securityDiagnostics.js";
 import { downloadCsv } from "../src/utils/exportPrintUtils.js";
 
 const jwt = role => [Buffer.from('{}').toString('base64url'), Buffer.from(JSON.stringify({role})).toString('base64url'), 'test'].join('.');
+
+test("Vercel's documented public build metadata is accepted without exempting secrets", () => {
+  assert.doesNotThrow(() => validatePublicEnv({VITE_VERCEL_GIT_REPO_ID:'123456'}));
+  const metadata = Object.fromEntries([...VERCEL_PUBLIC_ENV_NAMES].map(name => [name, 'test-metadata']));
+  assert.doesNotThrow(() => validatePublicEnv(metadata));
+  for (const name of ['VITE_VERCEL_OIDC_TOKEN', 'VITE_VERCEL_API_KEY', 'VITE_VERCEL_AI_API_KEY', 'VITE_UNKNOWN_CONFIG']) {
+    assert.throws(() => validatePublicEnv({...metadata, [name]:'test-only-value'}));
+  }
+  assert.throws(() => validatePublicEnv({...metadata, VITE_SUPABASE_ANON_KEY:jwt('service_role')}));
+});
 
 test("public config rejects service-role and unknown public secret variables", () => {
   assert.equal(isPublicSupabaseKey(jwt('anon')), true);

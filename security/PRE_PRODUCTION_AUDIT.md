@@ -20,6 +20,7 @@ The exact manifest appears at the end. `.env` was removed from Git tracking and 
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | Safe client configuration | Preferred browser API key |
 | `VITE_SUPABASE_ANON_KEY` | Safe client configuration / unused when publishable is set | Legacy fallback |
 | `VITE_APP_SITE_URL` | Safe client configuration, optional | Canonical recovery origin; existing fallback retained |
+| Documented public Vercel framework variables | Safe platform metadata | Explicit allowlist in `publicConfig.js`; includes repo/commit/environment/URL metadata, excludes credentials and OIDC tokens |
 | Any other `VITE_*` | Unsupported / remove from client configuration | Rejected until explicitly reviewed |
 | Vite `MODE`, `BASE_URL`, `DEV`, `PROD`, `SSR` | Nonsecret built-ins | Build/runtime flags |
 
@@ -75,7 +76,9 @@ Password recovery no longer queries profiles to disclose account existence and g
 
 Initial npm audit: 9 affected packages (6 high, 1 moderate, 2 low), no critical. Compatible `npm audit fix --ignore-scripts` updates used no force/major upgrades. Vite is 8.3.2; React Router/DOM is 7.18.4. Final audit: **zero vulnerabilities**. Commit the lockfile, use `npm ci` and recheck advisories before release.
 
-Production build and final dist credential scan passed. Seven security regression tests passed. ESLint retains **25 existing errors and 6 warnings**, with no new findings. The JS bundle still triggers Vite's 500 kB warning. Local headless Chrome checks passed on landing, login, forgot-password, protected and reset-password routes using the production bundle and configured headers, with no runtime exceptions. Live Supabase was not contacted. These checks do not verify live RLS, email delivery or Edge Function authorization.
+Production build and final dist credential scan passed. Eight security regression tests passed. ESLint retains **25 existing errors and 6 warnings**, with no new findings. The JS bundle still triggers Vite's 500 kB warning. Local headless Chrome checks passed on landing, login, forgot-password, protected and reset-password routes using the production bundle and configured headers, with no runtime exceptions. Live Supabase was not contacted. These checks do not verify live RLS, email delivery or Edge Function authorization.
+
+Vercel build follow-up: the original strict allowlist rejected automatically injected public repo metadata. The shared build/runtime validator now explicitly permits Vercel's documented public framework metadata. Unknown variables and Vercel-prefixed credentials/OIDC tokens remain rejected. A local production build with all 16 documented metadata names injected passed, including the bundle scan; no real credentials or deployment settings were changed.
 
 ## 13-14. Remaining risks and manual steps
 
