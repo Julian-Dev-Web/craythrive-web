@@ -612,6 +612,23 @@ function MetricCard({ icon: Icon, label, value, parameter, scanDate }) {
   );
 }
 
+function ReadingConditionCell({ value, parameter, name, emptyLabel = "No Data" }) {
+  const explanation = parameter?.hasValue ? getParameterExplanation(parameter, name) : "";
+  const compactExplanation = parameter?.label === "Below Active Min" ? "Below minimum"
+    : parameter?.label === "Above Active Max" ? "Above maximum"
+    : parameter?.label === "Needs Attention" ? "Low clarity"
+    : parameter?.severity === "warning" ? "Preferred range issue" : explanation;
+  return (
+    <span className="reading-condition-cell">
+      <span className="reading-condition-value">
+        <strong>{value}</strong>
+        <SafetyBadge severity={parameter?.severity} emptyLabel={emptyLabel} />
+      </span>
+      {explanation && <small className="safety-explanation" title={explanation}>{compactExplanation}</small>}
+    </span>
+  );
+}
+
 function ReadingFilterDropdown({
   icon: Icon,
   value,
@@ -1865,20 +1882,11 @@ export default function SensorReadingsPage() {
                   <span data-label="Tank"><strong>{item.tankName}</strong></span>
                   {metrics.map(([label, value, key]) => (
                     <span data-label={label} key={key}>
-                      {water ? <>
-                        {value}
-                        <SafetyBadge severity={normalized.safety.parameters[key].severity} />
-                        {getParameterExplanation(normalized.safety.parameters[key], label) &&
-                          <small className="safety-explanation">{getParameterExplanation(normalized.safety.parameters[key], label)}</small>}
-                      </> : "-"}
+                      {water ? <ReadingConditionCell value={value} parameter={normalized.safety.parameters[key]} name={label} /> : "-"}
                     </span>
                   ))}
-                  <span data-label="Ammonia">{water ? "-" : <>
-                    {item.ammoniaLabel}
-                    <SafetyBadge severity={item.status} emptyLabel="No Scan" />
-                    {getParameterExplanation(normalized.safety.parameters.ammonia, "Ammonia") &&
-                      <small className="safety-explanation">{getParameterExplanation(normalized.safety.parameters.ammonia, "Ammonia")}</small>}
-                  </>}</span>
+                  <span data-label="Ammonia">{water ? "-" : <ReadingConditionCell value={item.ammoniaLabel}
+                    parameter={normalized.safety.parameters.ammonia} name="Ammonia" emptyLabel="No Scan" />}</span>
                   <span data-label="Status"><SafetyBadge severity={displaySeverity} /></span>
                   <span data-label="Date">{formatDate(item.date)}</span>
                 </div>

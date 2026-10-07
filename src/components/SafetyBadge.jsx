@@ -12,7 +12,7 @@ export default function SafetyBadge({ severity, className = "", emptyLabel = "No
   const level = normalizeSafetySeverity(severity);
   return (
     <b className={`safety-status ${className} ${level}`}>
-      <SafetyIcon severity={level} size={14} />
+      <SafetyIcon severity={level} size={12} />
       {level === "no-data" ? emptyLabel : getSafetyStatusLabel(level)}
     </b>
   );

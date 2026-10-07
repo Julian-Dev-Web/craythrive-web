@@ -913,7 +913,8 @@
 }
 
 .modern-tank-detail-hero-card {
-  min-height: 155px;
+  min-height: 96px;
+  padding: 12px;
 
   display: flex;
   flex-direction: column;
@@ -923,22 +924,24 @@
   text-align: center;
 
   border: 1px solid var(--ct-border, rgba(0, 217, 199, 0.14));
-  border-radius: 22px;
+  border-radius: 14px;
 
   background: var(--ct-surface-soft, rgba(0, 217, 199, 0.035));
 }
 
 .modern-tank-detail-hero-card svg {
+  width: 24px;
+  height: 24px;
   color: var(--ct-brand, #00d9c7);
 }
 
 .modern-tank-detail-hero-card strong {
-  margin-top: 10px;
+  margin-top: 6px;
 
   color: var(--ct-text, #eefcff);
 
-  font-size: 1.15rem;
-  font-weight: 950;
+  font-size: 1rem;
+  font-weight: 750;
 }
 
 .modern-tank-detail-hero-card strong.normal {
@@ -2001,6 +2004,16 @@
 ========================================================= */
 
 @media (max-width: 680px) {
+  .modern-tank-detail-hero-card {
+    min-height: 64px;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .modern-tank-detail-hero-card strong,
+  .modern-tank-detail-hero-card span { margin-top: 0; }
+
   .modern-tanks-page,
   .modern-tank-detail-page {
     gap: 16px;

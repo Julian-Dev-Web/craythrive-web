@@ -1,28 +1,28 @@
-/* Shared, accessible monitoring status colors across all three pages. */
+/* Quiet, readable status indicators shared by monitoring and alerts. */
 .safety-status.safety-status {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 4px;
   width: fit-content;
-  min-height: 28px;
-  padding: 4px 9px;
+  min-height: 22px;
+  padding: 2px 7px;
   border: 1px solid;
-  border-radius: 999px;
-  font-size: 0.65rem;
-  font-weight: 900;
+  border-radius: 6px;
+  font-size: 0.6875rem;
+  font-weight: 700;
   line-height: 1.2;
   white-space: nowrap;
 }
-.safety-status.safety-status.normal { color: #115e59; background: #ccfbf1; border-color: #0d9488; }
-.safety-status.safety-status.warning { color: #854d0e; background: #fef3c7; border-color: #d97706; }
-.safety-status.safety-status.critical { color: #991b1b; background: #fee2e2; border-color: #dc2626; }
+.safety-status.safety-status.normal { color: #115e59; background: #f0fdfa; border-color: #99d9cd; }
+.safety-status.safety-status.warning { color: #854d0e; background: #fffbeb; border-color: #efd28e; }
+.safety-status.safety-status.critical { color: #991b1b; background: #fff1f2; border-color: #f2b8bf; }
 .safety-status.safety-status.no-data { color: var(--ct-muted, #8faab1); background: var(--ct-surface-soft); border-color: var(--ct-border); }
 .safety-status.safety-status svg { flex: 0 0 auto; color: inherit; }
-.safety-explanation { display: block; margin-top: 6px; color: var(--ct-muted, #8faab1); font-size: 0.7rem; line-height: 1.5; }
-.safety-surface.normal { --safety-rgb: 0, 217, 199; }
-.safety-surface.warning { --safety-rgb: 255, 209, 102; }
-.safety-surface.critical { --safety-rgb: 248, 113, 113; }
+.safety-explanation { display: block; margin-top: 4px; color: var(--ct-muted, #8faab1); font-size: 0.7rem; font-weight: 500; line-height: 1.4; }
+.safety-surface.normal { --safety-rgb: 17, 94, 89; }
+.safety-surface.warning { --safety-rgb: 133, 77, 14; }
+.safety-surface.critical { --safety-rgb: 153, 27, 27; }
 .safety-surface.no-data { --safety-rgb: 143, 170, 177; }
 .safety-surface.safety-surface {
   border: 1px solid rgba(var(--safety-rgb), 0.4);
@@ -47,3 +47,64 @@
   color: rgb(var(--safety-rgb));
   background: rgba(var(--safety-rgb), 0.14);
 }
+
+html[data-theme="dark"] .safety-status.safety-status.normal { color: #5eead4; background: rgba(20, 184, 166, 0.09); border-color: rgba(45, 212, 191, 0.25); }
+html[data-theme="dark"] .safety-status.safety-status.warning { color: #fcd34d; background: rgba(245, 158, 11, 0.09); border-color: rgba(251, 191, 36, 0.25); }
+html[data-theme="dark"] .safety-status.safety-status.critical { color: #fda4af; background: rgba(244, 63, 94, 0.09); border-color: rgba(251, 113, 133, 0.25); }
+html[data-theme="dark"] .safety-surface.normal { --safety-rgb: 45, 212, 191; }
+html[data-theme="dark"] .safety-surface.warning { --safety-rgb: 252, 211, 77; }
+html[data-theme="dark"] .safety-surface.critical { --safety-rgb: 251, 113, 133; }
+
+.modern-reading-metric .safety-status.safety-status,
+.modern-tank-detail-metric .safety-status.safety-status,
+.cray-report-metric-grid .safety-status.safety-status { margin-top: 4px; }
+.modern-tank-detail-metric small {
+  display: block;
+  margin-top: 3px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+/* Keep the complete safety messages, with less padding around them. */
+.modern-safety-banner.modern-safety-banner,
+.modern-tank-safety-banner.modern-tank-safety-banner {
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+}
+.modern-safety-banner-icon.modern-safety-banner-icon,
+.modern-tank-safety-banner-icon.modern-tank-safety-banner-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+}
+.modern-safety-banner-icon > svg,
+.modern-tank-safety-banner-icon > svg { width: 18px; height: 18px; }
+.modern-safety-banner-text.modern-safety-banner-text,
+.modern-tank-safety-banner-text.modern-tank-safety-banner-text { gap: 3px; }
+.modern-safety-banner-text.modern-safety-banner-text > strong,
+.modern-tank-safety-banner-text.modern-tank-safety-banner-text > strong { font-size: 0.9rem; font-weight: 750; }
+.modern-safety-banner-text.modern-safety-banner-text > span,
+.modern-tank-safety-banner-text.modern-tank-safety-banner-text > span { font-size: 0.75rem; line-height: 1.45; font-weight: 500; }
+.modern-safety-issue-list.modern-safety-issue-list,
+.modern-tank-safety-issue-list.modern-tank-safety-issue-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-top: 6px;
+}
+.modern-safety-issue-list.modern-safety-issue-list li,
+.modern-tank-safety-issue-list.modern-tank-safety-issue-list li {
+  max-width: 100%;
+  padding: 3px 6px;
+  border-radius: 5px;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  background: rgba(var(--safety-rgb), 0.06);
+}
+.farmer-status-banner.farmer-status-banner { padding: 16px; gap: 16px; border-radius: 16px; }
+.farmer-status-content.farmer-status-content { gap: 12px; }
+.farmer-status-icon.farmer-status-icon { width: 38px; height: 38px; border-radius: 11px; }
+.farmer-status-icon > svg { width: 21px; height: 21px; }
+.farmer-status-content.farmer-status-content h2 { font-size: clamp(1.2rem, 2vw, 1.5rem); line-height: 1.2; }
+.farmer-status-content.farmer-status-content p { margin-top: 4px; font-size: 0.8rem; }
