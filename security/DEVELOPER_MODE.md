@@ -1,214 +1,169 @@
-# Single-account Developer Mode
+# Single-account Developer Mode and application Backup/Restore
 
-Implemented and verified locally on 2026-10-08, published in commit `d472ef7`.
-The owner subsequently saved the production UUID secret and authorized Edge
-Function deployment. All three Developer Mode functions are now deployed to
-the active `craythrive` project (`abtzkqfrwzcocyrwcrfc`). The saved secret was
-compared against the owner's provided UUID without exposing its value.
-No real developer identity is stored in tracked files. The local server-only
-environment file is ignored by Git. Missing/invalid secrets still fail closed.
+Updated 2026-10-08. The owner reported successful authenticator enrollment
+and the live **Identity verified** screen. Backup/Restore now have an actual
+server engine and web UI, replacing the earlier disabled placeholders.
 
-## Scope and existing implementation
+## Authorization
 
-This branch had no Developer Mode route, logo gesture, OTP flow, or
-Backup/Restore engine. The implementation adds the requested single-account
-authorization boundary and entry/OTP flow. It does not invent database
-backup coverage, restore semantics, SQL privileges, or a second admin model.
-The owner was asked whether the previous Developer Mode exists elsewhere.
+Exactly one existing Supabase Auth account is authorized by the scalar
+server secret `CRAYTHRIVE_DEVELOPER_USER_ID`. Optional
+`CRAYTHRIVE_DEVELOPER_EMAIL` is an additional check, never a substitute for
+the UUID. Missing/malformed/list/wildcard configuration denies everybody.
+There is no super-admin role, second developer, management page or UI for
+adding a developer. No real developer identity is stored in tracked files.
 
-The new `developer-backup` and `developer-restore` endpoints are guarded but
-have **no operation engine configured**. They return 403 to unauthorized
-callers; an authorized developer with recent OTP receives 501, without any
-database read/write. The UI clearly reports that Backup/Restore is not
-configured and offers no operation buttons. If the real engine is supplied,
-connect it only as the shared handler's server-side `operation` callback;
-never expose a separate unguarded RPC, storage URL or service-key endpoint.
+Ten sidebar logo clicks invoke `developer-access` using the current session
+JWT. The `/developer` page repeats that server check. Each Edge Function
+independently validates the user through Auth `getUser(token)` and verified
+`getClaims(token)` and matches the verified user ID to both JWT subject and
+the server UUID. Anonymous users, service keys, other users and client flags
+cannot grant access. Denials reveal no configured identity.
 
-## Identity and authorization
+Every Backup/Restore request additionally requires signed `aal2` and a
+verified TOTP AMR timestamp within five minutes. Refresh timestamps and
+request flags do not qualify. The browser returns to verification on
+401/403 and expires its verified UI; the server remains the authority.
+Platform `verify_jwt = true` remains enabled on all three functions.
+Unauthenticated requests may receive platform 401; other signed-in accounts
+receive handler 403. OPTIONS is a data-free 204. Responses are `no-store`.
 
-- One scalar server secret: **`CRAYTHRIVE_DEVELOPER_USER_ID`**. It must be
-  exactly one Auth UUID. Blank, malformed, wildcard, comma-separated and
-  JSON-list configurations deny everyone. There is no role fallback,
-  first-user bootstrap, default owner or email-only fallback.
-- Optional **`CRAYTHRIVE_DEVELOPER_EMAIL`** is an additional server check of
-  the verified, confirmed Auth email. A matching email never overrides a
-  UUID mismatch.
-- Every non-preflight request is independently checked. The handler extracts
-  the bearer token, verifies it through `auth.getUser(token)` and
-  `auth.getClaims(token)`, and requires the verified user ID to match both
-  the JWT subject and the configured UUID. This verified Auth ID is the
-  identity represented by Postgres `auth.uid()`; no identity is accepted
-  from a request body, profile, user metadata or localStorage flag.
-- Tokens must be unexpired, authenticated user tokens. Anonymous users,
-  service-role tokens, missing/invalid tokens and mismatched subjects fail.
-- Auth clients are created separately per request with session persistence
-  and automatic refresh disabled. Only the built-in Supabase URL and anon
-  key are used; this authorization flow needs no service-role key.
-- Failed handler authorization returns **403 `{ "authorized": false }`**.
-  It never returns the configured UUID/email or provider internals.
-  Supabase's enabled platform JWT check may reject invalid/missing JWTs
-  earlier with 401; a different signed-in user gets 403 from the handler.
-- OPTIONS is a data-free CORS preflight (204), not an operation. CORS is
-  not used as the authorization boundary. Responses are `no-store`.
+Authenticator setup uses Auth MFA for the current account only. QR payloads
+are normalized into one SVG image URI, without double-encoding SDK URIs.
+QR data and operation files/proofs stay in component memory, not localStorage.
 
-## Entry and verification
+## Backup coverage
 
-The dashboard sidebar logo remains visually unchanged and is now a
-keyboard-accessible button. Its tenth activation reads the current session
-and invokes `developer-access` with the user's JWT. No UUID/email allowlist
-or local developer flag is read or sent. Only server-authorized callers
-navigate to `/developer`; that protected route repeats the server check.
-Direct URL visits therefore cannot skip authorization.
+Backups include all users' rows from these 22 reviewed `public` tables when
+present. Live names, column types, primary keys, FK relationships and
+application trigger names were inspected through read-only Management API
+queries; no production row contents were exported during implementation.
 
-After authorization, the developer can verify an existing Supabase TOTP
-authenticator. If none exists, explicit "Set up authenticator" enrolls a
-factor **only for the currently authenticated account**; this is not adding
-another developer. An abandoned, unverified factor with this feature's
-friendly name can be restarted. Other/verified factors are not removed.
-There is no developer list, add-developer form, management page, super-admin
-role, or multi-admin system.
+| Tables | Restore behavior |
+| --- | --- |
+| profiles, tanks, devices, iot_devices, camera_registry | Merge by primary key |
+| sensor_readings, ammonia_readings, turbidity_readings | Merge; raw values and metadata preserved |
+| threshold_settings, water_thresholds | Merge saved settings |
+| alerts, control_logs, tank_automation_logs | Merge history without replaying side effects |
+| marketplace_listings, marketplace_orders, seller_profiles | Merge by primary key |
+| marketplace_chat_threads, marketplace_chat_messages | Merge without triggering notifications |
+| notification_preferences | Merge by user_id primary key |
+| device_commands, push_tokens, tank_automation_settings | Export only; current operational state stays unchanged |
 
-OTP codes are verified by Supabase Auth's `challengeAndVerify`. The browser
-then asks the Edge Function to verify the newly issued JWT again. QR setup
-data is kept in component memory, not in a separate persistent store.
-Authentication changes reset the page check; asynchronous results from an
-older identity are discarded. Verification errors preserve the flow without
-showing provider details.
+Unknown public tables are excluded and listed in the export result. Views,
+partitions, Auth accounts/passwords/MFA/sessions, Storage file bytes, server
+secrets, SQL schema/functions/policies and external services are outside
+this **application-data backup**. Image URL columns are included but image
+files are not. This does not replace Supabase database backups/PITR or a
+separate Storage backup.
 
-Backup/Restore require both the same UUID check and **recent verified MFA**:
-signed `aal2` plus a timestamped `totp` or `mfa/totp` authentication event
-within five minutes. Token refresh time, request fields and browser flags
-do not count as OTP verification. The server enforces this on each request;
-the page also expires its verified display. A future operation callback is
-not reached if either authorization condition fails.
+Exports use a repeatable-read, read-only database transaction. Rows are
+stored as PostgreSQL JSON text so bigint/numeric precision, nulls, dates,
+raw readings and raw status fields survive without JS number conversion.
+The app never recalculates monitoring values during backup or restore.
 
-## Server configuration and deployment handoff
+Downloads use `.ctbackup` JSON envelopes encrypted/authenticated with
+AES-256-GCM, random 96-bit IVs and project-specific authenticated data.
+Neither rows nor encryption keys appear in the downloadable envelope as
+plaintext. Modified archives and other projects/keys cannot be decrypted.
+Only the authorized developer with recent MFA can export or decrypt them.
 
-The owner completed steps 1–2 and the agent completed step 3 on 2026-10-08.
-These steps are retained for reproducibility. Real owner OTP verification
-and a second-account live denial test remain to be performed.
-After deployment, the owner reported reaching "Verify your identity" and
-"No authenticator is configured for this account" on the live website.
-This confirms the owner reached the post-authorization setup view; actual
-authenticator enrollment and successful OTP verification are still pending.
+## Restore flow and transaction behavior
 
-1. In the intended Supabase project's **Authentication → Users**, locate
-   your own existing CrayThrive account and copy its **User UID**. Do not
-   create another account or change any profile role.
-2. In **Edge Functions → Secrets**, set
-   **`CRAYTHRIVE_DEVELOPER_USER_ID`** to that single UUID. Optionally set
-   `CRAYTHRIVE_DEVELOPER_EMAIL` to the account's confirmed email.
-   Do not paste these values into React code, `VITE_` variables, Vercel public
-   configuration, this document or Git. Supabase documents this server
-   environment mechanism in [Edge Function secrets](https://supabase.com/docs/guides/functions/secrets).
-3. Deploy these three reviewed function directories to that same project:
+1. Select a `.ctbackup` file. Client shape/size checks run before upload.
+2. **Preview restore** decrypts and validates it on the server, requires the
+   same live schema, and reports add/update/unchanged counts per table.
+3. The preview also exports/downloads a separate encrypted recovery copy of
+   current application data. It makes no application changes.
+4. Review the counts, confirm the recovery copy was saved, and type `RESTORE`.
+5. The server validates the encrypted preview proof, bound to the current
+   developer, exact archive and affected-row fingerprint, valid for two
+   minutes. Recent MFA is independently required again.
+6. Restore locks affected tables in a stable order, rechecks the fingerprint
+   and merges by primary key in FK dependency order in **one transaction**.
+   Affected rows changed since preview require a new preview. Unrelated new
+   primary keys do not block restore and remain intact.
 
-   ```powershell
-   supabase functions deploy developer-access --project-ref YOUR_PROJECT_REF
-   supabase functions deploy developer-backup --project-ref YOUR_PROJECT_REF
-   supabase functions deploy developer-restore --project-ref YOUR_PROJECT_REF
-   ```
+Matching IDs are overwritten with backup values; missing IDs are inserted.
+No records are deleted, no tables truncated, and no schema or RLS changed.
+This is a merge recovery, not an exact point-in-time replacement; replaying
+the recovery copy cannot remove newly inserted IDs. Auth users referenced
+by FKs must still exist. Schema changes or cyclic relationships require
+a database-level restore instead.
 
-   Use `supabase/config.toml` as committed. **Keep `verify_jwt = true`** for
-   every function; do not use `--no-verify-jwt`. JavaScript entrypoints are
-   configured explicitly, following [Supabase function configuration](https://supabase.com/docs/guides/functions/function-configuration).
-4. Publish the web change only when remote function setup is ready. A GitHub
-   push/Vercel web deployment alone does not deploy Supabase Edge Functions.
-5. Confirm the owner reaches OTP; another existing signed-in account must
-   receive 403 from all three handler paths, including direct API requests.
-   Confirm owner requests without recent MFA are rejected by Backup/Restore.
-   Operations remain disabled with 501 even after OTP until their real
-   implementation is integrated and separately tested.
+Live triggers create alerts, push notifications and actuator commands.
+Restore temporarily disables only application triggers on affected tables,
+inside the locked transaction, then restores their original modes. FK,
+unique, not-null and check constraints remain enabled. Failure rolls back
+row changes and trigger modes. Identity sequences advance to at least the
+highest restored ID without moving backward; PostgreSQL sequence advances
+can leave harmless gaps even when a transaction rolls back.
 
-No SQL migration or new roles/tables are required for this authorization
-change. No remote secrets, Auth settings, RLS, database rows or backups were
-changed. The existing public-env validator already rejects developer
-allowlist variables prefixed with `VITE_`; regression tests cover that.
+Device commands, push tokens and live automation settings are never written
+by this restore. No historical commands or notification pushes are replayed.
+Successful operation logs contain only action name and table count, never
+rows, encrypted files, preview proofs, OTPs or credentials.
 
-## Exact files changed
+## Server setup and deployment
 
-- `.gitignore`
-- `eslint.config.js`
-- `src/App.jsx`
-- `src/components/Sidebar.jsx`
-- `src/components/DeveloperEntry.jsx` (new)
-- `src/pages/DeveloperPage.jsx` (new)
-- `src/services/authService.js` (comment only)
-- `src/services/developerService.js` (new)
-- `src/styles/developer.css` (new)
-- `supabase/config.toml` (new)
-- `supabase/functions/_shared/developerAuthorization.js` (new)
-- `supabase/functions/_shared/developerHandlers.js` (new)
-- `supabase/functions/_shared/developerRuntime.js` (new)
-- `supabase/functions/developer-access/index.js` (new)
-- `supabase/functions/developer-backup/index.js` (new)
-- `supabase/functions/developer-restore/index.js` (new)
-- `tests/developer-authorization.test.mjs` (new)
-- `tests/developer-service.test.mjs` (new)
-- `tests/browser/developer.spec.mjs` (new)
-- `tests/browser/fixtures.mjs`
-- `security/DEVELOPER_MODE.md` (this report, new)
+Only Supabase server secrets are used:
 
-## Validation and remaining limits
+- `CRAYTHRIVE_DEVELOPER_USER_ID`: existing single authorized UUID.
+- `CRAYTHRIVE_DEVELOPER_EMAIL`: optional secondary email check.
+- `CRAYTHRIVE_BACKUP_ENCRYPTION_KEY`: 32 random bytes as 64 hex characters.
+- Built-in `SUPABASE_URL`, `SUPABASE_ANON_KEY` for JWT verification.
+- Built-in `SUPABASE_DB_URL` for PostgreSQL, read only after authorization.
 
-The server handler tests exercise an authorized identity, another UUID with
-matching email/forged metadata/body flags, malformed/multiple UUID config,
-invalid tokens, expired claims, service-role/anonymous callers, recent/stale
-OTP, UUID rotation, disabled operation engines and redacted exceptions.
-The SDK adapter tests verify that both Auth user and verified claims are
-required, with a fresh client per request.
+The runtime uses a per-request Postgres.js connection (`prepare: false`,
+max 1 connection, TLS required, connection timeout 10s). Transaction-local
+statement/lock timeouts are 25s/5s. DB credentials are never sent to React
+or returned by the API. No public RPC or SQL migration is needed.
 
-Client and browser tests cover the tenth logo activation, direct URL,
-forged localStorage flags, denied OTP starts, authorized OTP and setup,
-invalid OTP, server confirmation after verification, revocation before
-OTP and layouts at 390/768/1366px. Fixtures use synthetic identities and
-mocked backend responses, never the real developer UUID.
+For a **new project** only, `node scripts/create-backup-key.mjs` generates
+`supabase/functions/.env.backup`, ignored by Git. It retains an existing
+local key and never prints its value. Upload only this new key using:
 
-- `npm run build`: passed; bundled credential scan reported no findings.
-- Client bundle inspection found none of the server-only developer identity
-  secret names or authorization/runtime helpers.
-- `npm test`: **66 passed, 1 skipped** historical dev-endpoint check.
-- `npm run test:browser`: **95 passed, 18 skipped** historical planning-form
-  checks; this includes all 9 new Developer Mode browser checks.
-- Changed JavaScript files: **0 ESLint errors, 0 warnings**.
-- Full ESLint retains the existing **24 errors / 5 warnings** in other files.
-- Existing warnings: production bundle exceeds 500 kB; the browser runner's
-  NO_COLOR/FORCE_COLOR environment warning remains.
-- `git diff --check`: passed.
+```powershell
+supabase secrets set --env-file supabase/functions/.env.backup --project-ref YOUR_PROJECT_REF
+supabase functions deploy developer-access developer-backup developer-restore --project-ref YOUR_PROJECT_REF --use-api
+```
 
-Supabase CLI 2.120.0 was run through `npx` using an existing saved CLI login.
-Remote deployment used server-side bundling (`--use-api`) and named only the
-three Developer functions. All three are ACTIVE at version 1 with
-`verify_jwt: true`; existing AI Guide and push functions were preserved.
-Live OPTIONS requests returned 204 and unauthenticated POST requests returned
-401 from the platform JWT gate for each endpoint. No database operation ran.
-No new service-role key or management token was placed in the repository.
+Never overwrite an existing production archive key casually. Older files
+require their original key and project origin; keep a secure offline copy.
+No server secret belongs in `VITE_`, React, Git or this document.
 
-Local Deno execution, real owner OTP verification, second-account live
-authorization denial, and real Backup/Restore execution remain unverified.
-Shared request handlers run under Node's Web Request/Response API in unit
-tests; browser tests use the production Vite bundle.
+The new key was added only after a metadata-only presence check confirmed
+it absent. The built-in DB URL was present. All three Developer functions
+were deployed to the existing project `abtzkqfrwzcocyrwcrfc` and verified
+ACTIVE at version 3 with `verify_jwt: true`. Existing AI/push functions
+were not deployed or modified. Live smoke checks returned OPTIONS 204 and
+unauthenticated POST 401 on each endpoint. No production restore or SQL
+write was performed; only schema metadata/estimated row counts were read.
 
-## Authenticator QR rendering correction
+## Limits and validation
 
-The installed Auth JS SDK already prefixes enrollment SVGs with
-`data:image/svg+xml;utf-8,`. The page previously encoded that complete URI
-inside another image URI, leaving the browser with invalid SVG content.
-The service now normalizes raw or SDK-prefixed SVGs into one image URI,
-encodes the SVG payload (including color hashes), and preserves already
-encoded/base64 SVG sources. The page uses that image source directly.
-Remote image URLs are rejected; the QR remains in component memory only.
-Server authorization and OTP verification rules are unchanged.
+- Maximum plaintext archive 8 MiB, encrypted request/file 12 MiB, 20,000
+  rows per table and 50,000 total. Exceeding limits fails explicitly, with
+  no truncated backup or partial restore. Use database-level backups for
+  larger datasets. Current estimated row counts are below these row limits.
+- Production build and bundled credential scan: passed, no findings.
+- Unit tests: 77 passed, 1 historical retired-endpoint skip. Eight backup
+  tests use actual PostgreSQL via development-only PGlite, including precision,
+  encryption, FK ordering, stale proofs, schema drift, trigger suppression,
+  unchanged operational state and rollback after constraint failure.
+- All 17 Developer browser tests passed, including backup/recovery downloads,
+  confirmation gates, rejection paths and layouts at 390/768/1366px.
+  The full browser suite passed: 103 tests, 18 historical retired-form skips.
+- Changed-file ESLint: 0 errors/warnings. Full repository: existing 24 errors
+  and 5 warnings elsewhere. Existing Vite chunk-size and runner color warnings
+  remain. PGlite is not imported into the production app or Edge Functions.
+- Actual owner backup download/restore and another signed-in account's live
+  403 are pending user testing. Browser backends are mocked; PGlite verifies
+  SQL on local synthetic data, not production data.
 
-Validation for this correction: 16 Developer service/authorization unit
-tests and all 9 Developer browser tests passed. The enrollment browser test
-now checks image completion and nonzero natural dimensions, rather than
-only checking visibility. Production build and bundled credential scan
-passed; changed-file ESLint is clean. Full ESLint still reports the existing
-24 errors / 5 warnings elsewhere. The existing large-bundle and browser
-color-environment warnings remain. Real owner scanning/OTP is still pending.
-
-Implementation references: [Supabase JWT verification](https://supabase.com/docs/reference/javascript/auth-getclaims),
-[Edge authorization layers](https://supabase.com/docs/guides/functions/auth-headers),
-[TOTP verification](https://supabase.com/docs/guides/auth/auth-mfa/totp),
-and [verified JWT fields](https://supabase.com/docs/guides/auth/jwt-fields).
+References: [Supabase Auth TOTP](https://supabase.com/docs/guides/auth/auth-mfa/totp),
+[verified JWT claims](https://supabase.com/docs/reference/javascript/auth-getclaims),
+[Edge PostgreSQL connections](https://supabase.com/docs/guides/functions/connect-to-postgres),
+[server secrets](https://supabase.com/docs/guides/functions/secrets),
+[Postgres.js transactions](https://github.com/porsager/postgres),
+and [PGlite](https://pglite.dev/docs/).

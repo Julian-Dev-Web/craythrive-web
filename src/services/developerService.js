@@ -56,7 +56,34 @@ export function createDeveloperService(client) {
     return access;
   }
 
-  return { checkAccess, beginVerification, verifyOtp };
+  async function invokeOperation(name, body) {
+    if (!client) throw denied();
+    const { data: auth, error: authError } = await client.auth.getSession();
+    if (authError || !auth?.session?.access_token) throw denied();
+    const { data, error } = await client.functions.invoke(name, {
+      body, headers: { Authorization: `Bearer ${auth.session.access_token}` },
+    });
+    if (error) {
+      const status = error.context?.status;
+      if (status === 401 || status === 403) {
+        const expired = new Error('Verify your identity again before continuing.');
+        expired.reauthenticationRequired = true;
+        throw expired;
+      }
+      if (status === 409) throw new Error('The database or preview changed. Preview the backup again.');
+      if (status === 413) throw new Error('The dataset or file exceeds the app backup limit. Use a database-level backup.');
+      if (status === 400 || status === 415) throw new Error('The backup file or confirmation is invalid. Use an unmodified CrayThrive backup from this project.');
+      throw new Error('The operation could not be completed. No partial restore was applied. Please retry or check the server configuration.');
+    }
+    if (!data || typeof data !== 'object') throw new Error('The server did not confirm the operation.');
+    return data;
+  }
+
+  return { checkAccess, beginVerification, verifyOtp,
+    exportBackup: () => invokeOperation('developer-backup', { action: 'export' }),
+    previewRestore: backup => invokeOperation('developer-restore', { action: 'preview', backup }),
+    applyRestore: (backup, previewToken, confirmation) => invokeOperation('developer-restore', { action: 'apply', backup, previewToken, confirmation }),
+  };
 }
 
 export const developerService = createDeveloperService(supabase);

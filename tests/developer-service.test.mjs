@@ -93,3 +93,20 @@ test('enrollment rejects missing QR images and remote image URLs', async () => {
     await assert.rejects(service.beginVerification(true));
   }
 });
+
+test('backup/restore calls send only the archive/action/proof with the current session JWT', async () => {
+  const { service, state, calls } = fixture(); state.allowed = true;
+  await service.exportBackup();
+  const backup = { format: 'craythrive-backup', version: 1, ciphertext: 'qa-only' };
+  await service.previewRestore(backup);
+  state.token = 'fresh-operation-token';
+  await service.applyRestore(backup, 'server-proof', 'RESTORE');
+  assert.deepEqual(calls.filter(call => call[0] === 'function').map(call => [call[1], call[2].body]), [
+    ['developer-backup', { action: 'export' }],
+    ['developer-restore', { action: 'preview', backup }],
+    ['developer-restore', { action: 'apply', backup, previewToken: 'server-proof', confirmation: 'RESTORE' }],
+  ]);
+  assert.deepEqual(calls.at(-1)[2].headers, { Authorization: 'Bearer fresh-operation-token' });
+  state.token = null;
+  await assert.rejects(service.exportBackup());
+});

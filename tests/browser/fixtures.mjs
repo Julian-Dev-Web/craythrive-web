@@ -35,7 +35,7 @@ export function datasets() {
 export const test = base.extend({
   qa: async ({ context, page }, use) => {
     const state = { data: datasets(), authenticated: true, invalidLogin: false, expired: false, authDelay: 0, tankWriteDelay: 0, tankWriteFailure: false,
-      developerAuthorized: false, developerVerified: false, developerDenied: false, developerInvalidOtp: false,
+      developerAuthorized: false, developerVerified: false, developerDenied: false, developerInvalidOtp: false, developerOperationStatus: 0,
       developerFactors: [{ id: '33333333-3333-4333-8333-333333333333', factor_type: 'totp', status: 'verified', friendly_name: 'QA Authenticator' }],
       developerRequests: [], authRequests: [], reads: [], writes: [], errors: [], warnings: [], localFailures: [], externalRequests: [] };
     await context.addInitScript(({ session }) => {
@@ -62,7 +62,17 @@ export const test = base.extend({
         }
         if (url.pathname.endsWith('/developer-access')) return reply({ authorized: true, reauthenticationRequired: !state.developerVerified,
           verifiedUntil: state.developerVerified ? Math.floor(Date.now() / 1000) + 300 : null });
-        return state.developerVerified ? reply({ error: 'Not configured' }, 501) : reply({ authorized: false }, 403);
+        if (!state.developerVerified) return reply({ authorized: false }, 403);
+        if (state.developerOperationStatus) return reply({ error: 'QA operation rejected' }, state.developerOperationStatus);
+        const envelope = { format: 'craythrive-backup', version: 1, iv: 'qa-only-iv', ciphertext: 'qa-only-encrypted-fixture' };
+        const action = request.postDataJSON().action;
+        if (url.pathname.endsWith('/developer-backup')) return reply({ backup: envelope, createdAt: now,
+          tables: [{ name: 'profiles', rows: 1 }, { name: 'tanks', rows: 3 }], excludedTables: [] });
+        if (action === 'preview') return reply({ createdAt: now, tables: [{ name: 'profiles', inserted: 0, updated: 0, unchanged: 1 },
+          { name: 'tanks', inserted: 1, updated: 1, unchanged: 1 }], skippedTables: ['device_commands', 'push_tokens', 'tank_automation_settings'],
+          expiresAt: Math.floor(Date.now() / 1000) + 120, previewToken: { ...envelope, ciphertext: 'qa-only-preview-proof' }, recoveryBackup: envelope });
+        if (action === 'apply' && request.postDataJSON().confirmation === 'RESTORE' && request.postDataJSON().previewToken?.ciphertext === 'qa-only-preview-proof') return reply({ restored: true, tables: [], completedAt: now });
+        return reply({ error: 'Invalid request' }, 400);
       }
       if (url.pathname.startsWith('/auth/v1/')) {
         state.authRequests.push(url.pathname);
@@ -136,7 +146,8 @@ export const test = base.extend({
         /^Failed to load resource:.*status of (400|401)/.test(message.text());
       const expectedTankFailure = state.tankWriteFailure && /^Failed to load resource:.*status of 403/.test(message.text());
       const expectedDeveloperFailure = (state.developerDenied && /^Failed to load resource:.*status of 403/.test(message.text())) ||
-        (state.developerInvalidOtp && /^Failed to load resource:.*status of 401/.test(message.text()));
+        (state.developerInvalidOtp && /^Failed to load resource:.*status of 401/.test(message.text())) ||
+        (state.developerOperationStatus && new RegExp(`^Failed to load resource:.*status of ${state.developerOperationStatus}`).test(message.text()));
       if (message.type() === 'error' && !expectedAuthFailure && !expectedTankFailure && !expectedDeveloperFailure) state.errors.push(message.text());
       if (message.type() === 'warning') state.warnings.push(message.text());
     });

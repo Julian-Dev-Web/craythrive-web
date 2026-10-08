@@ -1,4 +1,5 @@
 import { authorizeDeveloper } from './developerAuthorization.js';
+import { DeveloperOperationError } from './developerBackup.js';
 
 const headers = {
   'Content-Type': 'application/json',
@@ -22,11 +23,12 @@ export function createDeveloperHandler({ purpose, verifyToken, readSecret, now, 
       verifiedUntil: authorization.reauthenticated ? authorization.verifiedUntil : null });
     // Enforce a recent Auth-verified OTP for EVERY operation, regardless of UI state.
     if (!authorization.reauthenticated) return json({ authorized: false, reauthenticationRequired: true }, 403);
-    // This branch contains no existing backup engine. Never invent destructive restore behavior.
+    // Fail closed if the deployment did not supply its operation engine.
     if (!operation) return json({ error: 'This developer operation is not configured.' }, 501);
     try {
       return json(await operation({ request, userId: authorization.userId }));
-    } catch {
+    } catch (error) {
+      if (error instanceof DeveloperOperationError) return json({ error: error.message }, error.status);
       return json({ error: 'The developer operation could not be completed.' }, 503);
     }
   };

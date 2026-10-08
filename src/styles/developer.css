@@ -11,6 +11,22 @@
 .developer-verified { display: flex; align-items: center; gap: 8px; color: var(--ct-brand-strong); }
 .developer-qr img { display: block; width: min(100%, 220px); height: auto; margin: 12px auto; background: white; padding: 8px; box-sizing: border-box; border-radius: 8px; }
 .developer-logo-button { cursor: pointer; }
+.developer-tools, .developer-tools section, .developer-restore-preview { display: grid; gap: 14px; min-width: 0; }
+.developer-tools section { border-top: 1px solid var(--ct-border); padding-top: 18px; }
+.developer-tools :is(h2, h3) { display: flex; align-items: center; gap: 8px; margin: 0; }
+.developer-tools h3 { font-size: .95rem; }
+.developer-tools input[type="file"] { font-size: .8rem; max-width: 100%; }
+.developer-tools button { min-height: 44px; padding: 10px 16px; border: 1px solid var(--ct-border-strong); border-radius: 9px; cursor: pointer; background: var(--ct-surface-strong); color: var(--ct-text); font: inherit; }
+.developer-tools button.dashboard-primary-button { background: var(--ct-brand); color: #05252b; }
+.developer-tools button:disabled { opacity: .5; cursor: not-allowed; }
+.developer-tools .developer-restore-button { background: var(--ct-danger); color: white; border-color: var(--ct-danger); }
+.developer-recovery-check { display: flex; align-items: flex-start; gap: 10px; font-size: .85rem; line-height: 1.6; }
+.developer-recovery-check input[type="checkbox"] { width: 18px; min-height: 18px; flex: 0 0 18px; margin-top: 3px; }
+.developer-preview-scroll { overflow-x: auto; min-width: 0; }
+.developer-tools table { width: 100%; border-collapse: collapse; font-size: .75rem; }
+.developer-tools caption { text-align: left; padding-bottom: 8px; }
+.developer-tools :is(th, td) { padding: 8px 4px; border-bottom: 1px solid var(--ct-border); text-align: right; }
+.developer-tools :is(th, td):first-child { text-align: left; overflow-wrap: anywhere; }
 .developer-entry-notice { position: absolute; left: 12px; right: 12px; top: 95px; padding: 10px; background: var(--ct-surface-strong); color: var(--ct-text); border: 1px solid var(--ct-border-strong); border-radius: 8px; font-size: .75rem; line-height: 1.5; z-index: 5; }
 .developer-page :is(input, button, a):focus-visible, .developer-logo-button:focus-visible { outline: 2px solid var(--ct-brand-strong); outline-offset: 3px; }
 @media (max-width: 540px) { .developer-page { padding: 16px; } .developer-card { padding: 20px; } }

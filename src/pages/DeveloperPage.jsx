@@ -4,6 +4,7 @@ import { ArrowLeft, LockKeyhole, ShieldCheck } from 'lucide-react';
 import { developerService } from '../services/developerService';
 import { supabase } from '../lib/supabase';
 import '../styles/developer.css';
+import DeveloperBackupTools from '../components/DeveloperBackupTools';
 
 export default function DeveloperPage() {
   const [access, setAccess] = useState(null);
@@ -83,7 +84,11 @@ export default function DeveloperPage() {
               </form>}
           </> : <>
             <p className="developer-verified"><ShieldCheck size={18} aria-hidden="true" />Identity verified</p>
-            <p>Backup and Restore are not configured in this version.</p>
+            <DeveloperBackupTools onReauthenticationRequired={() => {
+              generation.current++;
+              setAccess(previous => previous ? { ...previous, reauthenticationRequired: true } : previous);
+              setFactor(null); setCode('');
+            }} />
           </>}
     </section>
   </main>;

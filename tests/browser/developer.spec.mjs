@@ -45,7 +45,7 @@ test('authorized UUID proceeds through OTP and requires a second server confirma
   await page.getByLabel('Authenticator code').fill('123456');
   await page.getByRole('button', { name: 'Verify code', exact: true }).click();
   await expect(page.getByText('Identity verified', { exact: true })).toBeVisible();
-  await expect(page.getByText('Backup and Restore are not configured in this version.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Download backup', exact: true })).toBeVisible();
   expect(qa.developerRequests.length).toBeGreaterThanOrEqual(5);
   expect(qa.writes).toEqual([]);
 });
@@ -80,6 +80,83 @@ for (const width of [390, 768, 1366]) {
     qa.developerAuthorized = true; await page.setViewportSize({ width, height: 900 });
     await page.goto('/developer'); await page.getByRole('button', { name: 'Continue verification' }).click();
     await expect(page.getByLabel('Authenticator code')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+}
+
+const qaBackup = { format: 'craythrive-backup', version: 1, iv: 'qa-only-iv', ciphertext: 'qa-only-encrypted-fixture' };
+async function chooseBackup(page) {
+  await page.getByLabel('CrayThrive backup file').setInputFiles({ name: 'qa.ctbackup', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(qaBackup)) });
+  await expect(page.getByRole('button', { name: 'Preview restore', exact: true })).toBeEnabled();
+}
+
+test('verified developer downloads encrypted backup with current authorization', async ({ page, qa }) => {
+  qa.developerAuthorized = true; qa.developerVerified = true;
+  await page.goto('/developer');
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download backup', exact: true }).click();
+  expect((await download).suggestedFilename()).toMatch(/^craythrive-backup-.*\.ctbackup$/);
+  await expect(page.getByRole('status')).toContainText('Encrypted backup downloaded');
+  const request = qa.developerRequests.find(request => request.path.endsWith('/developer-backup'));
+  expect(request.body).toEqual({ action: 'export' }); expect(request.authorization).toMatch(/^Bearer /);
+});
+
+test('restore previews and downloads recovery before requiring explicit confirmation', async ({ page, qa }) => {
+  qa.developerAuthorized = true; qa.developerVerified = true;
+  await page.goto('/developer'); await chooseBackup(page);
+  const recovery = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Preview restore', exact: true }).click();
+  expect((await recovery).suggestedFilename()).toMatch(/^craythrive-recovery-.*\.ctbackup$/);
+  await expect(page.getByRole('table')).toBeVisible();
+  const restore = page.getByRole('button', { name: 'Restore data', exact: true });
+  await expect(restore).toBeDisabled();
+  expect(qa.developerRequests.some(request => request.body.action === 'apply')).toBe(false);
+  await page.getByLabel('Type RESTORE to confirm').fill('RESTORE');
+  await expect(restore).toBeDisabled();
+  await page.getByLabel('I saved the recovery backup and reviewed the changes.').check();
+  await restore.click();
+  await expect(page.getByRole('status')).toContainText('Restore completed');
+  const request = qa.developerRequests.find(request => request.body.action === 'apply');
+  expect(request.body.backup).toEqual(qaBackup); expect(request.body.confirmation).toBe('RESTORE');
+  expect(request.body.previewToken.ciphertext).toBe('qa-only-preview-proof');
+});
+
+test('malformed upload is rejected before contacting the restore endpoint', async ({ page, qa }) => {
+  qa.developerAuthorized = true; qa.developerVerified = true;
+  await page.goto('/developer');
+  await page.getByLabel('CrayThrive backup file').setInputFiles({ name: 'wrong.ctbackup', mimeType: 'application/json', buffer: Buffer.from('{broken') });
+  await expect(page.getByRole('alert')).toContainText('valid CrayThrive');
+  await expect(page.getByRole('button', { name: 'Preview restore', exact: true })).toBeDisabled();
+  expect(qa.developerRequests.some(request => request.path.endsWith('/developer-restore'))).toBe(false);
+});
+
+test('expired server authorization removes tools and returns to authenticator verification', async ({ page, qa }) => {
+  qa.developerAuthorized = true; qa.developerVerified = true;
+  await page.goto('/developer');
+  await expect(page.getByRole('button', { name: 'Download backup', exact: true })).toBeVisible();
+  qa.developerOperationStatus = 403;
+  await page.getByRole('button', { name: 'Download backup', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Continue verification', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Download backup', exact: true })).toHaveCount(0);
+});
+
+test('server operation failure shows an error without claiming restore success', async ({ page, qa }) => {
+  qa.developerAuthorized = true; qa.developerVerified = true;
+  await page.goto('/developer'); await chooseBackup(page);
+  qa.developerOperationStatus = 503;
+  await page.getByRole('button', { name: 'Preview restore', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('operation could not be completed');
+  await expect(page.getByText('Restore completed.', { exact: false })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Restore data', exact: true })).toHaveCount(0);
+});
+
+for (const width of [390, 768, 1366]) {
+  test(`backup and restore preview fit ${width}px`, async ({ page, qa }) => {
+    qa.developerAuthorized = true; qa.developerVerified = true;
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/developer'); await chooseBackup(page);
+    await page.getByRole('button', { name: 'Preview restore', exact: true }).click();
+    await expect(page.getByRole('table')).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 }
