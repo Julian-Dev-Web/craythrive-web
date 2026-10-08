@@ -14,6 +14,8 @@ import Sidebar from "../components/Sidebar";
 import Topbar from "../components/Topbar";
 import { getCurrentProfile, signOut } from "../services/authService";
 import { isSupabaseConfigured } from "../lib/supabase";
+import DashboardTourProvider from "../components/tour/DashboardTourProvider";
+import DashboardTourInvitation from "../components/tour/DashboardTourInvitation";
 
 const navItems = [
   { label: "Overview", path: "/admin", icon: LayoutDashboard, end: true, group: "Overview" },
@@ -115,6 +117,7 @@ export default function AdminLayout() {
   };
 
   return (
+    <DashboardTourProvider>
     <div className={`modern-admin-shell admin-dashboard-shell ${isCollapsed ? "sidebar-collapsed" : ""}`}>
       <Sidebar
         navItems={navItems}
@@ -148,10 +151,12 @@ export default function AdminLayout() {
           displayName={displayName}
         />
 
-        <main className="modern-admin-content admin-content">
+        <main className="modern-admin-content admin-content" tabIndex={-1}>
+          <DashboardTourInvitation />
           <Outlet />
         </main>
       </div>
     </div>
+    </DashboardTourProvider>
   );
 }

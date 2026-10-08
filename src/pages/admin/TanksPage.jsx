@@ -1492,7 +1492,7 @@ export default function TanksPage() {
           </p>
 
           <div className="modern-tanks-actions">
-            <Link to="/admin/tanks/add" className="dashboard-primary-button">
+            <Link to="/admin/tanks/add" className="dashboard-primary-button" data-tour="add-tank">
               <Plus size={18} aria-hidden="true" /> Add Tank
             </Link>
             <button
@@ -1876,6 +1876,7 @@ export default function TanksPage() {
                 <Link
                   to={`/admin/tanks/${item.id}`}
                   className="modern-tank-link"
+                  data-tour="tank-details-link"
                 >
                   View Tank
 

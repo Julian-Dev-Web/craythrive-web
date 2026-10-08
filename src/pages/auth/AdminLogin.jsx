@@ -1,4 +1,5 @@
 import { getSafeErrorMessage } from "../../utils/securityDiagnostics";
+import { dashboardTourSession } from "../../utils/dashboardTour";
 import { useState } from "react";
 import {
   Link,
@@ -120,6 +121,7 @@ export default function AdminLogin() {
         );
 
         const {
+          user,
           profile,
           error,
         } =
@@ -144,6 +146,7 @@ export default function AdminLogin() {
           return;
         }
 
+        dashboardTourSession.beginLogin(user?.id);
         navigate(
           "/admin",
           {

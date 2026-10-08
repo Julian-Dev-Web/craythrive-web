@@ -1,5 +1,6 @@
 import { DEFAULT_THRESHOLDS, normalizeThresholds } from "../../utils/thresholdEvaluation";
 import { logDiagnostic } from "../../utils/securityDiagnostics";
+import DashboardTourHelp from "../../components/tour/DashboardTourHelp";
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -1830,7 +1831,7 @@ export default function SettingsPage() {
           HERO
       ================================================ */}
 
-      <section className="cray-settings-hero">
+      <section className="cray-settings-hero" data-tour="settings-overview">
         <div>
           <p className="dashboard-eyebrow">
             Settings
@@ -1992,6 +1993,7 @@ export default function SettingsPage() {
           ACCOUNT + SYNC
       ================================================ */}
 
+      <DashboardTourHelp />
       <section className="cray-settings-overview-grid">
         {/* ACCOUNT */}
 

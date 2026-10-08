@@ -3037,7 +3037,7 @@ export default function ReportsPage() {
           HERO
       ================================================ */}
 
-      <section className="cray-reports-hero">
+      <section className="cray-reports-hero" data-tour="reports-overview">
         <div>
           <p className="dashboard-eyebrow">
             Reports

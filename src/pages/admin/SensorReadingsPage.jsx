@@ -1414,7 +1414,7 @@ export default function SensorReadingsPage() {
 
   return (
     <div className="modern-readings-page">
-      <section className="modern-readings-hero">
+      <section className="modern-readings-hero" data-tour="readings-overview">
         <div>
           <p className="dashboard-eyebrow">
             Water Readings

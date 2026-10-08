@@ -3271,7 +3271,7 @@ export default function TankDetailsPage() {
                   Current Status
                 </p>
 
-                <h3>
+                <h3 data-tour="tank-monitoring">
                   Water condition
                 </h3>
               </div>

@@ -999,6 +999,7 @@ export default function DashboardOverview() {
 
       <section
         className={`farmer-status-banner safety-surface ${simpleHealthSeverity}`}
+        data-tour="dashboard-overview"
       >
         <div className="farmer-status-content">
 

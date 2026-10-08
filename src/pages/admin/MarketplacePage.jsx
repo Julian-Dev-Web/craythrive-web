@@ -1135,7 +1135,7 @@ export default function MarketplacePage() {
           HERO
       ================================================ */}
 
-      <section className="market-hub-hero">
+      <section className="market-hub-hero" data-tour="marketplace-overview">
         <div>
           <p className="dashboard-eyebrow">
             CrayThrive Marketplace
