@@ -1,9 +1,12 @@
 # Single-account Developer Mode
 
-Implemented and verified locally on 2026-10-08. The owner subsequently
-authorized a commit and GitHub push. Supabase secrets and Edge Function
-deployment remain pending; hosted deployment is unverified. No real developer identity is stored in this
-repository. With the UUID secret absent, access fails closed for everyone.
+Implemented and verified locally on 2026-10-08, published in commit `d472ef7`.
+The owner subsequently saved the production UUID secret and authorized Edge
+Function deployment. All three Developer Mode functions are now deployed to
+the active `craythrive` project (`abtzkqfrwzcocyrwcrfc`). The saved secret was
+compared against the owner's provided UUID without exposing its value.
+No real developer identity is stored in tracked files. The local server-only
+environment file is ignored by Git. Missing/invalid secrets still fail closed.
 
 ## Scope and existing implementation
 
@@ -81,7 +84,13 @@ not reached if either authorization condition fails.
 
 ## Server configuration and deployment handoff
 
-These are required remote setup steps, **not actions already performed**:
+The owner completed steps 1–2 and the agent completed step 3 on 2026-10-08.
+These steps are retained for reproducibility. Real owner OTP verification
+and a second-account live denial test remain to be performed.
+After deployment, the owner reported reaching "Verify your identity" and
+"No authenticator is configured for this account" on the live website.
+This confirms the owner reached the post-authorization setup view; actual
+authenticator enrollment and successful OTP verification are still pending.
 
 1. In the intended Supabase project's **Authentication → Users**, locate
    your own existing CrayThrive account and copy its **User UID**. Do not
@@ -167,10 +176,18 @@ mocked backend responses, never the real developer UUID.
   NO_COLOR/FORCE_COLOR environment warning remains.
 - `git diff --check`: passed.
 
-Supabase CLI/Deno are not installed in this workspace; the Edge runtime itself, remote
-deployment, real-account verification and real Backup/Restore execution
-remain unverified. Shared request handlers run under Node's Web Request/
-Response API in unit tests; browser tests use the production Vite bundle.
+Supabase CLI 2.120.0 was run through `npx` using an existing saved CLI login.
+Remote deployment used server-side bundling (`--use-api`) and named only the
+three Developer functions. All three are ACTIVE at version 1 with
+`verify_jwt: true`; existing AI Guide and push functions were preserved.
+Live OPTIONS requests returned 204 and unauthenticated POST requests returned
+401 from the platform JWT gate for each endpoint. No database operation ran.
+No new service-role key or management token was placed in the repository.
+
+Local Deno execution, real owner OTP verification, second-account live
+authorization denial, and real Backup/Restore execution remain unverified.
+Shared request handlers run under Node's Web Request/Response API in unit
+tests; browser tests use the production Vite bundle.
 
 Implementation references: [Supabase JWT verification](https://supabase.com/docs/reference/javascript/auth-getclaims),
 [Edge authorization layers](https://supabase.com/docs/guides/functions/auth-headers),
