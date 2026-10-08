@@ -1,6 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { ChevronLeft, ChevronRight, LogOut, X } from "lucide-react";
-import { APP_INFO } from "../constants/theme";
+import DeveloperEntry from "./DeveloperEntry";
 
 /**
  * Sidebar navigation.
@@ -41,11 +41,7 @@ export default function Sidebar({
       }`}
     >
       <div className="modern-sidebar-brand">
-        <div
-          className="modern-sidebar-logo"
-          style={{ backgroundImage: `url(${APP_INFO.logoPath})` }}
-          aria-label={`${APP_INFO.name} logo`}
-        />
+        <DeveloperEntry />
 
         <div className="modern-sidebar-brand-text">
           <strong>CrayThrive</strong>

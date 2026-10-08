@@ -10,8 +10,8 @@ export { hasDashboardAccess } from "../utils/dashboardAccess.js";
  * mobile app registers accounts with profiles.role = "user" (confirmed
  * directly against the codebase), not "admin"/"super_admin". This web
  * dashboard is a per-user account dashboard, not a separate staff panel.
- * If you later introduce a real staff/admin role, add it here alongside
- * "user" rather than replacing it.
+ * Developer Mode is independently authorized server-side against one Auth UUID;
+ * dashboard roles never grant developer access.
  */
 function getReadableAuthError(error) {
   if (!error) {

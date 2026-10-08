@@ -34,7 +34,10 @@ export function datasets() {
 
 export const test = base.extend({
   qa: async ({ context, page }, use) => {
-    const state = { data: datasets(), authenticated: true, invalidLogin: false, expired: false, authDelay: 0, tankWriteDelay: 0, tankWriteFailure: false, authRequests: [], reads: [], writes: [], errors: [], warnings: [], localFailures: [], externalRequests: [] };
+    const state = { data: datasets(), authenticated: true, invalidLogin: false, expired: false, authDelay: 0, tankWriteDelay: 0, tankWriteFailure: false,
+      developerAuthorized: false, developerVerified: false, developerDenied: false, developerInvalidOtp: false,
+      developerFactors: [{ id: '33333333-3333-4333-8333-333333333333', factor_type: 'totp', status: 'verified', friendly_name: 'QA Authenticator' }],
+      developerRequests: [], authRequests: [], reads: [], writes: [], errors: [], warnings: [], localFailures: [], externalRequests: [] };
     await context.addInitScript(({ session }) => {
       localStorage.setItem('sb-qa-auth-token', JSON.stringify(session));
       window.print = () => { window.__qaPrintCalled = true; };
@@ -52,9 +55,30 @@ export const test = base.extend({
         return route.fulfill({ status: 200, contentType: url.pathname.endsWith('.css') ? 'text/css' : 'application/json', body: url.pathname.endsWith('.css') ? '' : '[]' });
       }
       const reply = (json, status = 200) => route.fulfill({ status, json });
+      if (url.pathname.startsWith('/functions/v1/developer-')) {
+        state.developerRequests.push({ path: url.pathname, body: request.postDataJSON(), authorization: request.headers().authorization });
+        if (!state.authenticated || state.expired || !state.developerAuthorized) {
+          state.developerDenied = true; return reply({ authorized: false }, 403);
+        }
+        if (url.pathname.endsWith('/developer-access')) return reply({ authorized: true, reauthenticationRequired: !state.developerVerified,
+          verifiedUntil: state.developerVerified ? Math.floor(Date.now() / 1000) + 300 : null });
+        return state.developerVerified ? reply({ error: 'Not configured' }, 501) : reply({ authorized: false }, 403);
+      }
       if (url.pathname.startsWith('/auth/v1/')) {
         state.authRequests.push(url.pathname);
-        if (url.pathname.endsWith('/user')) return state.authenticated && !state.expired ? reply(user) : reply({ message: 'Invalid JWT', code: 'bad_jwt' }, 401);
+        if (url.pathname.endsWith('/user')) return state.authenticated && !state.expired ? reply({ ...user, factors: state.developerFactors }) : reply({ message: 'Invalid JWT', code: 'bad_jwt' }, 401);
+        if (url.pathname.endsWith('/factors') && request.method() === 'POST') {
+          const factor = { id: '44444444-4444-4444-8444-444444444444', factor_type: 'totp', status: 'unverified', friendly_name: 'CrayThrive Developer' };
+          state.developerFactors.push(factor);
+          return reply({ ...factor, totp: { qr_code: '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120"><rect width="120" height="120" fill="black"/></svg>', secret: 'qa-only-secret', uri: 'otpauth://qa-only' } });
+        }
+        if (/\/factors\/[^/]+\/challenge$/.test(url.pathname)) return reply({ id: 'qa-challenge', expires_at: Math.floor(Date.now() / 1000) + 300 });
+        if (/\/factors\/[^/]+\/verify$/.test(url.pathname)) {
+          if (request.postDataJSON().code !== '123456') { state.developerInvalidOtp = true; return reply({ message: 'Invalid OTP', code: 'mfa_verification_failed' }, 401); }
+          state.developerVerified = true;
+          state.developerFactors.forEach(factor => { factor.status = 'verified'; });
+          return reply({ ...session, user: { ...user, factors: state.developerFactors } });
+        }
         if (url.pathname.endsWith('/token')) {
           if (state.authDelay) await new Promise(resolve => setTimeout(resolve, state.authDelay));
           if (state.invalidLogin || state.expired) return reply({ message: 'Invalid login credentials', code: 'invalid_credentials' }, 400);
@@ -111,7 +135,9 @@ export const test = base.extend({
       const expectedAuthFailure = (state.expired || state.invalidLogin || !state.authenticated) &&
         /^Failed to load resource:.*status of (400|401)/.test(message.text());
       const expectedTankFailure = state.tankWriteFailure && /^Failed to load resource:.*status of 403/.test(message.text());
-      if (message.type() === 'error' && !expectedAuthFailure && !expectedTankFailure) state.errors.push(message.text());
+      const expectedDeveloperFailure = (state.developerDenied && /^Failed to load resource:.*status of 403/.test(message.text())) ||
+        (state.developerInvalidOtp && /^Failed to load resource:.*status of 401/.test(message.text()));
+      if (message.type() === 'error' && !expectedAuthFailure && !expectedTankFailure && !expectedDeveloperFailure) state.errors.push(message.text());
       if (message.type() === 'warning') state.warnings.push(message.text());
     });
     page.on('response', response => {

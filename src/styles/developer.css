@@ -1,0 +1,16 @@
+.developer-page { min-height: 100dvh; display: grid; place-items: center; padding: 24px; background: var(--ct-bg, #071722); color: var(--ct-text); }
+.developer-card { width: min(100%, 480px); min-width: 0; display: grid; gap: 16px; padding: 28px; border: 1px solid var(--ct-border); border-radius: 18px; background: var(--ct-surface); }
+.developer-card h1, .developer-card h2, .developer-card p { margin: 0; }
+.developer-card h1 { font-size: 1.7rem; }
+.developer-card h2 { font-size: 1.05rem; }
+.developer-card p { font-size: .9rem; line-height: 1.7; overflow-wrap: anywhere; }
+.developer-back { display: inline-flex; align-items: center; gap: 8px; color: var(--ct-brand-strong); font-size: .85rem; margin-bottom: 8px; }
+.developer-card form { display: grid; gap: 12px; }
+.developer-card input { width: 100%; min-width: 0; box-sizing: border-box; min-height: 44px; padding: 10px 12px; border: 1px solid var(--ct-border-strong); border-radius: 9px; background: var(--ct-surface-strong); color: var(--ct-text); font: inherit; }
+.developer-card .developer-error { color: var(--ct-danger); }
+.developer-verified { display: flex; align-items: center; gap: 8px; color: var(--ct-brand-strong); }
+.developer-qr img { display: block; width: min(100%, 220px); height: auto; margin: 12px auto; background: white; padding: 8px; box-sizing: border-box; border-radius: 8px; }
+.developer-logo-button { cursor: pointer; }
+.developer-entry-notice { position: absolute; left: 12px; right: 12px; top: 95px; padding: 10px; background: var(--ct-surface-strong); color: var(--ct-text); border: 1px solid var(--ct-border-strong); border-radius: 8px; font-size: .75rem; line-height: 1.5; z-index: 5; }
+.developer-page :is(input, button, a):focus-visible, .developer-logo-button:focus-visible { outline: 2px solid var(--ct-brand-strong); outline-offset: 3px; }
+@media (max-width: 540px) { .developer-page { padding: 16px; } .developer-card { padding: 20px; } }

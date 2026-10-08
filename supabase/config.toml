@@ -1,0 +1,13 @@
+# Platform verification is defense in depth; every handler also verifies Auth
+# and enforces the single server-side UUID. An API key alone never grants access.
+[functions.developer-access]
+verify_jwt = true
+entrypoint = "./functions/developer-access/index.js"
+
+[functions.developer-backup]
+verify_jwt = true
+entrypoint = "./functions/developer-backup/index.js"
+
+[functions.developer-restore]
+verify_jwt = true
+entrypoint = "./functions/developer-restore/index.js"

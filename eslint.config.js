@@ -31,4 +31,8 @@ export default defineConfig([
     files: ['api/**/*.js', 'server/**/*.js'],
     languageOptions: { globals: globals.node },
   },
+  {
+    files: ['supabase/functions/**/*.js'],
+    languageOptions: { globals: { Deno: 'readonly' } },
+  },
 ])

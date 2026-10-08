@@ -5,6 +5,7 @@ import {
 } from "react-router-dom";
 
 import LandingPage from "./pages/LandingPage";
+import DeveloperPage from "./pages/DeveloperPage";
 
 import AdminLogin from "./pages/auth/AdminLogin";
 import ForgotPassword from "./pages/auth/ForgotPassword";
@@ -95,6 +96,7 @@ export default function App() {
           <ProtectedAdminRoute />
         }
       >
+        <Route path="/developer" element={<DeveloperPage />} />
         <Route
           path="/admin"
           element={

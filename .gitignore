@@ -18,6 +18,8 @@ dist-ssr
 .security-*
 test-results/
 playwright-report/
+supabase/.temp/
+supabase/.branches/
 
 # Editor directories and files
 .vscode/*
