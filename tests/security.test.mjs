@@ -30,6 +30,7 @@ test("Vite exposes app configuration but excludes present and future Vercel meta
     VITE_VERCEL_OBSERVABILITY_CLIENT_CONFIG:'unused-platform-marker',
     VITE_VERCEL_FUTURE_METADATA:'unused-platform-marker',
     VITE_APP_SITE_URL:'https://example.com',
+    SUPABASE_SECRET_KEY:'example_server_only_env_marker',
   };
   const previous = Object.fromEntries(Object.keys(fixture).map(name=>[name,process.env[name]]));
   try {
@@ -39,6 +40,7 @@ test("Vite exposes app configuration but excludes present and future Vercel meta
     assert.equal(config.env.VITE_APP_SITE_URL,fixture.VITE_APP_SITE_URL);
     assert.equal(Object.hasOwn(config.env,'VITE_VERCEL_OBSERVABILITY_CLIENT_CONFIG'),false);
     assert.equal(Object.hasOwn(config.env,'VITE_VERCEL_FUTURE_METADATA'),false);
+    assert.equal(Object.hasOwn(config.env,'SUPABASE_SECRET_KEY'),false);
   } finally {
     for (const [name,value] of Object.entries(previous)) {
       if (value === undefined) delete process.env[name]; else process.env[name] = value;
@@ -91,9 +93,12 @@ test("password recovery does not query private profiles or reveal account existe
   assert.equal(source.includes('If an account exists'), true);
 });
 
-test("Vercel framing restrictions preserve the existing SPA rewrite", () => {
+test("Vercel framing restrictions preserve SPA routes and leave API requests to functions", () => {
   const config = JSON.parse(fs.readFileSync(new URL('../vercel.json',import.meta.url),'utf8'));
   assert.equal(config.rewrites[0].destination,'/index.html');
+  const spa = new RegExp(`^${config.rewrites[0].source}$`);
+  for (const path of ['/', '/admin/tanks/add', '/admin/tanks/tank-a/edit', '/login']) assert.equal(spa.test(path), true);
+  for (const path of ['/api', '/api/tank-schema', '/api/tank-schema/']) assert.equal(spa.test(path), false);
   const headers = new Map(config.headers[0].headers.map(({key,value})=>[key,value]));
   assert.equal(headers.get('X-Content-Type-Options'),'nosniff');
   assert.match(headers.get('Content-Security-Policy'),/frame-ancestors 'none'/);

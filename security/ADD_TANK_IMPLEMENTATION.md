@@ -4,6 +4,8 @@ Implemented and checked locally on 2026-10-08. GitHub publication was subsequent
 
 **Live database and mobile verification remains pending.** The workspace contains no usable Supabase public configuration, exported tanks schema, or mobile Add Tank source. A read-only schema inspection request is pending with the project owner. Mock test results do not prove production RLS or mobile compatibility.
 
+**Server configuration is now required:** `/api/tank-schema` needs a server-only `SUPABASE_SECRET_KEY` (or legacy `SUPABASE_SERVICE_ROLE_KEY`) for the same Supabase project as the existing public connection. Never put this value in a `VITE_` variable, source file, browser request, or chat. See the final section for setup and the reason for this change.
+
 ## 1. Exact files changed
 
 Application:
@@ -13,7 +15,7 @@ Application:
 - `src/pages/admin/TankDetailsPage.jsx` — owner-only Edit action, saved planning panel below live conditions, neutral device-free state.
 - `src/pages/admin/AddTankPage.jsx` — shared Add/Edit form, validation, submit protection, error recovery.
 - `src/components/TankPlanningGuide.jsx` — reusable live/saved planning presentation and sources.
-- `src/services/tanksService.js` — fills the previously empty service; authenticated schema inspection and owner-scoped writes to `tanks` only.
+- `src/services/tanksService.js` — authenticated same-origin schema-contract request and owner-scoped writes to `tanks` only.
 - `src/utils/tankPlanningSchema.js` — existing-column mapping, explicit units, schema compatibility checks and field constraints.
 - `src/utils/tankStockingGuidance.js` — shared geometry, stocking guidance, input validation and pairing state.
 - `src/styles/tankPlanning.css` — responsive form and guide using existing theme tokens.
@@ -33,7 +35,7 @@ Verification and handoff:
 
 No **live** columns were verified. The existing repository's documented mobile contract identifies `tanks`, owner `user_id`, and device `device_uid`. Existing readers support primary-key aliases `id` / `tank_id` / `uuid`, names `name` / `tank_name`, and life stage `type` / `tank_type`. These are repository evidence, not an actual database inspection.
 
-The writer first requests authenticated PostgREST OpenAPI metadata. Before any write it requires one supported primary key, `user_id`, availability of the requested operation (insert for Add, update for Edit), and exactly one existing column per form field:
+The writer requests a small contract from the authenticated `/api/tank-schema` endpoint. The server verifies the caller and dashboard profile with the normal public key and caller JWT, then reads PostgREST OpenAPI metadata using a server-only key. Before any write it requires one supported primary key, `user_id`, API availability of the requested operation (insert for Add, update for Edit), and exactly one existing column per form field:
 
 | Form field | Supported existing equivalents |
 | --- | --- |
@@ -47,7 +49,7 @@ The writer first requests authenticated PostgREST OpenAPI metadata. Before any w
 | Shelters | `shelter_count`, `shelters_count`, `number_of_shelters` |
 | Notes | `notes` |
 
-Missing, incompatible, or ambiguous columns block saving with a setup message. Unsupported unitless dimension names are never treated as centimeters. Nothing retries weaker owner filters, another table, or a partial insert. PostgREST metadata cannot establish RLS correctness or all check/trigger semantics. OpenAPI must be accessible with the normal authenticated user's JWT; if disabled, confirm the real schema and implement a reviewed static contract rather than exposing privileged metadata.
+Missing, incompatible, or ambiguous columns block saving with a setup message. Unsupported unitless dimension names are never treated as centimeters. Nothing retries weaker owner filters, another table, or a partial insert. Privileged OpenAPI describes API/schema capabilities; it does not establish the caller's write permission, RLS correctness or all check/trigger semantics. Actual reads/inserts/updates still use the normal authenticated browser client and existing RLS. The browser receives only supported field mappings/types/text limits, supported enum values, primary-key name, optional pairing support and its verified user ID. Raw schema, descriptions, SQL defaults and unrelated metadata are withheld.
 
 ## 3. Is a migration required?
 
@@ -103,9 +105,11 @@ Both clients sharing the same project and account will access the same rows subj
 ## 11. Build and tests
 
 - `npm run build`: PASS, including distribution security scan (zero findings).
-- `npm test`: 36 PASS (11 new tests).
-- Full `npm run test:browser`: 83 PASS (70 existing + 13 Add/Edit Tank checks).
-- Focused Add/Edit browser verification repeated after final presentation/validation adjustments: 13 PASS; both device-free/paired detail checks repeated after the final connection-state adjustment: 2 PASS.
+- `npm test`: 50 PASS after the authenticated server-schema fix, including the actual local Vite API middleware.
+- Focused Add/Edit browser verification: 18 PASS, including valid dashboard session with forbidden public OpenAPI access, missing server configuration/recovery and genuine expired session versus schema credential denial.
+- Full `npm run test:browser`: 88 PASS, including existing login/role guards, monitoring, reports, marketplace and responsive layouts.
+- Production build repeated with a fake server-only secret marker: marker absent from all browser output.
+- Workspace and distribution credential scans: zero findings. Fixture keys/tokens are explicit placeholders, not live credentials.
 - ESLint: existing baseline 24 errors / 5 warnings, no new findings. Existing errors involve hooks and unused variables in older pages/layouts; lint is not globally passing.
 - Vite: existing large-JavaScript-chunk warning remains. Playwright also reports the existing NO_COLOR/FORCE_COLOR environment warning.
 
@@ -133,4 +137,44 @@ Local corrections:
 
 Useful references: `TANK_FIELDS_MISSING` (review existing equivalents/missing planning columns), `TANK_SCHEMA_UNAVAILABLE` (schema request unavailable or invalid), `TANK_SCHEMA_ACCESS_DENIED` (schema request forbidden), `TANK_CREATE_NOT_ALLOWED` / `TANK_EDIT_NOT_ALLOWED` (requested API operation unavailable), `TANK_DEVICE_REQUIRED` (existing required device field prevents device-free creation).
 
-The original release passed 36 unit and 83 full browser tests. The follow-up passes the production build/security scan, 40 unit tests and 15 focused Add/Edit browser tests. ESLint passes for all six changed JavaScript/test files; the full repository remains at the existing 24 errors / 5 warnings. No migration or live database change was executed for this follow-up, and the website's exact blocker still requires real schema/request evidence.
+The original release passed 36 unit and 83 full browser tests. That initial follow-up passed the production build/security scan, 40 unit tests and 15 focused Add/Edit browser tests. No migration or live database change was executed; the website's exact blocker still requires real schema/request evidence.
+
+## Follow-up: false sign-in error during schema discovery
+
+The implementation incorrectly relied on public-key browser access to the Supabase OpenAPI root and classified any root HTTP 401 as expired authentication. Supabase's [official platform notice](https://github.com/orgs/supabase/discussions/42949) removes public-key OpenAPI access while leaving normal table CRUD available. This is an architectural defect in the initial implementation. A screenshot alone does not establish the exact hosted failing request; the live auth/network response has not been inspected.
+
+The new Node function verifies the user's JWT through Supabase Auth and checks the same `user` dashboard role as the browser, under normal user RLS. Only after those checks does it read schema metadata using the server-only key. It returns a narrowly allowlisted contract, never the full schema, private key, provider error body or tokens. It has no database mutation path. Browser Add/Edit still write with the user's JWT and unchanged owner filters/RLS; private keys are never used to read or write tank rows. Server auth transport exceptions are sanitized before reaching SDK diagnostics.
+
+Server-key absence is `TANK_SERVER_SETUP_REQUIRED`; schema gateway 401/403 is `TANK_SCHEMA_ACCESS_DENIED` (HTTP 503 from our endpoint). Only actual invalid/missing caller authentication or account identity mismatch uses `TANK_AUTH_REQUIRED`. Provider outages remain retryable setup failures. Missing planning columns and unsupported constraints continue to fail closed with their existing specific references. Re-signing in cannot fix missing server credentials or a missing planning column.
+
+Changed for this fix:
+
+- `.env.example`
+- `api/tank-schema.js` (new Vercel Node function)
+- `server/tankSchemaHandler.js` (new authenticated handler)
+- `src/utils/dashboardAccess.js` (new shared role predicate)
+- `src/services/authService.js`
+- `src/services/tanksService.js`
+- `src/utils/tankPlanningSchema.js`
+- `vite.config.js` (equivalent Node-only API middleware for local development)
+- `vercel.json` (SPA fallback excludes `/api`)
+- `eslint.config.js`
+- `tests/tank-schema-api.test.mjs` (new provider/HTTP handler tests)
+- `tests/tank-writes.test.mjs`
+- `tests/fixtures/tank-schema.mjs`
+- `tests/browser/fixtures.mjs`
+- `tests/browser/tank-planning.spec.mjs`
+- `tests/security.test.mjs`
+- `security/ADD_TANK_IMPLEMENTATION.md`
+
+### Hosted setup and verification
+
+1. In the same Supabase project used by `VITE_SUPABASE_URL`, obtain a server secret API key. See [Supabase API key documentation](https://supabase.com/docs/guides/getting-started/api-keys). A legacy service-role key is a fallback; never substitute it for the browser publishable/anon key.
+2. In Vercel project Environment Variables, set `SUPABASE_SECRET_KEY` for Production (and Preview if that environment will be tested). If using the legacy key instead, set `SUPABASE_SERVICE_ROLE_KEY`. Keep the existing public URL and public key. Mark the private variable sensitive. Do not share its value or prefix its name with `VITE_`.
+3. Publish these code changes and redeploy the affected environment to load the new variable/function. GitHub publication was subsequently requested by the project owner; hosted variables and the resulting deployment still require verification.
+4. With a normal signed-in farmer account, open Add Tank and Retry setup. A successful `/api/tank-schema?operation=create` response is JSON, not HTML. It must expose only the narrow contract and verified account ID. If `TANK_FIELDS_MISSING` appears, inspect the real schema before reviewing any SQL changes.
+5. Verify a device-free create, edit and refresh with the real account and both web/mobile clients. Perform the two-account RLS checks described above. Hosted schema, save success, RLS and mobile visibility are still unverified.
+
+For local `npm run dev`, put the same server-only variable in an ignored local environment file. Vite's Node middleware handles this endpoint; the variable remains excluded from `import.meta.env`. `vite preview` is a static preview and does not run Vercel Functions; use the dev server or a Vercel preview deployment to exercise the endpoint.
+
+Final local verification: production build/security scan PASS; 50 unit tests PASS; 88 full browser tests PASS; all changed JavaScript/test/config files pass targeted ESLint. Full repository ESLint remains at the pre-existing 24 errors / 5 warnings. Existing Vite large-chunk and Playwright color-environment warnings remain. The project owner subsequently requested a GitHub push. No manual deployment, hosted variable edit, SQL execution or live tank write was performed for this fix; an automatic deployment may follow the push.

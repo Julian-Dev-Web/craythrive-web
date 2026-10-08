@@ -155,6 +155,49 @@ test('unavailable schema has a distinct reference and retry recovers without wri
   expect(qa.writes).toEqual([]);
 });
 
+test('valid dashboard session uses the server contract when public OpenAPI access is forbidden', async ({ page, qa }) => {
+  const schemaRequests = [];
+  page.on('request', request => { if (new URL(request.url()).pathname === '/rest/v1/') schemaRequests.push(request.url()); });
+  await page.goto('/admin/tanks');
+  await page.getByRole('link', { name: 'Add Tank', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Create Tank' })).toBeEnabled();
+  await fill(page);
+  await page.getByRole('button', { name: 'Create Tank' }).click();
+  await expect(page).toHaveURL(/qa-created-1$/);
+  expect(schemaRequests).toEqual([]);
+  expect(qa.tankSetupRequests).toHaveLength(2);
+  for (const request of qa.tankSetupRequests) {
+    expect(request.headers.authorization).toMatch(/^Bearer /);
+    expect(request.headers).not.toHaveProperty('apikey');
+  }
+});
+
+test('missing server configuration preserves sign-in and entries, then setup retry recovers', async ({ page, qa }) => {
+  qa.tankServerConfigured = false;
+  await page.goto('/admin/tanks/add');
+  await expect(page.getByRole('alert')).toContainText('TANK_SERVER_SETUP_REQUIRED');
+  await expect(page.getByRole('alert')).not.toContainText('sign in again');
+  await fill(page);
+  await expect(page.getByRole('button', { name: 'Create Tank' })).toBeDisabled();
+  expect(qa.authenticated).toBe(true); expect(qa.writes).toEqual([]);
+  qa.tankServerConfigured = true;
+  await page.getByRole('button', { name: 'Retry setup' }).click();
+  await expect(page.getByRole('button', { name: 'Create Tank' })).toBeEnabled();
+  await expect(page.locator('[name="name"]')).toHaveValue(values.name);
+});
+
+test('schema gateway denial is a setup error while a genuinely expired session requests sign-in', async ({ page, qa }) => {
+  qa.tankSchemaStatus = 401;
+  await page.goto('/admin/tanks/add');
+  await expect(page.getByRole('alert')).toContainText('TANK_SCHEMA_ACCESS_DENIED');
+  await expect(page.getByRole('alert')).not.toContainText('sign in again');
+  qa.tankSchemaStatus = 200; qa.expired = true;
+  await page.getByRole('button', { name: 'Retry setup' }).click();
+  await expect(page.getByRole('alert')).toContainText('TANK_AUTH_REQUIRED');
+  await expect(page.getByRole('button', { name: 'Create Tank' })).toBeDisabled();
+  expect(qa.writes).toEqual([]);
+});
+
 for (const width of [390, 768, 1440]) {
   for (const theme of ['light', 'dark']) {
     test(`Add Tank layout and guide: ${width}px ${theme}`, async ({ page, qa }) => {

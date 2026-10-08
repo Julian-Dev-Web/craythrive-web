@@ -1,7 +1,7 @@
 import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'vite';
-import { tankSpec } from './fixtures/tank-schema.mjs';
+import { tankSpec, tankContract } from './fixtures/tank-schema.mjs';
 
 const server = await createServer({ server: { middlewareMode: true, hmr: false, ws: false }, define: {
   'import.meta.env.VITE_SUPABASE_URL': 'undefined',
@@ -34,10 +34,16 @@ function mockService(spec = tankSpec()) {
       return query;
     },
   };
-  const service = createTanksService({ client, url: 'https://qa.supabase.invalid', publicKey: 'qa-public-key', fetcher: async (url, options) => {
+  const service = createTanksService({ client, fetcher: async (url, options) => {
     requests.push({ url, options });
     if (state.schemaNetworkFailure) throw new Error('private-provider-detail');
-    return state.schemaResponse || { ok: true, json: async () => spec };
+    if (state.schemaResponse) return state.schemaResponse;
+    try {
+      const contract = tankContract(spec, new URL(url, 'http://localhost').searchParams.get('operation'));
+      return { ok: true, json: async () => ({ contract, userId: owner }) };
+    } catch (error) {
+      return { ok: false, status: 422, json: async () => ({ code: error.code, fields: error.fields }) };
+    }
   } });
   return { service, calls, requests, state };
 }
@@ -51,6 +57,8 @@ test('insert uses verified ownership and only mapped tank fields, never device o
   assert.equal(calls[0].body.normal_water_depth_cm, 40);
   assert.ok(!Object.hasOwn(calls[0].body, 'water_depth_cm')); assert.ok(!Object.hasOwn(calls[0].body, 'device_uid'));
   assert.equal(requests[0].options.headers.Authorization, 'Bearer fake-token');
+  assert.equal(requests[0].url, '/api/tank-schema?operation=create');
+  assert.ok(!Object.hasOwn(requests[0].options.headers, 'apikey'));
 });
 
 test('update filters by owner and primary key and preserves ownership and type', async () => {
@@ -109,13 +117,23 @@ test('schema access, network and invalid JSON failures stay distinct without exp
   const unconfigured = createTanksService({ client: null });
   await assert.rejects(unconfigured.inspectContract(), error => error.code === 'TANK_CONFIG_MISSING');
   const { service, state, calls } = mockService();
-  for (const [status, code] of [[401, 'TANK_AUTH_REQUIRED'], [403, 'TANK_SCHEMA_ACCESS_DENIED'], [503, 'TANK_SCHEMA_UNAVAILABLE']]) {
-    state.schemaResponse = { ok: false, status };
+  for (const [status, code] of [[401, 'TANK_AUTH_REQUIRED'], [403, 'TANK_ACCOUNT_NOT_ALLOWED'], [503, 'TANK_SCHEMA_UNAVAILABLE'], [503, 'TANK_SERVER_SETUP_REQUIRED'], [503, 'TANK_SCHEMA_ACCESS_DENIED']]) {
+    state.schemaResponse = { ok: false, status, json: async () => ({ code }) };
     await assert.rejects(service.inspectContract(), error => error.code === code && error.status === status);
   }
   state.schemaResponse = { ok: true, json: async () => { throw new Error('private-provider-detail'); } };
   await assert.rejects(service.inspectContract(), error => error.code === 'TANK_SCHEMA_UNAVAILABLE' && !error.message.includes('private-provider-detail'));
   state.schemaNetworkFailure = true;
   await assert.rejects(service.inspectContract(), error => error.code === 'TANK_SCHEMA_UNAVAILABLE' && !error.message.includes('private-provider-detail'));
+  assert.equal(calls.length, 0);
+});
+
+test('mismatched server identity and unsafe column metadata prevent any writes', async () => {
+  const { service, state, calls } = mockService();
+  state.schemaResponse = { ok: true, json: async () => ({ userId: 'other-user', contract: tankContract() }) };
+  await assert.rejects(service.save(plan), error => error.code === 'TANK_AUTH_REQUIRED');
+  const contract = tankContract(); contract.fields.normalWaterDepthCm = 'water_depth_cm';
+  state.schemaResponse = { ok: true, json: async () => ({ userId: owner, contract }) };
+  await assert.rejects(service.save(plan), error => error.code === 'TANK_SCHEMA_UNAVAILABLE');
   assert.equal(calls.length, 0);
 });

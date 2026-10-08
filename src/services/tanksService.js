@@ -1,9 +1,9 @@
 import { supabase } from '../lib/supabase';
 import { TABLES, COLUMNS } from '../constants/schema';
-import { resolveTankContract, TankSetupError, TankInputError, validateContractFields } from '../utils/tankPlanningSchema';
+import { publicTankContract, TankSetupError, TankInputError, validateContractFields } from '../utils/tankPlanningSchema';
 import { planningNumber, validateTankPlan } from '../utils/tankStockingGuidance';
 
-export function createTanksService({ client, url, publicKey, fetcher = fetch }) {
+export function createTanksService({ client, fetcher = fetch }) {
   async function authenticatedUser() {
     if (!client) throw new TankSetupError('Supabase client unavailable', 'TANK_CONFIG_MISSING');
     const { data, error } = await client.auth.getUser();
@@ -14,28 +14,28 @@ export function createTanksService({ client, url, publicKey, fetcher = fetch }) 
   async function inspectContract(operation = 'create') {
     const user = await authenticatedUser();
     const { data, error } = await client.auth.getSession();
-    if (!url || !publicKey) throw new TankSetupError('Public connection configuration unavailable', 'TANK_CONFIG_MISSING');
     if (error || !data?.session?.access_token) throw new TankSetupError('Authenticated session unavailable', 'TANK_AUTH_REQUIRED');
-    // Standard authenticated PostgREST schema discovery; no private keys, RPCs,
-    // migration execution, row sampling, or trial inserts.
+    // Public keys cannot read Supabase's OpenAPI root. Use our authenticated
+    // same-origin endpoint; it returns only allowlisted form metadata.
     let response;
     try {
-      response = await fetcher(`${url.replace(/\/$/, '')}/rest/v1/`, { headers: {
-        apikey: publicKey, Authorization: `Bearer ${data.session.access_token}`,
-        Accept: 'application/openapi+json',
-      } });
+      response = await fetcher(`/api/tank-schema?operation=${operation}`, {
+        headers: { Authorization: `Bearer ${data.session.access_token}`, Accept: 'application/json' },
+        cache: 'no-store',
+      });
     } catch {
       throw new TankSetupError('Authenticated schema request failed', 'TANK_SCHEMA_UNAVAILABLE');
     }
+    let result;
+    try { result = await response.json(); } catch { throw new TankSetupError('Invalid schema response', 'TANK_SCHEMA_UNAVAILABLE'); }
     if (!response.ok) {
-      const code = response.status === 401 ? 'TANK_AUTH_REQUIRED' : response.status === 403 ? 'TANK_SCHEMA_ACCESS_DENIED' : 'TANK_SCHEMA_UNAVAILABLE';
-      const failure = new TankSetupError('Authenticated schema request rejected', code);
+      const code = response.status === 401 ? 'TANK_AUTH_REQUIRED' : response.status === 403 ? 'TANK_ACCOUNT_NOT_ALLOWED' : result?.code;
+      const failure = new TankSetupError('Server tank setup request rejected', /^TANK_[A-Z_]+$/.test(code || '') ? code : 'TANK_SCHEMA_UNAVAILABLE', Array.isArray(result?.fields) ? result.fields : []);
       failure.status = response.status;
       throw failure;
     }
-    let spec;
-    try { spec = await response.json(); } catch { throw new TankSetupError('Invalid schema response', 'TANK_SCHEMA_UNAVAILABLE'); }
-    return { contract: resolveTankContract(spec, { operation }), user };
+    if (result?.userId !== user.id) throw new TankSetupError('Server and browser account mismatch', 'TANK_AUTH_REQUIRED');
+    return { contract: publicTankContract(result.contract), user };
   }
 
   async function loadForEditing(id) {
@@ -80,7 +80,4 @@ export function createTanksService({ client, url, publicKey, fetcher = fetch }) 
   return { inspectContract, loadForEditing, save };
 }
 
-export const tanksService = createTanksService({ client: supabase,
-  url: import.meta.env.VITE_SUPABASE_URL,
-  publicKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY,
-});
+export const tanksService = createTanksService({ client: supabase });

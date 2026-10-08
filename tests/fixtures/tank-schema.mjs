@@ -1,3 +1,9 @@
+import { publicTankContract, resolveTankContract } from '../../src/utils/tankPlanningSchema.js';
+
+export function tankContract(spec = tankSpec(), operation = 'create') {
+  return publicTankContract(resolveTankContract(spec, { operation }));
+}
+
 // Hypothetical supported contract, not a claim about the production database.
 export function tankSpec() {
   return { paths: { '/tanks': { post: {}, patch: {} } }, definitions: { tanks: {

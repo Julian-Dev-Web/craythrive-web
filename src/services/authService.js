@@ -1,5 +1,7 @@
 import { logDiagnostic, getSafeErrorMessage } from "../utils/securityDiagnostics";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
+import { hasDashboardAccess } from "../utils/dashboardAccess.js";
+export { hasDashboardAccess } from "../utils/dashboardAccess.js";
 
 /*
  * Roles that are allowed to access the CrayThrive web dashboard.
@@ -11,18 +13,6 @@ import { supabase, isSupabaseConfigured } from "../lib/supabase";
  * If you later introduce a real staff/admin role, add it here alongside
  * "user" rather than replacing it.
  */
-const DASHBOARD_ROLES = new Set([
-  "user",
-]);
-
-function normalizeRole(role) {
-  return String(role || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "_")
-    .replace(/-/g, "_");
-}
-
 function getReadableAuthError(error) {
   if (!error) {
     return "Could not sign in. Please try again.";
@@ -120,23 +110,6 @@ async function fetchProfile(userId) {
     error:
       "Your CrayThrive account does not have a profile record yet.",
   };
-}
-
-/*
- * Checks whether the profile is permitted to open the web dashboard.
- */
-export function hasDashboardAccess(profile) {
-  if (!profile) {
-    return false;
-  }
-
-  const role = normalizeRole(
-    profile.role ??
-      profile.user_role ??
-      profile.account_role
-  );
-
-  return DASHBOARD_ROLES.has(role);
 }
 
 /*

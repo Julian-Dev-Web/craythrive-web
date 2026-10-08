@@ -15,8 +15,10 @@ const FIELD_LABELS = { name: 'Tank name', type: 'Tank type', lengthCm: 'Length',
 const SETUP_MESSAGES = {
   TANK_CONFIG_MISSING: 'The dashboard connection is incomplete. Please ask the project administrator to check the connection settings.',
   TANK_AUTH_REQUIRED: 'Your sign-in could not be verified. Please sign in again before saving a tank.',
+  TANK_ACCOUNT_NOT_ALLOWED: 'Your account does not have access to tank setup. Please contact the project administrator.',
+  TANK_SERVER_SETUP_REQUIRED: 'Tank setup needs a server configuration update. Please ask the project administrator to complete it, then retry setup.',
   TANK_SCHEMA_UNAVAILABLE: 'Unable to verify the tank setup right now. Retry setup; if this continues, contact the project administrator.',
-  TANK_SCHEMA_ACCESS_DENIED: 'Your account cannot verify the tank setup. Please ask the project administrator to review access.',
+  TANK_SCHEMA_ACCESS_DENIED: 'The server cannot verify tank configuration. Please ask the project administrator to check the server connection settings.',
   TANK_TABLE_UNAVAILABLE: 'The shared tank setup is not available to this account. Please ask the project administrator to review access.',
   TANK_CREATE_NOT_ALLOWED: 'Adding tanks is not enabled for this account. Please ask the project administrator to review access.',
   TANK_EDIT_NOT_ALLOWED: 'Editing tanks is not enabled for this account. Please ask the project administrator to review access.',
@@ -49,6 +51,7 @@ export class TankSetupError extends Error {
     // Only this controlled code is passed to the shared diagnostic logger.
     // Raw schema/provider details, request bodies and sessions stay private.
     this.code = code;
+    this.fields = fields.filter(field => Object.hasOwn(FIELD_LABELS, field));
     this.detail = detail;
   }
 }
@@ -71,7 +74,7 @@ export function validateContractFields(plan, contract) {
   return errors;
 }
 
-// Inspect the existing authenticated API schema before allowing any write.
+// Used only by the server to inspect existing API metadata before a write.
 // Ambiguous/missing columns fail closed, rather than dropping entered fields.
 export function resolveTankContract(spec, { operation = 'create' } = {}) {
   const definition = spec?.definitions?.tanks;
@@ -108,4 +111,30 @@ export function resolveTankContract(spec, { operation = 'create' } = {}) {
   const missingDefaults = editing ? [] : required.filter(key => !supplied.has(key) && properties[key]?.default == null);
   if (missingDefaults.length) throw new TankSetupError('Required columns need database defaults or nullable support', missingDefaults.some(key => ['device_uid', 'iot_device_id', 'actuator_device_uid'].includes(key)) ? 'TANK_DEVICE_REQUIRED' : 'TANK_REQUIRED_FIELDS');
   return { fields, typeValues, properties, primaryKey: primaryKeys[0] };
+}
+
+// This is the entire browser-visible contract. Do not expose raw OpenAPI,
+// descriptions, SQL defaults, device columns or other table metadata.
+// Also validate it client-side before using column names in a write.
+export function publicTankContract(contract) {
+  const invalid = () => { throw new TankSetupError('Invalid server tank contract', 'TANK_SCHEMA_UNAVAILABLE'); };
+  if (!contract || !['id', 'tank_id', 'uuid'].includes(contract.primaryKey)) invalid();
+  const fields = {}, properties = {}, typeValues = {};
+  for (const [field, aliases] of Object.entries(TANK_PLAN_COLUMNS)) {
+    const column = contract.fields?.[field];
+    if (!aliases.includes(column)) invalid();
+    const property = contract.properties?.[column];
+    const numeric = !['name', 'type', 'notes'].includes(field);
+    if (!property || !(numeric ? ['number', 'integer'] : ['string']).includes(property.type)) invalid();
+    fields[field] = column;
+    properties[column] = { type: property.type };
+    if (Number.isSafeInteger(property.maxLength) && property.maxLength > 0) properties[column].maxLength = property.maxLength;
+  }
+  for (const type of ['juvenile', 'breeder']) {
+    const value = contract.typeValues?.[type];
+    if (typeof value !== 'string' || value.toLowerCase() !== type) invalid();
+    typeValues[type] = value;
+  }
+  if (contract.properties?.is_paired?.type === 'boolean') properties.is_paired = { type: 'boolean' };
+  return { fields, properties, typeValues, primaryKey: contract.primaryKey };
 }
