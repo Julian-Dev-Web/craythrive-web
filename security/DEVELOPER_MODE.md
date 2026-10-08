@@ -189,6 +189,25 @@ authorization denial, and real Backup/Restore execution remain unverified.
 Shared request handlers run under Node's Web Request/Response API in unit
 tests; browser tests use the production Vite bundle.
 
+## Authenticator QR rendering correction
+
+The installed Auth JS SDK already prefixes enrollment SVGs with
+`data:image/svg+xml;utf-8,`. The page previously encoded that complete URI
+inside another image URI, leaving the browser with invalid SVG content.
+The service now normalizes raw or SDK-prefixed SVGs into one image URI,
+encodes the SVG payload (including color hashes), and preserves already
+encoded/base64 SVG sources. The page uses that image source directly.
+Remote image URLs are rejected; the QR remains in component memory only.
+Server authorization and OTP verification rules are unchanged.
+
+Validation for this correction: 16 Developer service/authorization unit
+tests and all 9 Developer browser tests passed. The enrollment browser test
+now checks image completion and nonzero natural dimensions, rather than
+only checking visibility. Production build and bundled credential scan
+passed; changed-file ESLint is clean. Full ESLint still reports the existing
+24 errors / 5 warnings elsewhere. The existing large-bundle and browser
+color-environment warnings remain. Real owner scanning/OTP is still pending.
+
 Implementation references: [Supabase JWT verification](https://supabase.com/docs/reference/javascript/auth-getclaims),
 [Edge authorization layers](https://supabase.com/docs/guides/functions/auth-headers),
 [TOTP verification](https://supabase.com/docs/guides/auth/auth-mfa/totp),

@@ -12,13 +12,13 @@ const { createDeveloperService } = await server.ssrLoadModule('/src/services/dev
 
 function fixture() {
   const calls = [];
-  const state = { token: 'qa-session', allowed: false, verified: false, confirmOtp: true, factors: { totp: [{ id: 'factor', status: 'verified' }], all: [] } };
+  const state = { token: 'qa-session', allowed: false, verified: false, confirmOtp: true, qrCode: 'data:image/svg+xml;utf-8,<svg />', factors: { totp: [{ id: 'factor', status: 'verified' }], all: [] } };
   const client = {
     auth: {
       getSession: async () => ({ data: { session: state.token ? { access_token: state.token } : null } }),
       mfa: {
         async listFactors() { calls.push(['list']); return { data: state.factors }; },
-        async enroll(options) { calls.push(['enroll', options]); return { data: { id: 'new-factor', totp: { qr_code: '<svg />' } } }; },
+        async enroll(options) { calls.push(['enroll', options]); return { data: { id: 'new-factor', totp: { qr_code: state.qrCode } } }; },
         async unenroll(options) { calls.push(['unenroll', options]); return {}; },
         async challengeAndVerify(options) { calls.push(['verify', options]); state.verified = state.confirmOtp; state.token = 'qa-upgraded-session'; return {}; },
       },
@@ -73,4 +73,23 @@ test('invalid OTP input and unconfirmed server step-up do not unlock Developer M
   assert.ok(!calls.some(call => call[0] === 'verify'));
   state.confirmOtp = false;
   await assert.rejects(service.verifyOtp('factor', '123456'), /could not be confirmed/);
+});
+
+test('enrollment normalizes raw and SDK-prefixed SVG without double-wrapping or losing colors', async () => {
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg"><path fill="#000" /></svg>';
+  const expected = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  const base64 = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+  for (const qrCode of [svg, `data:image/svg+xml;utf-8,${svg}`, expected, base64]) {
+    const { service, state } = fixture();
+    state.allowed = true; state.factors = { totp: [], all: [] }; state.qrCode = qrCode;
+    assert.equal((await service.beginVerification(true)).qrCode, qrCode === base64 ? base64 : expected);
+  }
+});
+
+test('enrollment rejects missing QR images and remote image URLs', async () => {
+  for (const qrCode of [null, '', 'https://example.invalid/qr.svg']) {
+    const { service, state } = fixture();
+    state.allowed = true; state.factors = { totp: [], all: [] }; state.qrCode = qrCode;
+    await assert.rejects(service.beginVerification(true));
+  }
 });

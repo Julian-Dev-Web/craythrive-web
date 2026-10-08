@@ -57,7 +57,9 @@ test('authorized account can explicitly enroll its own authenticator, with no de
   await expect(page.getByText('No authenticator is configured for this account.')).toBeVisible();
   expect(qa.authRequests.some(path => path.endsWith('/factors'))).toBe(false);
   await page.getByRole('button', { name: 'Set up authenticator', exact: true }).click();
-  await expect(page.getByRole('img', { name: 'Authenticator setup QR code' })).toBeVisible();
+  const qrImage = page.getByRole('img', { name: 'Authenticator setup QR code' });
+  await expect(qrImage).toBeVisible();
+  await expect.poll(() => qrImage.evaluate(image => image.complete && image.naturalWidth > 0 && image.naturalHeight > 0)).toBe(true);
   await page.getByLabel('Authenticator code').fill('123456');
   await page.getByRole('button', { name: 'Verify code', exact: true }).click();
   await expect(page.getByText('Identity verified', { exact: true })).toBeVisible();

@@ -3,6 +3,19 @@ import { supabase } from '../lib/supabase';
 const denied = () => new Error('Developer access could not be verified for this session.');
 const factorName = 'CrayThrive Developer';
 
+function authenticatorQrSource(value) {
+  const qr = typeof value === 'string' ? value.trim() : '';
+  const dataImage = /^data:image\/svg\+xml(?:;(?:utf-8|charset=utf-8|base64))?,/i.exec(qr);
+  const svg = dataImage ? qr.slice(dataImage[0].length) : qr;
+  // Auth JS wraps the raw SVG in a data URI. Encode only the SVG payload,
+  // including any '#' characters; never wrap an existing URI a second time.
+  if (/^\s*<(?:svg\b|\?xml\b)/i.test(svg)) {
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  }
+  if (dataImage && svg) return qr; // Already encoded or base64 SVG image.
+  throw new Error('Unable to load authenticator setup. Please try again.');
+}
+
 export function createDeveloperService(client) {
   async function checkAccess() {
     if (!client) throw denied();
@@ -30,7 +43,7 @@ export function createDeveloperService(client) {
     }
     const enrolled = await client.auth.mfa.enroll({ factorType: 'totp', friendlyName: factorName });
     if (enrolled.error || !enrolled.data?.id || !enrolled.data?.totp?.qr_code) throw new Error('Unable to set up authenticator verification. Please try again.');
-    return { factorId: enrolled.data.id, qrCode: enrolled.data.totp.qr_code };
+    return { factorId: enrolled.data.id, qrCode: authenticatorQrSource(enrolled.data.totp.qr_code) };
   }
 
   async function verifyOtp(factorId, code) {

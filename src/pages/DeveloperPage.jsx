@@ -75,7 +75,7 @@ export default function DeveloperPage() {
                 <p>No authenticator is configured for this account.</p>
                 <button type="button" className="dashboard-primary-button" disabled={busy} onClick={() => run(() => developerService.beginVerification(true))}>Set up authenticator</button>
               </> : <form onSubmit={event => { event.preventDefault(); run(() => developerService.verifyOtp(factor.factorId, code)); }}>
-                {factor.qrCode && <div className="developer-qr"><p>Scan this code with your authenticator app.</p><img alt="Authenticator setup QR code" src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(factor.qrCode)}`} /></div>}
+                {factor.qrCode && <div className="developer-qr"><p>Scan this code with your authenticator app.</p><img alt="Authenticator setup QR code" src={factor.qrCode} /></div>}
                 <label htmlFor="developer-otp">Authenticator code</label>
                 <input id="developer-otp" value={code} onChange={event => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
                   autoComplete="one-time-code" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required disabled={busy} />
