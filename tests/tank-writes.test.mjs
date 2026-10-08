@@ -1,7 +1,6 @@
 import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'vite';
-import { tankSpec, tankContract } from './fixtures/tank-schema.mjs';
 
 const server = await createServer({ server: { middlewareMode: true, hmr: false, ws: false }, define: {
   'import.meta.env.VITE_SUPABASE_URL': 'undefined',
@@ -11,129 +10,70 @@ const server = await createServer({ server: { middlewareMode: true, hmr: false, 
 after(() => server.close());
 const { createTanksService } = await server.ssrLoadModule('/src/services/tanksService.js');
 const owner = 'verified-user';
-const plan = { name: '  New Tank  ', type: 'juvenile', lengthCm: 100, widthCm: 100, heightCm: 60, normalWaterDepthCm: 40, population: 5, shelters: 5, notes: 'Setup notes', user_id: 'forged-owner', water_depth_cm: .6, device_uid: 'forged-device' };
+const form = { name: '  Breeder Tank 1  ', type: 'breeder', juvenileCount: '20', notes: '  Notes  ', user_id: 'forged-user', has_paired_device: true, male_count: 99, status: 'Normal', water_depth_cm: .6 };
 
-function mockService(spec = tankSpec()) {
-  const calls = [], requests = [];
-  const state = { authenticated: true, row: { id: 'tank-a', user_id: owner, tank_type: 'juvenile' }, failure: null };
+function mockService() {
+  const calls = [];
+  const state = { authenticated: true, failure: null, returned: {}, authCalls: 0 };
   const client = {
-    auth: { getUser: async () => ({ data: { user: state.authenticated ? { id: owner } : null } }), getSession: async () => ({ data: { session: { access_token: 'fake-token' } } }) },
+    auth: { async getUser() { state.authCalls++; return { data: { user: state.authenticated ? { id: owner } : null } }; } },
     from(table) {
-      const call = { table, filters: [] }; calls.push(call);
+      const call = { table }; calls.push(call);
       const query = {
-        insert(body) { call.method = 'insert'; call.body = body; return query; },
-        update(body) { call.method = 'update'; call.body = body; return query; },
-        select() { return query; },
-        eq(key, value) { call.filters.push([key, value]); return query; },
-        async single() {
-          if (state.failure) return { error: state.failure };
-          const allowed = call.method === 'insert' || call.filters.every(([key, value]) => state.row[key] === value);
-          return { data: allowed ? { ...state.row, ...call.body } : null };
-        },
+        insert(body) { call.body = body; return query; },
+        select(columns) { call.select = columns; return query; },
+        async single() { return state.failure ? { error: state.failure } : { data: { id: 'tank-created', ...call.body, ...state.returned } }; },
       };
       return query;
     },
   };
-  const service = createTanksService({ client, fetcher: async (url, options) => {
-    requests.push({ url, options });
-    if (state.schemaNetworkFailure) throw new Error('private-provider-detail');
-    if (state.schemaResponse) return state.schemaResponse;
-    try {
-      const contract = tankContract(spec, new URL(url, 'http://localhost').searchParams.get('operation'));
-      return { ok: true, json: async () => ({ contract, userId: owner }) };
-    } catch (error) {
-      return { ok: false, status: 422, json: async () => ({ code: error.code, fields: error.fields }) };
-    }
-  } });
-  return { service, calls, requests, state };
+  return { service: createTanksService({ client }), calls, state };
 }
 
-test('insert uses verified ownership and only mapped tank fields, never device or measured data', async () => {
-  const { service, calls, requests } = mockService();
-  await service.save(plan);
-  assert.equal(calls.length, 1); assert.equal(calls[0].table, 'tanks');
-  assert.equal(calls[0].body.user_id, owner);
-  assert.equal(calls[0].body.name, 'New Tank'); assert.equal(calls[0].body.is_paired, false);
-  assert.equal(calls[0].body.normal_water_depth_cm, 40);
-  assert.ok(!Object.hasOwn(calls[0].body, 'water_depth_cm')); assert.ok(!Object.hasOwn(calls[0].body, 'device_uid'));
-  assert.equal(requests[0].options.headers.Authorization, 'Bearer fake-token');
-  assert.equal(requests[0].url, '/api/tank-schema?operation=create');
-  assert.ok(!Object.hasOwn(requests[0].options.headers, 'apikey'));
+test('one insert uses verified auth owner and only columns in supplied public.tanks DDL', async () => {
+  const { service, calls, state } = mockService();
+  const result = await service.create(form);
+  assert.equal(state.authCalls, 1); assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0], { table: 'tanks', select: '*', body: {
+    user_id: owner, tank_name: 'Breeder Tank 1', tank_type: 'Breeder', male_count: 1, female_count: 2, juvenile_count: 0,
+    notes: 'Notes', has_paired_device: false, status: 'Unpaired',
+  } });
+  assert.equal(result.tank.id, result.id);
 });
 
-test('update filters by owner and primary key and preserves ownership and type', async () => {
-  const { service, calls, state } = mockService();
-  await service.save({ ...plan, type: 'breeder' }, 'tank-a');
-  assert.deepEqual(calls[0].filters, [['id', 'tank-a'], ['user_id', owner]]);
-  assert.ok(!Object.hasOwn(calls[0].body, 'user_id')); assert.ok(!Object.hasOwn(calls[0].body, 'tank_type'));
-  state.row.user_id = 'other-user';
-  await assert.rejects(service.save(plan, 'tank-a'), /could not be saved/);
-  await assert.rejects(service.loadForEditing('tank-a'), /permission/);
+test('juvenile uses same table/ownership with zero breeder counters and selected count', async () => {
+  const { service, calls } = mockService();
+  const result = await service.create({ ...form, type: 'juvenile', juvenileCount: '20' });
+  assert.equal(result.tank.tank_type, 'Juvenile');
+  assert.equal(calls[0].body.juvenile_count, 20);
+  assert.equal(calls[0].body.male_count, 0); assert.equal(calls[0].body.female_count, 0);
 });
 
-test('validation, unavailable schema, and expired authentication prevent writes', async () => {
+test('invalid forms and absent auth never insert', async () => {
   const { service, calls, state } = mockService();
-  await assert.rejects(service.save({ ...plan, normalWaterDepthCm: 100 }), /exceed/);
+  await assert.rejects(service.create({ ...form, name: '  ' }), error => error.code === 'TANK_FORM_INVALID');
+  await assert.rejects(service.create({ ...form, type: 'juvenile', juvenileCount: '15.5' }), error => error.code === 'TANK_FORM_INVALID');
+  assert.equal(state.authCalls, 0);
   state.authenticated = false;
-  await assert.rejects(service.save(plan), error => error.code === 'TANK_AUTH_REQUIRED');
+  await assert.rejects(service.create(form), error => error.code === 'TANK_AUTH_REQUIRED');
   assert.equal(calls.length, 0);
-  const spec = tankSpec(); delete spec.definitions.tanks.properties.normal_water_depth_cm;
-  const unavailable = mockService(spec);
-  await assert.rejects(unavailable.service.save(plan), error => error.code === 'TANK_FIELDS_MISSING');
-  assert.equal(unavailable.calls.length, 0);
 });
 
-test('RLS errors propagate without retrying another table or weaker ownership', async () => {
+test('RLS rejection is preserved with no fallback insert or ownership change', async () => {
   const { service, calls, state } = mockService();
-  state.failure = { code: '42501', status: 403 };
-  await assert.rejects(service.save(plan), error => error.code === '42501');
+  state.failure = { code: '42501', message: 'RLS rejection' };
+  await assert.rejects(service.create(form), error => error === state.failure);
   assert.equal(calls.length, 1); assert.equal(calls[0].body.user_id, owner);
 });
 
-test('existing integer dimensions and text limits produce field errors without rounding or writes', async () => {
-  const spec = tankSpec();
-  spec.definitions.tanks.properties.length_cm.type = 'integer';
-  spec.definitions.tanks.properties.notes.maxLength = 10;
-  const { service, calls } = mockService(spec);
-  await assert.rejects(service.save({ ...plan, lengthCm: 100.5, notes: 'Much longer than ten' }), error => Boolean(error.fields.lengthCm && error.fields.notes));
-  assert.equal(calls.length, 0);
-});
-
-test('creation succeeds without edit permission, and edit preserves a required existing device', async () => {
-  const createOnly = tankSpec(); delete createOnly.paths['/tanks'].patch;
-  const creator = mockService(createOnly);
-  await creator.service.save(plan);
-  assert.equal(creator.calls[0].method, 'insert');
-  const editOnly = tankSpec(); delete editOnly.paths['/tanks'].post;
-  editOnly.definitions.tanks.required.push('device_uid');
-  const editor = mockService(editOnly); editor.state.row.device_uid = 'existing-device';
-  const result = await editor.service.save(plan, 'tank-a');
-  assert.equal(result.tank.device_uid, 'existing-device');
-  assert.equal(editor.calls[0].method, 'update');
-  assert.ok(!Object.hasOwn(editor.calls[0].body, 'device_uid'));
-});
-
-test('schema access, network and invalid JSON failures stay distinct without exposing provider details', async () => {
-  const unconfigured = createTanksService({ client: null });
-  await assert.rejects(unconfigured.inspectContract(), error => error.code === 'TANK_CONFIG_MISSING');
-  const { service, state, calls } = mockService();
-  for (const [status, code] of [[401, 'TANK_AUTH_REQUIRED'], [403, 'TANK_ACCOUNT_NOT_ALLOWED'], [503, 'TANK_SCHEMA_UNAVAILABLE'], [503, 'TANK_SERVER_SETUP_REQUIRED'], [503, 'TANK_SCHEMA_ACCESS_DENIED']]) {
-    state.schemaResponse = { ok: false, status, json: async () => ({ code }) };
-    await assert.rejects(service.inspectContract(), error => error.code === code && error.status === status);
+test('returned row must confirm owner, type, numeric population and unpaired state', async () => {
+  for (const returned of [{ user_id: 'other-owner' }, { tank_type: 'breeder' }, { juvenile_count: 10 }, { male_count: 2 }, { female_count: 1 }, { has_paired_device: true }, { id: null }]) {
+    const { service, state, calls } = mockService(); state.returned = returned;
+    await assert.rejects(service.create(form), error => error.code === 'TANK_RESULT_UNCONFIRMED');
+    assert.equal(calls.length, 1);
   }
-  state.schemaResponse = { ok: true, json: async () => { throw new Error('private-provider-detail'); } };
-  await assert.rejects(service.inspectContract(), error => error.code === 'TANK_SCHEMA_UNAVAILABLE' && !error.message.includes('private-provider-detail'));
-  state.schemaNetworkFailure = true;
-  await assert.rejects(service.inspectContract(), error => error.code === 'TANK_SCHEMA_UNAVAILABLE' && !error.message.includes('private-provider-detail'));
-  assert.equal(calls.length, 0);
 });
 
-test('mismatched server identity and unsafe column metadata prevent any writes', async () => {
-  const { service, state, calls } = mockService();
-  state.schemaResponse = { ok: true, json: async () => ({ userId: 'other-user', contract: tankContract() }) };
-  await assert.rejects(service.save(plan), error => error.code === 'TANK_AUTH_REQUIRED');
-  const contract = tankContract(); contract.fields.normalWaterDepthCm = 'water_depth_cm';
-  state.schemaResponse = { ok: true, json: async () => ({ userId: owner, contract }) };
-  await assert.rejects(service.save(plan), error => error.code === 'TANK_SCHEMA_UNAVAILABLE');
-  assert.equal(calls.length, 0);
+test('missing public connection fails safely without a schema endpoint or server secret', async () => {
+  await assert.rejects(createTanksService({ client: null }).create(form), error => error.code === 'TANK_CONFIG_MISSING');
 });

@@ -3,6 +3,7 @@ import { getAmmoniaLabel, getAmmoniaNumericValue, getAmmoniaScanDate, getLatestA
 import { loadCurrentTankRows } from "../../services/tankSnapshotService";
 import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
 import { getTankPairingState } from "../../utils/tankPairing";
+import { getTankPopulationLabel } from "../../utils/tankCreationRules";
 import { getSafetySeverity, getParameterExplanation, getSafetyStatusLabel } from "../../utils/statusHelpers";
 import {
   useEffect,
@@ -11,7 +12,7 @@ import {
   useState,
 } from "react";
 
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import {
   AlertCircle,
@@ -26,6 +27,7 @@ import {
   Filter,
   Gauge,
   Loader2,
+  Plus,
   RefreshCw,
   Search,
   Thermometer,
@@ -54,8 +56,6 @@ import {
 
 const tankTables = [
   "tanks",
-  "user_tanks",
-  "tank_profiles",
 ];
 
 const readingTables = [
@@ -884,6 +884,9 @@ function FilterDropdown({
 ========================================================= */
 
 export default function TanksPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const createdTank = location.state?.tankCreated;
   const [currentRows, setCurrentRows] = useState({ sensor: [], ammonia: [] });
   const [
     tanks,
@@ -1489,6 +1492,9 @@ export default function TanksPage() {
           </p>
 
           <div className="modern-tanks-actions">
+            <Link to="/admin/tanks/add" className="dashboard-primary-button">
+              <Plus size={18} aria-hidden="true" /> Add Tank
+            </Link>
             <button
               type="button"
               className="dashboard-primary-button"
@@ -1525,6 +1531,12 @@ export default function TanksPage() {
           </span>
         </div>
       </section>
+
+      {createdTank && <div className="tank-created-notice" role="status">
+        <CheckCircle2 size={18} aria-hidden="true" />
+        <span>{createdTank.name} was created. You can connect a device later.</span>
+        <button type="button" onClick={() => navigate(location.pathname, { replace: true, state: null })}>Dismiss</button>
+      </div>}
 
       {/* ===============================================
           SUMMARY
@@ -1701,6 +1713,10 @@ export default function TanksPage() {
                 </div>
 
                 {/* LAST UPDATE */}
+
+                {getTankPopulationLabel(item.tank) && <p className="tank-population-summary">
+                  Population: {getTankPopulationLabel(item.tank)}
+                </p>}
 
                 <div className="modern-tank-friendly-sync">
                   {getTankPairingState(item.tank) === 'Unpaired' && (

@@ -3,6 +3,7 @@ import { getAmmoniaLabel, getAmmoniaNumericValue, getAmmoniaScanDate, getLatestA
 import { loadAmmoniaHistory, loadCurrentTankRows } from "../../services/tankSnapshotService";
 import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
 import { getTankPairingState } from "../../utils/tankPairing";
+import { getTankPopulationLabel } from "../../utils/tankCreationRules";
 import { getSafetyLabelSeverity, getSafetySeverity, getParameterExplanation, getSafetyStatusLabel } from "../../utils/statusHelpers";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -3021,6 +3022,7 @@ export default function TankDetailsPage() {
           <span>
             Tank type
           </span>
+          {getTankPopulationLabel(tank) && <span className="tank-population-summary">Population: {getTankPopulationLabel(tank)}</span>}
         </article>
 
         <article className="modern-tank-detail-info-card">

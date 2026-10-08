@@ -17,6 +17,7 @@ import AdminLayout from "./layouts/AdminLayout";
 import DashboardOverview from "./pages/admin/DashboardOverview";
 
 import TanksPage from "./pages/admin/TanksPage";
+import AddTankPage from "./pages/admin/AddTankPage";
 import TankDetailsPage from "./pages/admin/TankDetailsPage";
 
 import SensorReadingsPage from "./pages/admin/SensorReadingsPage";
@@ -121,7 +122,7 @@ export default function App() {
 
           <Route
             path="tanks/add"
-            element={<Navigate to="/admin/tanks" replace />}
+            element={<AddTankPage />}
           />
 
           <Route

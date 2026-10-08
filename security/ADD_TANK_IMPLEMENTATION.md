@@ -1,5 +1,13 @@
 # Add Tank implementation and verification
 
+**Superseded on 2026-10-08 by the owner's mobile compatibility request.**
+The current web form uses the supplied shared `public.tanks` schema, fixed
+breeder counts and an editable juvenile count. No dimensions, capacity,
+schema endpoint or server secret is required by the current creation flow.
+See [WEB_MOBILE_TANK_CREATION.md](WEB_MOBILE_TANK_CREATION.md) for current
+behavior, verification and the mobile details still awaiting confirmation.
+The retirement and setup instructions below describe earlier implementations.
+
 **Retired on 2026-10-08 at the project owner's request.** The web Add/Edit Tank
 buttons, form routes, planning panel and public setup endpoint have been
 removed. Old form URLs redirect to the tank list. Monitoring and tank data

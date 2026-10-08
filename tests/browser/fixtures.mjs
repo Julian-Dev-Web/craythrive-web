@@ -34,7 +34,7 @@ export function datasets() {
 
 export const test = base.extend({
   qa: async ({ context, page }, use) => {
-    const state = { data: datasets(), authenticated: true, invalidLogin: false, expired: false, authDelay: 0, authRequests: [], reads: [], writes: [], errors: [], warnings: [], localFailures: [], externalRequests: [] };
+    const state = { data: datasets(), authenticated: true, invalidLogin: false, expired: false, authDelay: 0, tankWriteDelay: 0, tankWriteFailure: false, authRequests: [], reads: [], writes: [], errors: [], warnings: [], localFailures: [], externalRequests: [] };
     await context.addInitScript(({ session }) => {
       localStorage.setItem('sb-qa-auth-token', JSON.stringify(session));
       window.print = () => { window.__qaPrintCalled = true; };
@@ -77,6 +77,13 @@ export const test = base.extend({
         if (request.method() !== 'GET' && request.method() !== 'HEAD') {
           const body = request.postDataJSON();
           state.writes.push({ table, method: request.method(), body });
+          if (table === 'tanks' && request.method() === 'POST') {
+            if (state.tankWriteDelay) await new Promise(resolve => setTimeout(resolve, state.tankWriteDelay));
+            if (state.tankWriteFailure || body.user_id !== user.id) return reply({ code: '42501', message: 'Row-level security rejected the insert' }, 403);
+            const columns = ['id', 'user_id', 'tank_name', 'tank_type', 'male_count', 'female_count', 'juvenile_count', 'population_label', 'tank_size_label', 'notes', 'status', 'has_paired_device', 'created_at', 'updated_at'];
+            if (Object.keys(body).some(key => !columns.includes(key))) return reply({ code: 'PGRST204', message: 'Unknown tank column' }, 400);
+            if (!['Breeder', 'Juvenile'].includes(body.tank_type)) return reply({ code: '23514', message: 'Tank type constraint' }, 400);
+          }
           if (request.method() === 'PATCH') {
             rows.forEach(row => {
               Object.assign(row, body);
@@ -87,7 +94,7 @@ export const test = base.extend({
             const conflict = url.searchParams.get('on_conflict');
             const existing = conflict && state.data[table]?.find(row => row[conflict] === body[conflict]);
             if (existing) { Object.assign(existing, body); rows = [existing]; }
-            else { rows = [{ id: `qa-created-${state.writes.length}`, ...body }]; state.data[table] = [...(state.data[table] || []), ...rows]; }
+            else { rows = [{ id: `qa-created-${state.writes.length}`, ...(table === 'tanks' ? { male_count: 0, female_count: 0, juvenile_count: 0, population_label: null, tank_size_label: null, status: 'Unpaired', has_paired_device: false, created_at: new Date().toISOString() } : {}), ...body }]; state.data[table] = [...(state.data[table] || []), ...rows]; }
           }
         }
         if (url.searchParams.get('order')?.includes('created_at.desc')) rows.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
@@ -103,7 +110,8 @@ export const test = base.extend({
     page.on('console', message => {
       const expectedAuthFailure = (state.expired || state.invalidLogin || !state.authenticated) &&
         /^Failed to load resource:.*status of (400|401)/.test(message.text());
-      if (message.type() === 'error' && !expectedAuthFailure) state.errors.push(message.text());
+      const expectedTankFailure = state.tankWriteFailure && /^Failed to load resource:.*status of 403/.test(message.text());
+      if (message.type() === 'error' && !expectedAuthFailure && !expectedTankFailure) state.errors.push(message.text());
       if (message.type() === 'warning') state.warnings.push(message.text());
     });
     page.on('response', response => {
