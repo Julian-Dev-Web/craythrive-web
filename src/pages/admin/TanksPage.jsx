@@ -2,6 +2,8 @@ import { logDiagnostic } from "../../utils/securityDiagnostics";
 import { getAmmoniaLabel, getAmmoniaNumericValue, getAmmoniaScanDate, getLatestAmmoniaForTank, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
 import { loadCurrentTankRows } from "../../services/tankSnapshotService";
 import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
+import { getTankPairingState } from "../../utils/tankStockingGuidance";
+import "../../styles/tankPlanning.css";
 import { getSafetySeverity, getParameterExplanation, getSafetyStatusLabel } from "../../utils/statusHelpers";
 import {
   useEffect,
@@ -25,6 +27,7 @@ import {
   Filter,
   Gauge,
   Loader2,
+  Plus,
   RefreshCw,
   Search,
   Thermometer,
@@ -1488,9 +1491,12 @@ export default function TanksPage() {
           </p>
 
           <div className="modern-tanks-actions">
+            <Link to="/admin/tanks/add" className="dashboard-primary-button">
+              <Plus size={18} aria-hidden="true" />Add Tank
+            </Link>
             <button
               type="button"
-              className="dashboard-primary-button"
+              className="tank-form-secondary"
               onClick={
                 loadTanks
               }
@@ -1702,6 +1708,10 @@ export default function TanksPage() {
                 {/* LAST UPDATE */}
 
                 <div className="modern-tank-friendly-sync">
+                  {getTankPairingState(item.tank) === 'Unpaired' && (
+                    <span className="tank-pairing-state">Unpaired</span>
+                  )}
+                  {" "}
                   {item.latestReading ? (
                     <>
                       Latest update:{" "}

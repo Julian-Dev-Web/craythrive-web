@@ -18,6 +18,7 @@ import DashboardOverview from "./pages/admin/DashboardOverview";
 
 import TanksPage from "./pages/admin/TanksPage";
 import TankDetailsPage from "./pages/admin/TankDetailsPage";
+import AddTankPage from "./pages/admin/AddTankPage";
 
 import SensorReadingsPage from "./pages/admin/SensorReadingsPage";
 
@@ -117,6 +118,16 @@ export default function App() {
             element={
               <TanksPage />
             }
+          />
+
+          <Route
+            path="tanks/add"
+            element={<AddTankPage />}
+          />
+
+          <Route
+            path="tanks/:tankId/edit"
+            element={<AddTankPage />}
           />
 
           <Route

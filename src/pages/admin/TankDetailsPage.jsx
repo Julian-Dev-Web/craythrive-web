@@ -2,6 +2,9 @@ import { logDiagnostic, getSafeErrorMessage } from "../../utils/securityDiagnost
 import { getAmmoniaLabel, getAmmoniaNumericValue, getAmmoniaScanDate, getLatestAmmoniaForTank, recordMatchesAmmoniaTank, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
 import { loadAmmoniaHistory, loadCurrentTankRows } from "../../services/tankSnapshotService";
 import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
+import TankPlanningGuide from "../../components/TankPlanningGuide";
+import { readTankPlan } from "../../utils/tankPlanningSchema";
+import { getTankPairingState } from "../../utils/tankStockingGuidance";
 import { getSafetyLabelSeverity, getSafetySeverity, getParameterExplanation, getSafetyStatusLabel } from "../../utils/statusHelpers";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -861,14 +864,16 @@ function getSimpleAlertMessage(item) {
 ========================================================= */
 
 function getActuatorConnectionState(
-  device
+  device,
+  tank
 ) {
   if (!device) {
+    const unpaired = getTankPairingState(tank) === 'Unpaired';
     return {
       label:
-        "Not Connected",
+        unpaired ? "Unpaired" : "Not Connected",
       severity:
-        "critical",
+        unpaired ? "no-data" : "critical",
       icon:
         WifiOff,
       isConnected:
@@ -2374,7 +2379,8 @@ export default function TankDetailsPage() {
 
   const actuatorState =
     getActuatorConnectionState(
-      actuatorDevice
+      actuatorDevice,
+      tank
     );
 
   const ActuatorIcon =
@@ -2928,6 +2934,12 @@ export default function TankDetailsPage() {
 
           <div className="modern-tank-detail-actions">
 
+            {tank?.user_id === currentUser?.id && (
+              <Link to={`/admin/tanks/${encodeURIComponent(tankId)}/edit`} className="tank-form-secondary">
+                <Settings size={16} aria-hidden="true" />Edit Tank
+              </Link>
+            )}
+
             <button
               type="button"
               className="dashboard-primary-button"
@@ -3044,7 +3056,7 @@ export default function TankDetailsPage() {
 
           <strong>
             <b
-              className={`modern-tank-status ${actuatorState.severity}`}
+              className={`modern-tank-status safety-status ${actuatorState.severity}`}
             >
               {actuatorState.label}
             </b>
@@ -3414,6 +3426,8 @@ export default function TankDetailsPage() {
           </section>
 
           {/* LATEST ALERT */}
+
+          <TankPlanningGuide plan={readTankPlan(tank)} saved />
 
           {latestAlert && (
             <section className="modern-tank-detail-panel">

@@ -1,4 +1,5 @@
 import { test as base, expect } from '@playwright/test';
+import { tankSpec } from '../fixtures/tank-schema.mjs';
 
 export const user = { id: '11111111-1111-4111-8111-111111111111', email: 'farmer@example.invalid', role: 'authenticated', aud: 'authenticated' };
 const now = new Date().toISOString();
@@ -34,7 +35,7 @@ export function datasets() {
 
 export const test = base.extend({
   qa: async ({ context, page }, use) => {
-    const state = { data: datasets(), authenticated: true, invalidLogin: false, expired: false, authDelay: 0, authRequests: [], reads: [], writes: [], errors: [], warnings: [], localFailures: [], externalRequests: [] };
+    const state = { tankSchema: tankSpec(), tankWriteFailure: false, tankWriteDelay: 0, data: datasets(), authenticated: true, invalidLogin: false, expired: false, authDelay: 0, authRequests: [], reads: [], writes: [], errors: [], warnings: [], localFailures: [], externalRequests: [] };
     await context.addInitScript(({ session }) => {
       localStorage.setItem('sb-qa-auth-token', JSON.stringify(session));
       window.print = () => { window.__qaPrintCalled = true; };
@@ -64,6 +65,7 @@ export const test = base.extend({
         return reply({});
       }
       if (url.pathname.startsWith('/rest/v1/')) {
+        if (url.pathname === '/rest/v1/') return reply(state.tankSchema);
         const table = url.pathname.split('/').at(-1);
         if (request.method() === 'GET') state.reads.push({ table, filters: Object.fromEntries(url.searchParams) });
         let rows = structuredClone(state.data[table] || []);
@@ -75,6 +77,11 @@ export const test = base.extend({
         if (request.method() !== 'GET' && request.method() !== 'HEAD') {
           const body = request.postDataJSON();
           state.writes.push({ table, method: request.method(), body });
+          if (table === 'tanks') {
+            if (state.tankWriteDelay) await new Promise(resolve => setTimeout(resolve, state.tankWriteDelay));
+            // Supabase ownership rejection is exercised separately with real accounts.
+            if (state.tankWriteFailure) return reply({ code: '42501', message: 'row-level security policy' }, 403);
+          }
           if (request.method() === 'PATCH') {
             rows.forEach(row => {
               Object.assign(row, body);
@@ -101,7 +108,8 @@ export const test = base.extend({
     page.on('console', message => {
       const expectedAuthFailure = (state.expired || state.invalidLogin || !state.authenticated) &&
         /^Failed to load resource:.*status of (400|401)/.test(message.text());
-      if (message.type() === 'error' && !expectedAuthFailure) state.errors.push(message.text());
+      const expectedTankRejection = state.tankWriteFailure && /^Failed to load resource:.*status of 403/.test(message.text());
+      if (message.type() === 'error' && !expectedAuthFailure && !expectedTankRejection) state.errors.push(message.text());
       if (message.type() === 'warning') state.warnings.push(message.text());
     });
     page.on('response', response => {
