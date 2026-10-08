@@ -2,9 +2,7 @@ import { logDiagnostic, getSafeErrorMessage } from "../../utils/securityDiagnost
 import { getAmmoniaLabel, getAmmoniaNumericValue, getAmmoniaScanDate, getLatestAmmoniaForTank, recordMatchesAmmoniaTank, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
 import { loadAmmoniaHistory, loadCurrentTankRows } from "../../services/tankSnapshotService";
 import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
-import TankPlanningGuide from "../../components/TankPlanningGuide";
-import { readTankPlan } from "../../utils/tankPlanningSchema";
-import { getTankPairingState } from "../../utils/tankStockingGuidance";
+import { getTankPairingState } from "../../utils/tankPairing";
 import { getSafetyLabelSeverity, getSafetySeverity, getParameterExplanation, getSafetyStatusLabel } from "../../utils/statusHelpers";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -2934,12 +2932,6 @@ export default function TankDetailsPage() {
 
           <div className="modern-tank-detail-actions">
 
-            {tank?.user_id === currentUser?.id && (
-              <Link to={`/admin/tanks/${encodeURIComponent(tankId)}/edit`} className="tank-form-secondary">
-                <Settings size={16} aria-hidden="true" />Edit Tank
-              </Link>
-            )}
-
             <button
               type="button"
               className="dashboard-primary-button"
@@ -3426,8 +3418,6 @@ export default function TankDetailsPage() {
           </section>
 
           {/* LATEST ALERT */}
-
-          <TankPlanningGuide plan={readTankPlan(tank)} saved />
 
           {latestAlert && (
             <section className="modern-tank-detail-panel">

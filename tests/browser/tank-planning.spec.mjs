@@ -1,5 +1,8 @@
 import { test, expect, user } from './fixtures.mjs';
 
+// Keep the feature's test history; these forms are no longer exposed on web.
+test.describe.skip('Retired web Add/Edit Tank forms', () => {
+
 const values = { name: 'Web Juvenile Tank', lengthCm: '100', widthCm: '100', heightCm: '60', normalWaterDepthCm: '40', population: '5', shelters: '5', notes: 'PVC shelters ready' };
 async function fill(page, overrides = {}) {
   for (const [name, value] of Object.entries({ ...values, ...overrides })) await page.locator(`[name="${name}"]`).fill(value);
@@ -215,3 +218,4 @@ for (const width of [390, 768, 1440]) {
     });
   }
 }
+});

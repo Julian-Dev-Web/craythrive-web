@@ -93,12 +93,11 @@ test("password recovery does not query private profiles or reveal account existe
   assert.equal(source.includes('If an account exists'), true);
 });
 
-test("Vercel framing restrictions preserve SPA routes and leave API requests to functions", () => {
+test("Vercel framing restrictions preserve SPA routes", () => {
   const config = JSON.parse(fs.readFileSync(new URL('../vercel.json',import.meta.url),'utf8'));
   assert.equal(config.rewrites[0].destination,'/index.html');
   const spa = new RegExp(`^${config.rewrites[0].source}$`);
   for (const path of ['/', '/admin/tanks/add', '/admin/tanks/tank-a/edit', '/login']) assert.equal(spa.test(path), true);
-  for (const path of ['/api', '/api/tank-schema', '/api/tank-schema/']) assert.equal(spa.test(path), false);
   const headers = new Map(config.headers[0].headers.map(({key,value})=>[key,value]));
   assert.equal(headers.get('X-Content-Type-Options'),'nosniff');
   assert.match(headers.get('Content-Security-Policy'),/frame-ancestors 'none'/);

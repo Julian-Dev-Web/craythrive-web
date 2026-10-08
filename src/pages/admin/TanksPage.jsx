@@ -2,8 +2,7 @@ import { logDiagnostic } from "../../utils/securityDiagnostics";
 import { getAmmoniaLabel, getAmmoniaNumericValue, getAmmoniaScanDate, getLatestAmmoniaForTank, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
 import { loadCurrentTankRows } from "../../services/tankSnapshotService";
 import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
-import { getTankPairingState } from "../../utils/tankStockingGuidance";
-import "../../styles/tankPlanning.css";
+import { getTankPairingState } from "../../utils/tankPairing";
 import { getSafetySeverity, getParameterExplanation, getSafetyStatusLabel } from "../../utils/statusHelpers";
 import {
   useEffect,
@@ -27,7 +26,6 @@ import {
   Filter,
   Gauge,
   Loader2,
-  Plus,
   RefreshCw,
   Search,
   Thermometer,
@@ -1491,12 +1489,9 @@ export default function TanksPage() {
           </p>
 
           <div className="modern-tanks-actions">
-            <Link to="/admin/tanks/add" className="dashboard-primary-button">
-              <Plus size={18} aria-hidden="true" />Add Tank
-            </Link>
             <button
               type="button"
-              className="tank-form-secondary"
+              className="dashboard-primary-button"
               onClick={
                 loadTanks
               }

@@ -1,6 +1,4 @@
 import { test as base, expect } from '@playwright/test';
-import { tankSpec } from '../fixtures/tank-schema.mjs';
-import { createTankSchemaHandler } from '../../server/tankSchemaHandler.js';
 
 export const user = { id: '11111111-1111-4111-8111-111111111111', email: 'farmer@example.invalid', role: 'authenticated', aud: 'authenticated' };
 const now = new Date().toISOString();
@@ -36,7 +34,7 @@ export function datasets() {
 
 export const test = base.extend({
   qa: async ({ context, page }, use) => {
-    const state = { tankSchema: tankSpec(), tankServerConfigured: true, tankSchemaStatus: 200, tankSetupFailures: [], tankSetupRequests: [], tankWriteFailure: false, tankWriteDelay: 0, data: datasets(), authenticated: true, invalidLogin: false, expired: false, authDelay: 0, authRequests: [], reads: [], writes: [], errors: [], warnings: [], localFailures: [], externalRequests: [] };
+    const state = { data: datasets(), authenticated: true, invalidLogin: false, expired: false, authDelay: 0, authRequests: [], reads: [], writes: [], errors: [], warnings: [], localFailures: [], externalRequests: [] };
     await context.addInitScript(({ session }) => {
       localStorage.setItem('sb-qa-auth-token', JSON.stringify(session));
       window.print = () => { window.__qaPrintCalled = true; };
@@ -44,23 +42,6 @@ export const test = base.extend({
     await context.route('**/*', async route => {
       const request = route.request();
       const url = new URL(request.url());
-      if (url.hostname === '127.0.0.1' && url.pathname === '/api/tank-schema') {
-        state.tankSetupRequests.push({ url: request.url(), headers: request.headers() });
-        // Exercise the real handler against an injected provider, never a live DB.
-        const handler = createTankSchemaHandler({
-          env: { VITE_SUPABASE_URL: 'https://qa.supabase.invalid', VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_qa', SUPABASE_SECRET_KEY: state.tankServerConfigured ? 'example_server_only_key' : '' },
-          clientFactory: () => ({
-            auth: { getUser: async () => ({ data: { user: state.authenticated && !state.expired ? user : null } }) },
-            from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: state.data.profiles.find(profile => profile.id === user.id || profile.user_id === user.id) }) }) }) }),
-          }),
-          fetcher: async () => ({ ok: state.tankSchemaStatus === 200, status: state.tankSchemaStatus, json: async () => state.tankSchema }),
-        });
-        const headers = {};
-        const response = { statusCode: 200, setHeader: (key, value) => { headers[key] = value; }, end: body => { response.body = body; } };
-        await handler({ method: request.method(), url: url.pathname + url.search, headers: request.headers() }, response);
-        if (response.statusCode >= 400) state.tankSetupFailures.push(response.statusCode);
-        return route.fulfill({ status: response.statusCode, headers, body: response.body });
-      }
       if (url.hostname === '127.0.0.1') return route.continue();
       state.externalRequests.push(url.hostname);
       if (url.hostname !== 'qa.supabase.invalid') {
@@ -96,11 +77,6 @@ export const test = base.extend({
         if (request.method() !== 'GET' && request.method() !== 'HEAD') {
           const body = request.postDataJSON();
           state.writes.push({ table, method: request.method(), body });
-          if (table === 'tanks') {
-            if (state.tankWriteDelay) await new Promise(resolve => setTimeout(resolve, state.tankWriteDelay));
-            // Supabase ownership rejection is exercised separately with real accounts.
-            if (state.tankWriteFailure) return reply({ code: '42501', message: 'row-level security policy' }, 403);
-          }
           if (request.method() === 'PATCH') {
             rows.forEach(row => {
               Object.assign(row, body);
@@ -127,13 +103,11 @@ export const test = base.extend({
     page.on('console', message => {
       const expectedAuthFailure = (state.expired || state.invalidLogin || !state.authenticated) &&
         /^Failed to load resource:.*status of (400|401)/.test(message.text());
-      const expectedTankRejection = state.tankWriteFailure && /^Failed to load resource:.*status of 403/.test(message.text());
-      const expectedSetupRejection = state.tankSetupFailures.some(status => message.text().includes(`status of ${status}`));
-      if (message.type() === 'error' && !expectedAuthFailure && !expectedTankRejection && !expectedSetupRejection) state.errors.push(message.text());
+      if (message.type() === 'error' && !expectedAuthFailure) state.errors.push(message.text());
       if (message.type() === 'warning') state.warnings.push(message.text());
     });
     page.on('response', response => {
-      if (response.url().startsWith('http://127.0.0.1:4175') && !response.url().includes('/api/tank-schema?') && response.status() >= 400) state.localFailures.push(response.url());
+      if (response.url().startsWith('http://127.0.0.1:4175') && response.status() >= 400) state.localFailures.push(response.url());
     });
     await use(state);
     expect(state.localFailures, 'local asset/route failures').toEqual([]);

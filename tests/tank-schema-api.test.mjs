@@ -132,7 +132,7 @@ test('Node function serves authenticated JSON over HTTP, not the SPA fallback', 
   }
 });
 
-test('Vite development serves the same protected API instead of returning index.html', async () => {
+test('Vite development serves the same protected API instead of returning index.html', { skip: 'Web Add/Edit Tank and its dev endpoint were retired' }, async () => {
   const { createServer } = await import('vite');
   const server = await createServer({ server: { host: '127.0.0.1', port: 0, hmr: false, ws: false }, logLevel: 'silent' });
   try {

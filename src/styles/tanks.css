@@ -22,6 +22,18 @@
   box-sizing: border-box;
 }
 
+.tank-pairing-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  background: var(--ct-surface-soft);
+  border: 1px solid var(--ct-border);
+  border-radius: 6px;
+  color: var(--ct-muted);
+  font-size: .75rem;
+}
+
 /* =========================================================
    LOADING
 ========================================================= */

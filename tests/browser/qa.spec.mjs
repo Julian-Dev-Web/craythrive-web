@@ -39,6 +39,26 @@ test('invalid route, alias, browser Back and Forward', async ({ page, qa }) => {
   expect(qa.writes).toEqual([]);
 });
 
+test('tank monitoring has no Add/Edit forms or setup requests and old form links redirect', async ({ page, qa }) => {
+  const setupRequests = [];
+  page.on('request', request => { if (new URL(request.url()).pathname === '/api/tank-schema') setupRequests.push(request.url()); });
+  await page.goto('/admin/tanks');
+  await expect(page.getByText('Tank A', { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Add Tank', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await page.goto('/admin/tanks/tank-a');
+  await expect(page.getByRole('heading', { name: 'Tank A', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Edit Tank', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Tank Planning Guide' })).toHaveCount(0);
+  await expect(page.locator('.modern-tank-detail-hero-card')).toContainText('Critical');
+  for (const route of ['/admin/tanks/add', '/admin/tanks/tank-a/edit']) {
+    await page.goto(route); await expect(page).toHaveURL('/admin/tanks');
+    await expect(page.getByText('Tank A', { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole('form', { name: /add tank|edit tank/i })).toHaveCount(0);
+  }
+  expect(setupRequests).toEqual([]); expect(qa.writes).toEqual([]);
+});
+
 test('protected routes reject absent and expired sessions', async ({ page, qa, context }) => {
   qa.authenticated = false;
   await context.addInitScript(() => localStorage.removeItem('sb-qa-auth-token'));

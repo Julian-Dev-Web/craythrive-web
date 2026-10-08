@@ -1,5 +1,19 @@
 # Add Tank implementation and verification
 
+**Retired on 2026-10-08 at the project owner's request.** The web Add/Edit Tank
+buttons, form routes, planning panel and public setup endpoint have been
+removed. Old form URLs redirect to the tank list. Monitoring and tank data
+remain available. No SQL was executed. Setup-key instructions below are
+historical and no longer required by the web dashboard.
+
+Audit SQL and feature source/unit coverage are retained for reference; the
+browser form tests and dev-endpoint test are explicitly retired. Removal
+verification passed the production build, credential scan, 49 unit tests
+(one retired dev-endpoint check skipped) and 9 focused browser checks,
+including phone layouts.
+The existing ESLint baseline is 24 errors / 5 warnings. The owner requested
+publication to GitHub; live deployment remains unverified.
+
 Implemented and checked locally on 2026-10-08. GitHub publication was subsequently requested by the project owner. No SQL was executed; hosted deployment has not been verified.
 
 **Live database and mobile verification remains pending.** The workspace contains no usable Supabase public configuration, exported tanks schema, or mobile Add Tank source. A read-only schema inspection request is pending with the project owner. Mock test results do not prove production RLS or mobile compatibility.
