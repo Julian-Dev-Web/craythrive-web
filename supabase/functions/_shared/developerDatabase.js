@@ -20,7 +20,7 @@ const foreignKeysQuery = `select child.relname as "table", parent.relname as par
 
 export function createDeveloperDatabase(sql) {
   return { transaction(mode, operation) {
-    return sql.begin(mode === 'read' ? 'isolation level repeatable read read only' : '', async connection => {
+    return sql.begin(mode === 'read' ? 'isolation level repeatable read read only' : mode === 'backup' ? 'isolation level serializable' : '', async connection => {
       const query = (text, parameters = []) => connection.unsafe(text, parameters);
       await query("set local statement_timeout = '25s'");
       await query("set local lock_timeout = '5s'");
@@ -34,6 +34,7 @@ export function createDeveloperDatabase(sql) {
         }
       }
       return operation({
+        query,
         async snapshot(createdAt) {
           const live = await metadata();
           const tables = [];
@@ -60,7 +61,9 @@ export function createDeveloperDatabase(sql) {
           for (const table of [...tables].sort((a, b) => a.name.localeCompare(b.name))) {
             const pk = table.primaryKey;
             const input = `[${table.rows.join(',')}]`;
-            const incoming = `jsonb_populate_recordset(null::${relation(table.name)}, $1::jsonb)`;
+            // JSON text must travel as text: Postgres.js serializes jsonb parameters
+            // again, turning these precision-preserving row arrays into strings.
+            const incoming = `jsonb_populate_recordset(null::${relation(table.name)}, $1::text::jsonb)`;
             const invalid = await query(`select count(*)::int as total, count(distinct (${pk.map(key => `i.${quote(key)}`).join(',')}))::int as unique_keys,
               count(*) filter (where ${pk.map(key => `i.${quote(key)} is null`).join(' or ')})::int as null_keys from ${incoming} i`, [input]);
             if (invalid[0].total !== invalid[0].unique_keys || invalid[0].null_keys) fail('Backup contains duplicate or missing primary keys.');
@@ -94,7 +97,7 @@ export function createDeveloperDatabase(sql) {
             const conflict = updates.length ? `do update set ${updates.map(column => `${quote(column)} = excluded.${quote(column)}`).join(',')}
               where (${updates.map(column => `target.${quote(column)}`).join(',')}) is distinct from (${updates.map(column => `excluded.${quote(column)}`).join(',')})` : 'do nothing';
             await query(`insert into ${relation(table.name)} as target (${columns.map(quote).join(',')}) overriding system value
-              select ${columns.map(quote).join(',')} from jsonb_populate_recordset(null::${relation(table.name)}, $1::jsonb)
+              select ${columns.map(quote).join(',')} from jsonb_populate_recordset(null::${relation(table.name)}, $1::text::jsonb)
               on conflict (${table.primaryKey.map(quote).join(',')}) ${conflict}`, [`[${table.rows.join(',')}]`]);
             for (const column of table.columns.filter(item => item.identity)) {
               const [{ sequence }] = await query('select pg_get_serial_sequence($1, $2) as sequence', [relation(table.name), column.name]);

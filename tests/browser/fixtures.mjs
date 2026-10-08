@@ -36,6 +36,7 @@ export const test = base.extend({
   qa: async ({ context, page }, use) => {
     const state = { data: datasets(), authenticated: true, invalidLogin: false, expired: false, authDelay: 0, tankWriteDelay: 0, tankWriteFailure: false,
       developerAuthorized: false, developerVerified: false, developerDenied: false, developerInvalidOtp: false, developerOperationStatus: 0,
+      backupHistory: [], backupUnchanged: false, backupScheduleEnabled: true, backupLastRun: null,
       developerFactors: [{ id: '33333333-3333-4333-8333-333333333333', factor_type: 'totp', status: 'verified', friendly_name: 'QA Authenticator' }],
       developerRequests: [], authRequests: [], reads: [], writes: [], errors: [], warnings: [], localFailures: [], externalRequests: [] };
     await context.addInitScript(({ session }) => {
@@ -66,8 +67,22 @@ export const test = base.extend({
         if (state.developerOperationStatus) return reply({ error: 'QA operation rejected' }, state.developerOperationStatus);
         const envelope = { format: 'craythrive-backup', version: 1, iv: 'qa-only-iv', ciphertext: 'qa-only-encrypted-fixture' };
         const action = request.postDataJSON().action;
-        if (url.pathname.endsWith('/developer-backup')) return reply({ backup: envelope, createdAt: now,
-          tables: [{ name: 'profiles', rows: 1 }, { name: 'tanks', rows: 3 }], excludedTables: [] });
+        if (url.pathname.endsWith('/developer-backup')) {
+          if (action === 'history') {
+            const cursor = request.postDataJSON().cursor;
+            const offset = cursor ? state.backupHistory.findIndex(item => item.id === cursor.id) + 1 : 0;
+            const entries = state.backupHistory.slice(offset, offset + 20);
+            return reply({ entries, nextCursor: state.backupHistory.length > offset + 20 ? { id: entries.at(-1).id, createdAt: entries.at(-1).createdAt } : null,
+              lastRun: state.backupLastRun, schedule: { enabled: state.backupScheduleEnabled, time: '23:55', timeZone: 'Asia/Manila', nextRunAt: new Date(Date.now() + 86400000).toISOString() } });
+          }
+          if (action === 'download') {
+            const item = state.backupHistory.find(item => item.id === request.postDataJSON().id);
+            return item ? reply({ backup: envelope, createdAt: item.createdAt, tables: [], excludedTables: [] }) : reply({ error: 'Missing backup' }, 404);
+          }
+          if (!state.backupUnchanged) state.backupHistory.unshift({ id: '55555555-5555-4555-8555-555555555555', createdAt: new Date().toISOString(), backupDay: '2026-10-08', source: 'manual', recordCount: 4, tableCount: 2, byteSize: 1024 });
+          state.backupLastRun = { checkedAt: new Date().toISOString(), source: 'manual', status: state.backupUnchanged ? 'skipped' : 'saved', reason: state.backupUnchanged ? 'no_data_changes' : 'data_changed' };
+          return reply({ backup: envelope, createdAt: now, status: state.backupUnchanged ? 'skipped' : 'saved', tables: [{ name: 'profiles', rows: 1 }, { name: 'tanks', rows: 3 }], excludedTables: [] });
+        }
         if (action === 'preview') return reply({ createdAt: now, tables: [{ name: 'profiles', inserted: 0, updated: 0, unchanged: 1 },
           { name: 'tanks', inserted: 1, updated: 1, unchanged: 1 }], skippedTables: ['device_commands', 'push_tokens', 'tank_automation_settings'],
           expiresAt: Math.floor(Date.now() / 1000) + 120, previewToken: { ...envelope, ciphertext: 'qa-only-preview-proof' }, recoveryBackup: envelope });

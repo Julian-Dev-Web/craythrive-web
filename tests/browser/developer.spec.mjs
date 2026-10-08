@@ -97,7 +97,7 @@ test('verified developer downloads encrypted backup with current authorization',
   await page.getByRole('button', { name: 'Download backup', exact: true }).click();
   expect((await download).suggestedFilename()).toMatch(/^craythrive-backup-.*\.ctbackup$/);
   await expect(page.getByRole('status')).toContainText('Encrypted backup downloaded');
-  const request = qa.developerRequests.find(request => request.path.endsWith('/developer-backup'));
+  const request = qa.developerRequests.find(request => request.path.endsWith('/developer-backup') && request.body.action === 'export');
   expect(request.body).toEqual({ action: 'export' }); expect(request.authorization).toMatch(/^Bearer /);
 });
 
@@ -153,6 +153,7 @@ test('server operation failure shows an error without claiming restore success',
 for (const width of [390, 768, 1366]) {
   test(`backup and restore preview fit ${width}px`, async ({ page, qa }) => {
     qa.developerAuthorized = true; qa.developerVerified = true;
+    qa.backupHistory = [historyEntry(1), historyEntry(2)];
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/developer'); await chooseBackup(page);
     await page.getByRole('button', { name: 'Preview restore', exact: true }).click();
@@ -160,3 +161,56 @@ for (const width of [390, 768, 1366]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 }
+
+function historyEntry(index) {
+  return { id: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`, createdAt: new Date(Date.parse('2026-10-08T15:55:00Z') - index * 86400000).toISOString(),
+    backupDay: '2026-10-08', source: 'automatic', recordCount: 1234, tableCount: 22, byteSize: 8192 };
+}
+
+test('daily history explains skipped days and downloads a previous backup through the protected endpoint', async ({ page, qa }) => {
+  qa.developerAuthorized = true; qa.developerVerified = true;
+  qa.backupHistory = [historyEntry(1), historyEntry(2)];
+  qa.backupLastRun = { checkedAt: new Date().toISOString(), source: 'automatic', status: 'skipped', reason: 'no_data_changes' };
+  await page.goto('/developer');
+  const history = page.getByRole('region', { name: 'Backup history', exact: true });
+  await expect(history.getByText('Automatic backup: daily at 11:55 PM (Philippine time).')).toBeVisible();
+  await expect(history.getByText(/No changes — skipped/)).toBeVisible();
+  await expect(history.getByRole('listitem')).toHaveCount(2);
+  const download = page.waitForEvent('download');
+  await history.getByRole('button', { name: /^Download backup from/ }).first().click();
+  expect((await download).suggestedFilename()).toMatch(/\.ctbackup$/);
+  expect(qa.developerRequests.find(request => request.body.action === 'download').body).toEqual({ action: 'download', id: qa.backupHistory[0].id });
+  expect(qa.developerRequests.find(request => request.body.action === 'download').authorization).toMatch(/^Bearer /);
+});
+
+test('previous backup can be selected for preview without applying restore', async ({ page, qa }) => {
+  qa.developerAuthorized = true; qa.developerVerified = true; qa.backupHistory = [historyEntry(1)];
+  await page.goto('/developer');
+  const history = page.getByRole('region', { name: 'Backup history', exact: true });
+  const recovery = page.waitForEvent('download');
+  await history.getByRole('button', { name: /^Preview restore from/ }).click();
+  expect((await recovery).suggestedFilename()).toContain('craythrive-recovery');
+  await expect(page.getByRole('table')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Restore data', exact: true })).toBeDisabled();
+  expect(qa.developerRequests.some(request => request.body.action === 'apply')).toBe(false);
+});
+
+test('unchanged manual download keeps history intact and explains deduplication', async ({ page, qa }) => {
+  qa.developerAuthorized = true; qa.developerVerified = true; qa.backupHistory = [historyEntry(1)]; qa.backupUnchanged = true;
+  await page.goto('/developer');
+  await page.getByRole('button', { name: 'Download backup', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('No changes since the saved backup');
+  await expect(page.getByRole('region', { name: 'Backup history', exact: true }).getByRole('listitem')).toHaveCount(1);
+  expect(qa.backupHistory).toHaveLength(1);
+});
+
+test('older backups load in pages without dropping current history', async ({ page, qa }) => {
+  qa.developerAuthorized = true; qa.developerVerified = true;
+  qa.backupHistory = Array.from({ length: 25 }, (_, index) => historyEntry(index + 1));
+  await page.goto('/developer');
+  const history = page.getByRole('region', { name: 'Backup history', exact: true });
+  await expect(history.getByRole('listitem')).toHaveCount(20);
+  await history.getByRole('button', { name: 'Load older backups', exact: true }).click();
+  await expect(history.getByRole('listitem')).toHaveCount(25);
+  await expect(history.getByRole('button', { name: 'Load older backups', exact: true })).toHaveCount(0);
+});

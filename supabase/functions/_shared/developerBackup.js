@@ -85,7 +85,7 @@ export async function readOperationBody(request) {
   } finally { reader.releaseLock(); }
 }
 
-function validateArchive(archive) {
+export function validateArchive(archive) {
   if (!plainObject(archive) || archive.kind !== 'application-backup' || archive.version !== 1 ||
     !Array.isArray(archive.tables) || !archive.tables.length || archive.tables.length > BACKUP_TABLES.length ||
     !Number.isFinite(Date.parse(archive.createdAt))) fail('Unsupported backup contents.');
@@ -116,11 +116,14 @@ export function restoreOrder(tables, foreignKeys) {
   return result;
 }
 
-export function createBackupOperation({ purpose, database, codec, now = () => Date.now() }) {
+export function createBackupOperation({ purpose, database, codec, history, now = () => Date.now() }) {
   return async ({ request, userId }) => {
     const body = await readOperationBody(request);
     if (purpose === 'backup') {
+      if (history && body.action === 'history') return history.list(body.cursor);
+      if (history && body.action === 'download') return history.download(body.id);
       if (body.action !== 'export') fail('Unsupported backup action.');
+      if (history) return history.save('manual');
       return database.transaction('read', async tx => {
         const archive = await tx.snapshot(new Date(now()).toISOString());
         validateArchive(archive);

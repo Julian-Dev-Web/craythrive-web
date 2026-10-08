@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { PGlite } from '@electric-sql/pglite';
 import { createArchiveCodec, createBackupOperation, readOperationBody, MAX_REQUEST_BYTES, restoreOrder } from '../supabase/functions/_shared/developerBackup.js';
 import { createDeveloperDatabase } from '../supabase/functions/_shared/developerDatabase.js';
+import { postgresWireParameters } from './helpers/postgres-wire.mjs';
 
 const owner = '11111111-1111-4111-8111-111111111111';
 const other = '22222222-2222-4222-8222-222222222222';
@@ -40,7 +41,7 @@ async function fixture() {
   `);
   const sql = { begin: (options, callback) => pg.transaction(async tx => {
     if (options) await tx.exec(`set transaction ${options}`);
-    return callback({ unsafe: async (query, parameters) => (await tx.query(query, parameters)).rows });
+    return callback({ unsafe: async (query, parameters) => (await tx.query(query, postgresWireParameters(query, parameters))).rows });
   }) };
   const database = createDeveloperDatabase(sql);
   let time = Date.now();

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Download, FileCheck, RotateCcw } from 'lucide-react';
 import { developerService } from '../services/developerService';
+import DeveloperBackupHistory from './DeveloperBackupHistory';
 
 const MAX_FILE_BYTES = 12 * 1024 * 1024;
 function downloadBackup(backup, prefix) {
@@ -22,6 +23,7 @@ export default function DeveloperBackupTools({ onReauthenticationRequired }) {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [exportSummary, setExportSummary] = useState(null);
+  const [historyVersion, setHistoryVersion] = useState(0);
   const active = useRef(true);
   const submitting = useRef(false);
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
@@ -61,11 +63,12 @@ export default function DeveloperBackupTools({ onReauthenticationRequired }) {
     const result = await developerService.exportBackup();
     if (!active.current) return;
     downloadBackup(result.backup, 'craythrive-backup');
-    setExportSummary(result); setMessage('Encrypted backup downloaded. Keep it in a safe place.');
+    setExportSummary(result); setHistoryVersion(previous => previous + 1);
+    setMessage(result.status === 'skipped' ? 'Encrypted backup downloaded. No changes since the saved backup, so history was kept unchanged.' : 'Encrypted backup downloaded and saved in history.');
   }
-  async function previewRestore() {
+  async function previewRestore(archive = backup) {
     setPreview(null); setConfirmation(''); setRecoverySaved(false);
-    const result = await developerService.previewRestore(backup);
+    const result = await developerService.previewRestore(archive);
     if (!active.current) return;
     downloadBackup(result.recoveryBackup, 'craythrive-recovery');
     setExpired(false); setPreview(result);
@@ -95,7 +98,7 @@ export default function DeveloperBackupTools({ onReauthenticationRequired }) {
         const file = event.target.files?.[0]; run(() => selectFile(file));
       }} />
       {filename && <p className="developer-filename">{filename}</p>}
-      <button type="button" className="dashboard-primary-button" disabled={busy || !backup} onClick={() => run(previewRestore)}>Preview restore</button>
+      <button type="button" className="dashboard-primary-button" disabled={busy || !backup} onClick={() => run(() => previewRestore())}>Preview restore</button>
       {preview && <div className="developer-restore-preview">
         <h3><FileCheck size={18} aria-hidden="true" />Restore preview</h3>
         <p>Backup created: {new Date(preview.createdAt).toLocaleString()}</p>
@@ -113,6 +116,18 @@ export default function DeveloperBackupTools({ onReauthenticationRequired }) {
         <button type="button" className="developer-restore-button" disabled={busy || expired || !recoverySaved || confirmation !== 'RESTORE'} onClick={() => run(applyRestore)}>Restore data</button>
       </div>}
     </section>
+    <DeveloperBackupHistory key={historyVersion} busy={busy} onReauthenticationRequired={onReauthenticationRequired}
+      onDownload={item => run(async () => {
+        const result = await developerService.downloadStoredBackup(item.id);
+        if (!active.current) return;
+        downloadBackup(result.backup, 'craythrive-backup'); setMessage('Saved encrypted backup downloaded.');
+      })}
+      onPreview={item => run(async () => {
+        const result = await developerService.downloadStoredBackup(item.id);
+        if (!active.current) return;
+        setBackup(result.backup); setFilename(`Saved backup · ${new Date(result.createdAt).toLocaleString()}`);
+        await previewRestore(result.backup);
+      })} />
     {error && <p role="alert" className="developer-error">{error}</p>}
     {message && <p role="status">{message}</p>}
   </div>;

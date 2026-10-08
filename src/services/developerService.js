@@ -70,7 +70,8 @@ export function createDeveloperService(client) {
         expired.reauthenticationRequired = true;
         throw expired;
       }
-      if (status === 409) throw new Error('The database or preview changed. Preview the backup again.');
+      if (status === 409) throw new Error(name === 'developer-backup' ? 'Another backup is running. Refresh history and retry shortly.' : 'The database or preview changed. Preview the backup again.');
+      if (status === 404) throw new Error('This backup is not available. Refresh the backup history.');
       if (status === 413) throw new Error('The dataset or file exceeds the app backup limit. Use a database-level backup.');
       if (status === 400 || status === 415) throw new Error('The backup file or confirmation is invalid. Use an unmodified CrayThrive backup from this project.');
       throw new Error('The operation could not be completed. No partial restore was applied. Please retry or check the server configuration.');
@@ -81,6 +82,8 @@ export function createDeveloperService(client) {
 
   return { checkAccess, beginVerification, verifyOtp,
     exportBackup: () => invokeOperation('developer-backup', { action: 'export' }),
+    listBackupHistory: cursor => invokeOperation('developer-backup', { action: 'history', ...(cursor ? { cursor } : {}) }),
+    downloadStoredBackup: id => invokeOperation('developer-backup', { action: 'download', id }),
     previewRestore: backup => invokeOperation('developer-restore', { action: 'preview', backup }),
     applyRestore: (backup, previewToken, confirmation) => invokeOperation('developer-restore', { action: 'apply', backup, previewToken, confirmation }),
   };

@@ -27,6 +27,14 @@
 .developer-tools caption { text-align: left; padding-bottom: 8px; }
 .developer-tools :is(th, td) { padding: 8px 4px; border-bottom: 1px solid var(--ct-border); text-align: right; }
 .developer-tools :is(th, td):first-child { text-align: left; overflow-wrap: anywhere; }
+.developer-backup-schedule { display: grid; gap: 8px; padding: 12px; background: var(--ct-surface-strong); border: 1px solid var(--ct-border); border-radius: 10px; }
+.developer-backup-schedule p:first-child { display: flex; align-items: flex-start; gap: 8px; }
+.developer-backup-schedule svg { flex-shrink: 0; margin-top: 4px; }
+.developer-backup-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.developer-backup-list li { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--ct-border); border-radius: 10px; min-width: 0; }
+.developer-backup-list strong { font-size: .85rem; overflow-wrap: anywhere; }
+.developer-backup-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.developer-backup-actions button { flex: 1 1 120px; font-size: .8rem; }
 .developer-entry-notice { position: absolute; left: 12px; right: 12px; top: 95px; padding: 10px; background: var(--ct-surface-strong); color: var(--ct-text); border: 1px solid var(--ct-border-strong); border-radius: 8px; font-size: .75rem; line-height: 1.5; z-index: 5; }
 .developer-page :is(input, button, a):focus-visible, .developer-logo-button:focus-visible { outline: 2px solid var(--ct-brand-strong); outline-offset: 3px; }
 @media (max-width: 540px) { .developer-page { padding: 16px; } .developer-card { padding: 20px; } }

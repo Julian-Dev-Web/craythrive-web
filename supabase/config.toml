@@ -11,3 +11,9 @@ entrypoint = "./functions/developer-backup/index.js"
 [functions.developer-restore]
 verify_jwt = true
 entrypoint = "./functions/developer-restore/index.js"
+
+# Machine-only export worker: no developer/restore/history access. It requires
+# its own 256-bit server credential; user JWTs/public keys do not authorize it.
+[functions.developer-backup-scheduled]
+verify_jwt = false
+entrypoint = "./functions/developer-backup-scheduled/index.js"

@@ -110,3 +110,15 @@ test('backup/restore calls send only the archive/action/proof with the current s
   state.token = null;
   await assert.rejects(service.exportBackup());
 });
+
+test('history/download use the same authenticated developer endpoint without exposing a scheduler token', async () => {
+  const { service, state, calls } = fixture(); state.allowed = true;
+  await service.listBackupHistory();
+  const cursor = { id: 'qa-id', createdAt: '2026-10-08T00:00:00Z' };
+  await service.listBackupHistory(cursor); await service.downloadStoredBackup('qa-id');
+  assert.deepEqual(calls.map(call => call[2].body), [
+    { action: 'history' }, { action: 'history', cursor }, { action: 'download', id: 'qa-id' },
+  ]);
+  assert.ok(calls.every(call => call[1] === 'developer-backup'));
+  assert.doesNotMatch(JSON.stringify(calls), /scheduler|service_role/i);
+});
