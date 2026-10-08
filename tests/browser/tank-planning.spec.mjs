@@ -104,7 +104,9 @@ test('existing column aliases and enum casing are preserved in writes', async ({
 test('missing schema blocks partial inserts and foreign-owned edit is unavailable', async ({ page, qa }) => {
   delete qa.tankSchema.definitions.tanks.properties.normal_water_depth_cm;
   await page.goto('/admin/tanks/add');
-  await expect(page.getByRole('alert')).toContainText('Tank saving is not available');
+  await expect(page.getByRole('alert')).toContainText('Tank planning fields have not been enabled');
+  await expect(page.getByRole('alert')).toContainText('Normal water depth');
+  await expect(page.getByRole('alert')).toContainText('TANK_FIELDS_MISSING');
   await expect(page.getByRole('button', { name: 'Create Tank' })).toBeDisabled();
   expect(qa.writes).toEqual([]);
   qa.tankSchema.definitions.tanks.properties.normal_water_depth_cm = { type: 'number' };
@@ -127,6 +129,30 @@ test('permission failure retains entries and permits a corrected retry', async (
   await page.getByRole('button', { name: 'Create Tank' }).click();
   await expect(page).toHaveURL(/qa-created-2$/);
   expect(qa.writes).toHaveLength(2);
+});
+
+test('create permission is sufficient to add a tank without edit permission', async ({ page, qa }) => {
+  delete qa.tankSchema.paths['/tanks'].patch;
+  await open(page); await fill(page);
+  await page.getByRole('button', { name: 'Create Tank' }).click();
+  await expect(page).toHaveURL(/qa-created-1$/);
+  expect(qa.writes).toHaveLength(1);
+  await page.goto('/admin/tanks/qa-created-1/edit');
+  await expect(page.getByRole('alert')).toContainText('TANK_EDIT_NOT_ALLOWED');
+  await expect(page.getByRole('button', { name: 'Save Changes' })).toBeDisabled();
+});
+
+test('unavailable schema has a distinct reference and retry recovers without writes', async ({ page, qa }) => {
+  const original = qa.tankSchema;
+  qa.tankSchema = null;
+  await page.goto('/admin/tanks/add');
+  await expect(page.getByRole('alert')).toContainText('TANK_TABLE_UNAVAILABLE');
+  await expect(page.getByRole('alert')).not.toContainText('TANK_FIELDS_MISSING');
+  qa.tankSchema = original;
+  await page.getByRole('button', { name: 'Retry setup' }).click();
+  await expect(page.getByRole('button', { name: 'Create Tank' })).toBeEnabled();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  expect(qa.writes).toEqual([]);
 });
 
 for (const width of [390, 768, 1440]) {

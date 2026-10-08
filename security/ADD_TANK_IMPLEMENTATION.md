@@ -33,7 +33,7 @@ Verification and handoff:
 
 No **live** columns were verified. The existing repository's documented mobile contract identifies `tanks`, owner `user_id`, and device `device_uid`. Existing readers support primary-key aliases `id` / `tank_id` / `uuid`, names `name` / `tank_name`, and life stage `type` / `tank_type`. These are repository evidence, not an actual database inspection.
 
-The writer first requests authenticated PostgREST OpenAPI metadata. Before any write it requires one supported primary key, `user_id`, insert/update availability, and exactly one existing column per form field:
+The writer first requests authenticated PostgREST OpenAPI metadata. Before any write it requires one supported primary key, `user_id`, availability of the requested operation (insert for Add, update for Edit), and exactly one existing column per form field:
 
 | Form field | Supported existing equivalents |
 | --- | --- |
@@ -118,3 +118,19 @@ Browser coverage includes empty-account creation, persistence after refresh, neu
 3. On a staging project with two normal authenticated QA accounts, verify account A can create/edit/read its own tank and account B cannot read/edit A's private tank or insert a row owned by A. Test forged `user_id` through the direct authenticated API as well as the UI, then inspect the real SELECT/INSERT/UPDATE RLS policies. SQL Editor owner privileges and mocked filters do not prove RLS.
 4. With the same account in web and mobile, create a device-free web tank and verify it appears on both mobile Dashboard and Tank list; verify the reverse direction, then edit planning data and confirm sensor readings/history/type remain unchanged.
 5. GitHub publication was subsequently requested. Applying SQL and verifying the hosted release remain follow-up work; database/mobile verification is still pending.
+
+## Follow-up: generic Add Tank setup error
+
+The hosted screenshot reports the original generic setup guard. That message alone does **not** identify which check failed. The actual database remains unverified; do not assume the nullable-column draft will fix the hosted error without the inspection results.
+
+Local corrections:
+
+- Add no longer requires update availability; Edit no longer requires insert availability.
+- Creation-only required defaults/device requirements are not applied to an edit that preserves existing device information. A null default does not satisfy a required omitted field on creation.
+- Missing planning fields are listed together using farmer-facing labels.
+- Setup failures show a safe support reference and log only that controlled code/status. Schema metadata, tokens, user rows and provider error bodies are not printed.
+- Sign-in/configuration failures, unavailable/denied schema access, missing table/fields, unsupported keys/types and unavailable operations have distinct references.
+
+Useful references: `TANK_FIELDS_MISSING` (review existing equivalents/missing planning columns), `TANK_SCHEMA_UNAVAILABLE` (schema request unavailable or invalid), `TANK_SCHEMA_ACCESS_DENIED` (schema request forbidden), `TANK_CREATE_NOT_ALLOWED` / `TANK_EDIT_NOT_ALLOWED` (requested API operation unavailable), `TANK_DEVICE_REQUIRED` (existing required device field prevents device-free creation).
+
+The original release passed 36 unit and 83 full browser tests. The follow-up passes the production build/security scan, 40 unit tests and 15 focused Add/Edit browser tests. ESLint passes for all six changed JavaScript/test files; the full repository remains at the existing 24 errors / 5 warnings. No migration or live database change was executed for this follow-up, and the website's exact blocker still requires real schema/request evidence.

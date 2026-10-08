@@ -17,6 +17,7 @@ export default function AddTankPage() {
   const [plan, setPlan] = useState(emptyPlan);
   const [errors, setErrors] = useState({});
   const [error, setError] = useState('');
+  const [setupCode, setSetupCode] = useState('');
   const [ready, setReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [retry, setRetry] = useState(0);
@@ -31,6 +32,7 @@ export default function AddTankPage() {
     async function load() {
       setReady(false);
       setError('');
+      setSetupCode('');
       try {
         const result = editing ? await tanksService.loadForEditing(tankId) : await tanksService.inspectContract();
         if (!active) return;
@@ -40,6 +42,7 @@ export default function AddTankPage() {
       } catch (failure) {
         if (!active) return;
         logDiagnostic('Tank setup unavailable', failure);
+        setSetupCode(failure instanceof TankSetupError ? failure.code : '');
         setError(failure instanceof TankSetupError ? failure.message : getSafeErrorMessage(failure, 'Unable to load this tank setup. Please check your connection and try again.'));
       }
     }
@@ -65,11 +68,13 @@ export default function AddTankPage() {
     submitting.current = true;
     setSaving(true);
     setError('');
+    setSetupCode('');
     try {
       const result = await tanksService.save(plan, editing ? tankId : null);
       navigate(`/admin/tanks/${encodeURIComponent(result.id)}`, { replace: true, state: { tankSaved: true } });
     } catch (failure) {
       logDiagnostic('Tank save failed', failure);
+      setSetupCode(failure instanceof TankSetupError ? failure.code : '');
       if (failure instanceof TankInputError) {
         setErrors(failure.fields);
         document.getElementById(`tank-${Object.keys(failure.fields)[0]}`)?.focus();
@@ -103,7 +108,9 @@ export default function AddTankPage() {
       <span className="tank-pairing-state"><Unplug size={14} aria-hidden="true" />{pairing}</span>
     </header>
     {error && <div className="tank-form-error" role="alert" tabIndex={-1} ref={errorRef}>
-      <p>{error}</p>{!ready && <button type="button" className="tank-form-secondary" onClick={() => setRetry(value => value + 1)}>Retry setup</button>}
+      <p>{error}</p>
+      {setupCode && <p><small>Support reference: {setupCode}</small></p>}
+      {!ready && <button type="button" className="tank-form-secondary" onClick={() => setRetry(value => value + 1)}>Retry setup</button>}
     </div>}
     <form onSubmit={submit} noValidate className="tank-form-layout" aria-label={editing ? 'Edit tank' : 'Add tank'}>
       <div className="tank-form-sections">

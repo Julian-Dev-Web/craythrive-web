@@ -35,7 +35,9 @@ function mockService(spec = tankSpec()) {
     },
   };
   const service = createTanksService({ client, url: 'https://qa.supabase.invalid', publicKey: 'qa-public-key', fetcher: async (url, options) => {
-    requests.push({ url, options }); return { ok: true, json: async () => spec };
+    requests.push({ url, options });
+    if (state.schemaNetworkFailure) throw new Error('private-provider-detail');
+    return state.schemaResponse || { ok: true, json: async () => spec };
   } });
   return { service, calls, requests, state };
 }
@@ -65,11 +67,11 @@ test('validation, unavailable schema, and expired authentication prevent writes'
   const { service, calls, state } = mockService();
   await assert.rejects(service.save({ ...plan, normalWaterDepthCm: 100 }), /exceed/);
   state.authenticated = false;
-  await assert.rejects(service.save(plan), /sign in/);
+  await assert.rejects(service.save(plan), error => error.code === 'TANK_AUTH_REQUIRED');
   assert.equal(calls.length, 0);
   const spec = tankSpec(); delete spec.definitions.tanks.properties.normal_water_depth_cm;
   const unavailable = mockService(spec);
-  await assert.rejects(unavailable.service.save(plan), /not available/);
+  await assert.rejects(unavailable.service.save(plan), error => error.code === 'TANK_FIELDS_MISSING');
   assert.equal(unavailable.calls.length, 0);
 });
 
@@ -86,5 +88,34 @@ test('existing integer dimensions and text limits produce field errors without r
   spec.definitions.tanks.properties.notes.maxLength = 10;
   const { service, calls } = mockService(spec);
   await assert.rejects(service.save({ ...plan, lengthCm: 100.5, notes: 'Much longer than ten' }), error => Boolean(error.fields.lengthCm && error.fields.notes));
+  assert.equal(calls.length, 0);
+});
+
+test('creation succeeds without edit permission, and edit preserves a required existing device', async () => {
+  const createOnly = tankSpec(); delete createOnly.paths['/tanks'].patch;
+  const creator = mockService(createOnly);
+  await creator.service.save(plan);
+  assert.equal(creator.calls[0].method, 'insert');
+  const editOnly = tankSpec(); delete editOnly.paths['/tanks'].post;
+  editOnly.definitions.tanks.required.push('device_uid');
+  const editor = mockService(editOnly); editor.state.row.device_uid = 'existing-device';
+  const result = await editor.service.save(plan, 'tank-a');
+  assert.equal(result.tank.device_uid, 'existing-device');
+  assert.equal(editor.calls[0].method, 'update');
+  assert.ok(!Object.hasOwn(editor.calls[0].body, 'device_uid'));
+});
+
+test('schema access, network and invalid JSON failures stay distinct without exposing provider details', async () => {
+  const unconfigured = createTanksService({ client: null });
+  await assert.rejects(unconfigured.inspectContract(), error => error.code === 'TANK_CONFIG_MISSING');
+  const { service, state, calls } = mockService();
+  for (const [status, code] of [[401, 'TANK_AUTH_REQUIRED'], [403, 'TANK_SCHEMA_ACCESS_DENIED'], [503, 'TANK_SCHEMA_UNAVAILABLE']]) {
+    state.schemaResponse = { ok: false, status };
+    await assert.rejects(service.inspectContract(), error => error.code === code && error.status === status);
+  }
+  state.schemaResponse = { ok: true, json: async () => { throw new Error('private-provider-detail'); } };
+  await assert.rejects(service.inspectContract(), error => error.code === 'TANK_SCHEMA_UNAVAILABLE' && !error.message.includes('private-provider-detail'));
+  state.schemaNetworkFailure = true;
+  await assert.rejects(service.inspectContract(), error => error.code === 'TANK_SCHEMA_UNAVAILABLE' && !error.message.includes('private-provider-detail'));
   assert.equal(calls.length, 0);
 });

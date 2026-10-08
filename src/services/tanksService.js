@@ -5,28 +5,41 @@ import { planningNumber, validateTankPlan } from '../utils/tankStockingGuidance'
 
 export function createTanksService({ client, url, publicKey, fetcher = fetch }) {
   async function authenticatedUser() {
-    if (!client) throw new Error('Please configure the dashboard connection and sign in before saving a tank.');
+    if (!client) throw new TankSetupError('Supabase client unavailable', 'TANK_CONFIG_MISSING');
     const { data, error } = await client.auth.getUser();
-    if (error || !data?.user?.id) throw new Error('Please sign in again before saving a tank.');
+    if (error || !data?.user?.id) throw new TankSetupError('Authenticated user unavailable', 'TANK_AUTH_REQUIRED');
     return data.user;
   }
 
-  async function inspectContract() {
+  async function inspectContract(operation = 'create') {
     const user = await authenticatedUser();
     const { data, error } = await client.auth.getSession();
-    if (error || !data?.session?.access_token || !url || !publicKey) throw new TankSetupError('Authenticated schema inspection unavailable');
+    if (!url || !publicKey) throw new TankSetupError('Public connection configuration unavailable', 'TANK_CONFIG_MISSING');
+    if (error || !data?.session?.access_token) throw new TankSetupError('Authenticated session unavailable', 'TANK_AUTH_REQUIRED');
     // Standard authenticated PostgREST schema discovery; no private keys, RPCs,
     // migration execution, row sampling, or trial inserts.
-    const response = await fetcher(`${url.replace(/\/$/, '')}/rest/v1/`, { headers: {
-      apikey: publicKey, Authorization: `Bearer ${data.session.access_token}`,
-      Accept: 'application/openapi+json',
-    } });
-    if (!response.ok) throw new TankSetupError('The authenticated API schema is not accessible');
-    return { contract: resolveTankContract(await response.json()), user };
+    let response;
+    try {
+      response = await fetcher(`${url.replace(/\/$/, '')}/rest/v1/`, { headers: {
+        apikey: publicKey, Authorization: `Bearer ${data.session.access_token}`,
+        Accept: 'application/openapi+json',
+      } });
+    } catch {
+      throw new TankSetupError('Authenticated schema request failed', 'TANK_SCHEMA_UNAVAILABLE');
+    }
+    if (!response.ok) {
+      const code = response.status === 401 ? 'TANK_AUTH_REQUIRED' : response.status === 403 ? 'TANK_SCHEMA_ACCESS_DENIED' : 'TANK_SCHEMA_UNAVAILABLE';
+      const failure = new TankSetupError('Authenticated schema request rejected', code);
+      failure.status = response.status;
+      throw failure;
+    }
+    let spec;
+    try { spec = await response.json(); } catch { throw new TankSetupError('Invalid schema response', 'TANK_SCHEMA_UNAVAILABLE'); }
+    return { contract: resolveTankContract(spec, { operation }), user };
   }
 
   async function loadForEditing(id) {
-    const { contract, user } = await inspectContract();
+    const { contract, user } = await inspectContract('edit');
     const { data, error } = await client.from(TABLES.TANKS).select('*')
       .eq(contract.primaryKey, id).eq(COLUMNS.USER_ID, user.id).single();
     if (error || !data || data.user_id !== user.id) throw new Error('This tank is unavailable or you do not have permission to edit it.');
@@ -38,7 +51,7 @@ export function createTanksService({ client, url, publicKey, fetcher = fetch }) 
     if (Object.keys(errors).length) throw new TankInputError(errors);
     // Recheck schema and verified auth on each write. Never accept an owner,
     // device reference, measured depth, or arbitrary database key from a form.
-    const { contract, user } = await inspectContract();
+    const { contract, user } = await inspectContract(id ? 'edit' : 'create');
     const fieldErrors = validateContractFields(plan, contract);
     if (Object.keys(fieldErrors).length) throw new TankInputError(fieldErrors);
     const payload = {};

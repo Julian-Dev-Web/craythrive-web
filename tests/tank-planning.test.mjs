@@ -4,6 +4,7 @@ import { calculateFloorAreaM2, calculateWorkingVolumeLiters, getJuvenileStocking
   getBreederStockingGuidance, evaluatePlannedPopulation, validateTankPlan, getTankPairingState } from '../src/utils/tankStockingGuidance.js';
 import { readTankPlan, resolveTankContract, TankSetupError } from '../src/utils/tankPlanningSchema.js';
 import { tankSpec } from './fixtures/tank-schema.mjs';
+import { logDiagnostic } from '../src/utils/securityDiagnostics.js';
 
 const plan = { name: 'Test Tank', type: 'juvenile', lengthCm: 100, widthCm: 100, heightCm: 60, normalWaterDepthCm: 40, population: 5, shelters: 5 };
 
@@ -73,4 +74,36 @@ test('schema resolver uses existing equivalents and rejects missing/ambiguous co
   assert.throws(() => resolveTankContract(requiredDevice), TankSetupError);
   const noOwner = tankSpec(); delete noOwner.definitions.tanks.properties.user_id;
   assert.throws(() => resolveTankContract(noOwner), TankSetupError);
+});
+
+test('create and edit check only their own operation and creation-only required defaults', () => {
+  const createOnly = tankSpec(); delete createOnly.paths['/tanks'].patch;
+  assert.equal(resolveTankContract(createOnly).primaryKey, 'id');
+  assert.throws(() => resolveTankContract(createOnly, { operation: 'edit' }), error => error.code === 'TANK_EDIT_NOT_ALLOWED');
+  const editOnly = tankSpec(); delete editOnly.paths['/tanks'].post;
+  editOnly.definitions.tanks.required.push('device_uid');
+  assert.equal(resolveTankContract(editOnly, { operation: 'edit' }).primaryKey, 'id');
+  assert.throws(() => resolveTankContract(editOnly), error => error.code === 'TANK_CREATE_NOT_ALLOWED');
+  const nullDefault = tankSpec(); nullDefault.definitions.tanks.properties.id.default = null;
+  assert.throws(() => resolveTankContract(nullDefault), error => error.code === 'TANK_REQUIRED_FIELDS');
+});
+
+test('missing fields are listed together with farmer labels and safe diagnostic codes', () => {
+  const spec = tankSpec();
+  delete spec.definitions.tanks.properties.length_cm;
+  delete spec.definitions.tanks.properties.normal_water_depth_cm;
+  assert.throws(() => resolveTankContract(spec), error => {
+    assert.equal(error.code, 'TANK_FIELDS_MISSING');
+    assert.match(error.message, /Length, Normal water depth/);
+    assert.ok(!error.message.includes('length_cm'));
+    return true;
+  });
+  const previous = console.warn;
+  const output = [];
+  try {
+    console.warn = (...args) => output.push(args);
+    logDiagnostic('Tank setup unavailable', new TankSetupError('private-provider-detail', 'TANK_SCHEMA_UNAVAILABLE'));
+  } finally { console.warn = previous; }
+  assert.deepEqual(output, [['Tank setup unavailable', { code: 'TANK_SCHEMA_UNAVAILABLE' }]]);
+  assert.ok(!JSON.stringify(output).includes('private-provider-detail'));
 });
