@@ -1,0 +1,39 @@
+diff --git a/supabase/functions/craythrive-ai-guide/index.ts b/supabase/functions/craythrive-ai-guide/index.ts
+index 39d81b9..e263239 100644
+--- a/supabase/functions/craythrive-ai-guide/index.ts
++++ b/supabase/functions/craythrive-ai-guide/index.ts
+@@ -1,3 +1,4 @@
++import { fetchEffectiveTankThresholds } from '../_shared/thresholdResolution.js';
+ import { isCrayThriveQuestionInScope } from '../../../src/utils/aiScope.js';
+ import { parseAiProviderText, getAiAnswer } from '../../../src/utils/aiResponseParsing.js';
+ // These imports are resolved by the Supabase Deno runtime, not Node/Metro.
+@@ -286,6 +287,13 @@ Deno.serve(async (request) => {
+     if (!ownedTank || ownedTank.user_id !== userData.user.id) {
+       return respond({ error: 'Tank access denied.', code: 'AI_TANK_FORBIDDEN' }, 403);
+     }
++    // Use verified ownership + caller JWT/RLS, never client-supplied thresholds.
++    let activeThresholds;
++    try {
++      activeThresholds = await fetchEffectiveTankThresholds(supabase, userData.user.id, ownedTank.id);
++    } catch {
++      return respond({ error: 'Unable to load tank thresholds.', code: 'AI_UNAVAILABLE' }, 503);
++    }
+     const latestSensor = waterContextData(boundedContextData(Object.prototype.hasOwnProperty.call(context, 'latest_sensor')
+       ? context.latest_sensor : context.latest_reading));
+     // Older mobile clients already supplied the separate scan history. Never
+@@ -293,13 +301,14 @@ Deno.serve(async (request) => {
+     const latestAmmonia = boundedContextData(Object.prototype.hasOwnProperty.call(context, 'latest_ammonia')
+       ? context.latest_ammonia : context.recent_ammonia_readings?.[0] ?? null);
+     const sensorHistory = waterContextData(boundedContextData(context.recent_sensor_readings));
+-    const allowedContext = ['thresholds', 'rule_based_result',
++    const allowedContext = ['rule_based_result',
+       'recent_ammonia_readings', 'recent_alerts', 'recent_control_logs', 'capabilities'];
+     context = {
+       system: 'CrayThrive',
+       tank: { id: ownedTank.id, name: ownedTank.tank_name || 'Tank',
+         population: context.tank.population, created_at: ownedTank.created_at || null },
+       ...Object.fromEntries(allowedContext.map(key => [key, boundedContextData(context[key])])),
++      thresholds: activeThresholds,
+       latest_sensor: latestSensor, latest_reading: latestSensor, latest_ammonia: latestAmmonia,
+       recent_sensor_readings: sensorHistory,
+       ammonia_instruction: 'Ammonia is manually scanned and may be older than the latest sensor readings. Never describe ammonia as a live sensor value. Mention its scan timestamp when relevant.',

@@ -1,3 +1,5 @@
+import { DEFAULT_THRESHOLDS, normalizeThresholds, resolveTankThresholds } from '../../supabase/functions/_shared/thresholdResolution.js';
+export { DEFAULT_THRESHOLDS, normalizeThresholds, resolveTankThresholds };
 import { cacheThresholdBundle, fetchThresholdRows, readThresholdCache, thresholdBundle } from "../services/tankThresholdService";
 import { logDiagnostic } from "./securityDiagnostics";
 import { getWaterReadingHealth } from "./waterReadingHealth";
@@ -55,24 +57,7 @@ import {
 |
 */
 
-export const DEFAULT_THRESHOLDS = {
-  temperatureMin: 20,
-  temperatureMax: 30,
 
-  phMin: 6.5,
-  phMax: 8.5,
-
-  // Legacy property name kept for DB compatibility.
-  // Operational meaning:
-  // minimum sensor voltage used as a clear-water reference.
-  turbidityMax: 2.5,
-
-  // Prototype tank operational threshold.
-  // This is tank/sensor-calibration specific.
-  waterLevelMin: 4.5,
-
-  ammoniaMax: 0.25,
-};
 
 /*
 |--------------------------------------------------------------------------
@@ -441,93 +426,12 @@ function normalizeReferenceKey(
 |--------------------------------------------------------------------------
 */
 
-function numberOrDefault(
-  value,
-  fallback
-) {
-  return toNumberOrNull(value) ?? fallback;
-}
-
-export function normalizeThresholds(
-  data
-) {
-  if (!data) {
-    return {
-      ...DEFAULT_THRESHOLDS,
-    };
-  }
-
-  const source = { ...data, ...(data.safe_thresholds || {}), ...(data.thresholds || {}) };
-
-  return {
-    temperatureMin:
-      numberOrDefault(
-        source.temperatureMin ??
-          source.temperature_min,
-        DEFAULT_THRESHOLDS
-          .temperatureMin
-      ),
-
-    temperatureMax:
-      numberOrDefault(
-        source.temperatureMax ??
-          source.temperature_max,
-        DEFAULT_THRESHOLDS
-          .temperatureMax
-      ),
-
-    phMin:
-      numberOrDefault(
-        source.phMin ??
-          source.ph_min,
-        DEFAULT_THRESHOLDS
-          .phMin
-      ),
-
-    phMax:
-      numberOrDefault(
-        source.phMax ??
-          source.ph_max,
-        DEFAULT_THRESHOLDS
-          .phMax
-      ),
-
-    turbidityMax:
-      numberOrDefault(
-        source.turbidityMax ??
-          source.turbidity_max,
-        DEFAULT_THRESHOLDS
-          .turbidityMax
-      ),
-
-    waterLevelMin:
-      numberOrDefault(
-        source.waterLevelMin ??
-          source.water_level_min,
-        DEFAULT_THRESHOLDS
-          .waterLevelMin
-      ),
-
-    ammoniaMax:
-      numberOrDefault(
-        source.ammoniaMax ??
-          source.ammonia_max,
-        DEFAULT_THRESHOLDS
-          .ammoniaMax
-      ),
-  };
-}
-
 /*
 |--------------------------------------------------------------------------
 | LOCAL STORAGE
 |--------------------------------------------------------------------------
 */
 
-export function resolveTankThresholds(settings, tankId) {
-  if (settings?.byTank) return normalizeThresholds(settings.byTank[tankId] || settings.legacy);
-  return normalizeThresholds(settings);
-}
 
 export function getLocalThresholds(tankId, userId) {
   // Never use another account's global browser cache as operational settings.

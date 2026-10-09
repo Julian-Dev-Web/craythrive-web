@@ -43,7 +43,15 @@ async function seedLegacy() {
 }
 await seedLegacy();
 const legacyBefore = (await db.query('SELECT * FROM threshold_settings ORDER BY user_id')).rows;
-await db.exec(await fs.readFile(new URL('../supabase/migrations/20261009180000_per_tank_thresholds.sql',import.meta.url),'utf8'));
+const migrationSql = await fs.readFile(new URL('../supabase/migrations/20261009180000_per_tank_thresholds.sql',import.meta.url),'utf8');
+await assert.rejects(db.exec(migrationSql), /Threshold compatibility audit required/);
+await db.exec('ROLLBACK');
+const blockedColumns = (await db.query("SELECT column_name FROM information_schema.columns WHERE table_name='threshold_settings'")).rows;
+assert.equal(blockedColumns.some(row=>row.column_name==='tank_id'),false,'guard must stop before schema changes');
+assert.deepEqual((await db.query('SELECT * FROM threshold_settings ORDER BY user_id')).rows,legacyBefore);
+// Explicit local TEST override only. This does not approve production rollout.
+await db.exec("SELECT set_config('craythrive.threshold_clients_compatible','true',false)");
+await db.exec(migrationSql);
 const migrated = (await db.query('SELECT * FROM threshold_settings ORDER BY user_id,tank_id NULLS FIRST')).rows;
 const migrationLogs = (await db.query('SELECT * FROM control_logs')).rows;
 beforeEach(async()=>{
@@ -76,6 +84,7 @@ test('single tank patch preserves other fields and tanks, one audit event, no-op
  const activity=await logs();assert.equal(activity.length,1);assert.equal(activity[0].tank_id,ids[1]);
  assert.equal(activity[0].action_status,'updated');assert.equal(activity[0].metadata.source,'manual');
  assert.equal(activity[0].metadata.actor_user_id,owner);assert.equal(activity[0].metadata.old_values.waterLevelMin,4);
+ assert.deepEqual((await db.query('SELECT thresholds FROM threshold_settings WHERE tank_id IS NULL')).rows[0].thresholds,defaults);
  assert.match(activity[0].notes,/Water Level Minimum: 4 cm → 4.5 cm/);
  assert.equal((await apply(ids[1],{waterLevelMin:4.5})).changed,0);assert.equal((await logs()).length,1);
 });
@@ -83,6 +92,8 @@ test('apply-all copies selected config to owned tanks only and logs once per cha
  await apply(ids[1],{phMin:7});await db.exec('RESET ROLE; TRUNCATE control_logs');await asUser(owner);
  const result=await apply(ids[1],{waterLevelMin:4.5},'all_tanks');assert.equal(result.affected,3);assert.equal(result.changed,3);
  for(const row of await values()) {assert.equal(row.thresholds.waterLevelMin,4.5);assert.equal(row.thresholds.phMin,7);}
+ const legacy=(await db.query('SELECT * FROM threshold_settings WHERE tank_id IS NULL')).rows[0];
+ assert.equal(legacy.thresholds.waterLevelMin,4.5);assert.equal(Number(legacy.water_level_min),4.5);assert.equal(Number(legacy.ph_min),7);
  const activity=await logs();assert.equal(activity.length,3);assert.ok(activity.every(row=>row.metadata.scope==='all_tanks'));
  await asUser(other);assert.equal((await values())[0].thresholds.waterLevelMin,9);assert.equal((await logs()).length,0);
 });
@@ -95,11 +106,13 @@ test('AI recommendation alone changes nothing; explicit Apply uses current serve
  assert.equal((await values())[0].thresholds.waterLevelMin,4.5);
  const row=(await db.query('SELECT pending_ai_suggestion FROM threshold_settings WHERE tank_id=$1',[ids[0]])).rows[0];assert.equal(row.pending_ai_suggestion,null);
 });
-test('RLS blocks another owner, forged ownership, legacy writes and forged audit rows',async()=>{
+test('RLS blocks another owner and forged writes while preserving owned legacy writes',async()=>{
  assert.equal((await db.query('SELECT * FROM threshold_settings WHERE tank_id=$1',[foreign])).rows.length,0);
  await assert.rejects(apply(foreign,{waterLevelMin:4.5}),/ownership/);
  await assert.rejects(db.query('INSERT INTO threshold_settings(user_id,tank_id) VALUES($1,$2)',[owner,foreign]),/row-level security/);
- assert.equal((await db.query("UPDATE threshold_settings SET water_level_min=1 WHERE tank_id IS NULL RETURNING id")).rows.length,0);
+ assert.equal((await db.query("UPDATE threshold_settings SET water_level_min=1 WHERE tank_id IS NULL RETURNING id")).rows.length,1);
+ assert.equal((await db.query('UPDATE threshold_settings SET water_level_min=1 WHERE user_id=$1 RETURNING id',[other])).rows.length,0);
+ assert.equal((await logs()).length,0);
  await assert.rejects(db.query("INSERT INTO control_logs(user_id,tank_id,action_type) VALUES($1,$2,'threshold_updated')",[owner,ids[0]]),/row-level security/);
  await apply(ids[0],{waterLevelMin:4.5});await asUser(other);assert.equal((await logs()).length,0);
 });
@@ -134,4 +147,52 @@ test('AI apply-all is explicitly attributed per changed tank and no-op acceptanc
  assert.ok((await logs()).every(row=>row.metadata.source==='ai_recommendation'&&row.metadata.scope==='all_tanks'&&row.metadata.actor_user_id===owner));
  await db.query('UPDATE threshold_settings SET pending_ai_suggestion=$1 WHERE tank_id=$2',[{parameter:'water_level',suggested_value:4.5},ids[0]]);
  assert.equal((await apply(ids[0],{},'single_tank','ai_recommendation')).changed,0);assert.equal((await logs()).length,3);
+});
+
+test('legacy-only owner uses fallback; a single Apply leaves every other tank inheriting it',async()=>{
+ await db.exec('RESET ROLE');await db.query('DELETE FROM threshold_settings WHERE user_id=$1 AND tank_id IS NOT NULL',[owner]);await asUser(owner);
+ assert.equal((await values()).length,0);
+ await apply(ids[0],{waterLevelMin:4.5});
+ assert.equal((await values()).length,1);assert.equal((await values())[0].tank_id,ids[0]);
+ assert.deepEqual((await db.query('SELECT thresholds FROM threshold_settings WHERE tank_id IS NULL')).rows[0].thresholds,defaults);
+ assert.equal((await logs()).length,1);
+});
+
+test('Apply All creates a missing legacy baseline without a fabricated extra tank event',async()=>{
+ await db.query('DELETE FROM threshold_settings WHERE tank_id IS NULL');
+ await apply(ids[0],{waterLevelMin:4.5},'all_tanks');
+ const rows=(await db.query('SELECT * FROM threshold_settings WHERE tank_id IS NULL')).rows;
+ assert.equal(rows.length,1);assert.equal(rows[0].thresholds.waterLevelMin,4.5);
+ assert.equal((await logs()).length,3);
+ await assert.rejects(db.query('INSERT INTO threshold_settings(user_id) VALUES($1)',[owner]),/unique constraint/);
+});
+
+test('legacy writes with explicit NULL conflict predicate work, but old user-only upsert remains incompatible',async()=>{
+ await db.query(`INSERT INTO threshold_settings(user_id,thresholds) VALUES($1,$2)
+  ON CONFLICT(user_id) WHERE tank_id IS NULL DO UPDATE SET thresholds=excluded.thresholds`,[owner,{...defaults,waterLevelMin:5}]);
+ assert.equal((await db.query('SELECT thresholds FROM threshold_settings WHERE tank_id IS NULL')).rows[0].thresholds.waterLevelMin,5);
+ await assert.rejects(db.query(`INSERT INTO threshold_settings(user_id,thresholds) VALUES($1,$2)
+  ON CONFLICT(user_id) DO UPDATE SET thresholds=excluded.thresholds`,[owner,defaults]),/no unique or exclusion constraint/);
+ // PostgREST maybeSingle cannot return this multi-row user-only result either.
+ assert.equal((await db.query('SELECT * FROM threshold_settings WHERE user_id=$1',[owner])).rows.length,4);
+});
+
+test('legacy insert/update/delete remain owner-scoped and row identity cannot be reassigned',async()=>{
+ await db.query('DELETE FROM threshold_settings WHERE tank_id IS NULL');
+ await db.query('INSERT INTO threshold_settings(user_id,thresholds) VALUES($1,$2)',[owner,defaults]);
+ await assert.rejects(db.query('INSERT INTO threshold_settings(user_id) VALUES($1)',[other]),/row-level security/);
+ await assert.rejects(db.query('UPDATE threshold_settings SET tank_id=$1 WHERE tank_id IS NULL',[ids[0]]),/identity cannot be changed|unique constraint/);
+ await assert.rejects(db.query('UPDATE threshold_settings SET tank_id=NULL WHERE tank_id=$1',[ids[0]]),/identity cannot be changed|unique constraint/);
+ assert.equal((await db.query('DELETE FROM threshold_settings WHERE user_id=$1 RETURNING id',[other])).rows.length,0);
+});
+
+test('a late legacy synchronization error rolls back all tank changes and activity',async()=>{
+ const before=await values();const legacyBefore=(await db.query('SELECT * FROM threshold_settings WHERE tank_id IS NULL')).rows;
+ await db.exec(`RESET ROLE; CREATE FUNCTION test_reject_legacy() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.tank_id IS NULL THEN RAISE EXCEPTION 'legacy sync failure'; END IF; RETURN NEW; END $$;
+ CREATE TRIGGER test_reject_legacy BEFORE UPDATE ON threshold_settings FOR EACH ROW EXECUTE FUNCTION test_reject_legacy();`);
+ await asUser(owner);await assert.rejects(apply(ids[0],{waterLevelMin:4.5},'all_tanks'),/legacy sync failure/);
+ assert.deepEqual(await values(),before);
+ assert.deepEqual((await db.query('SELECT * FROM threshold_settings WHERE tank_id IS NULL')).rows,legacyBefore);
+ assert.equal((await logs()).length,0);
+ await db.exec('RESET ROLE; DROP TRIGGER test_reject_legacy ON threshold_settings; DROP FUNCTION test_reject_legacy()');
 });

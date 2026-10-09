@@ -1,13 +1,10 @@
-import { DEFAULT_THRESHOLDS, normalizeThresholds } from "../utils/thresholdEvaluation";
+import { DEFAULT_THRESHOLDS, thresholdBundle } from "../../supabase/functions/_shared/thresholdResolution.js";
+export { thresholdBundle };
 
 export const THRESHOLDS_CHANGED = "craythrive:thresholds-changed";
 const cacheKey = userId => `craythrive:tank-thresholds:${userId}`;
 export const tankThresholdName = tank => tank?.tank_name || tank?.name || "Tank";
 
-export function thresholdBundle(rows = []) {
-  return { byTank: Object.fromEntries(rows.filter(row => row.tank_id).map(row => [row.tank_id, normalizeThresholds(row)])),
-    legacy: rows.find(row => !row.tank_id) ? normalizeThresholds(rows.find(row => !row.tank_id)) : { ...DEFAULT_THRESHOLDS } };
-}
 
 export function readThresholdCache(userId) {
   try { return JSON.parse(localStorage.getItem(cacheKey(userId))) || thresholdBundle(); }

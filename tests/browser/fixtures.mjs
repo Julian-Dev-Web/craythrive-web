@@ -121,7 +121,8 @@ export const test = base.extend({
           const args = request.postDataJSON();
           const selected = state.data.tanks.find(tank => tank.id === args.p_tank_id && tank.user_id === user.id);
           if (!selected) return reply({ code: '42501', message: 'Tank ownership required' }, 403);
-          const legacy = state.data.threshold_settings.find(row => !row.tank_id)?.thresholds || {};
+          let legacyRow = state.data.threshold_settings.find(row => row.user_id === user.id && !row.tank_id);
+          const legacy = legacyRow?.thresholds || {};
           const selectedRow = state.data.threshold_settings.find(row => row.tank_id === selected.id);
           let patch = args.p_patch;
           if (args.p_source === 'ai_recommendation') {
@@ -147,6 +148,13 @@ export const test = base.extend({
                 metadata: { source: args.p_source, scope: args.p_scope, old_values: oldValues, new_values: newValues } });
             }
             saved.push(row);
+          }
+          if (args.p_scope === 'all_tanks') {
+            if (!legacyRow) {
+              legacyRow = { id: 'legacy-thresholds', user_id: user.id, tank_id: null };
+              state.data.threshold_settings.push(legacyRow);
+            }
+            legacyRow.thresholds = structuredClone(patch);
           }
           if (args.p_source === 'ai_recommendation') selectedRow.pending_ai_suggestion = null;
           return reply({ affected: targets.length, changed, rows: saved });

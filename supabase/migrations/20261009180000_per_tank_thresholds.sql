@@ -1,11 +1,18 @@
--- Review and apply separately from the Web release. Preserves legacy rows.
+-- BLOCKED CANDIDATE: nullable tank_id alone cannot preserve user-only clients.
+-- Do not release until the installed mobile read/upsert paths are audited.
+-- See docs/THRESHOLD_COMPATIBILITY_AUDIT.md. The guard runs before any DDL.
 BEGIN;
+DO $$ BEGIN
+ IF current_setting('craythrive.threshold_clients_compatible',true) IS DISTINCT FROM 'true' THEN
+  RAISE EXCEPTION 'Threshold compatibility audit required: legacy user-only maybeSingle and ON CONFLICT(user_id) clients are not supported by this candidate';
+ END IF;
+END $$;
 ALTER TABLE public.threshold_settings ADD COLUMN tank_id uuid REFERENCES public.tanks(id) ON DELETE CASCADE;
 ALTER TABLE public.threshold_settings ADD COLUMN pending_ai_suggestion jsonb;
 ALTER TABLE public.threshold_settings ADD COLUMN pending_ai_suggested_at timestamptz;
 ALTER TABLE public.threshold_settings DROP CONSTRAINT threshold_settings_user_id_key;
-ALTER TABLE public.threshold_settings ADD CONSTRAINT threshold_settings_user_tank_key UNIQUE (user_id,tank_id);
--- Retain one read-only legacy baseline for owners with no tanks/new tanks.
+CREATE UNIQUE INDEX threshold_settings_user_tank_key ON public.threshold_settings(user_id,tank_id) WHERE tank_id IS NOT NULL;
+-- NULLs need their own uniqueness rule. Legacy rows remain writable.
 CREATE UNIQUE INDEX threshold_settings_legacy_user_key ON public.threshold_settings(user_id) WHERE tank_id IS NULL;
 ALTER TABLE public.control_logs ADD COLUMN metadata jsonb NOT NULL DEFAULT '{}'::jsonb;
 
@@ -14,19 +21,20 @@ ALTER TABLE public.control_logs ADD COLUMN metadata jsonb NOT NULL DEFAULT '{}':
 INSERT INTO public.threshold_settings (user_id,tank_id,thresholds,temperature_min,temperature_max,ph_min,ph_max,turbidity_max,water_level_min,ammonia_max,created_at,updated_at)
 SELECT s.user_id,t.id,s.thresholds,s.temperature_min,s.temperature_max,s.ph_min,s.ph_max,s.turbidity_max,s.water_level_min,s.ammonia_max,s.created_at,s.updated_at
 FROM public.threshold_settings s JOIN public.tanks t ON t.user_id=s.user_id
-WHERE s.tank_id IS NULL ON CONFLICT (user_id,tank_id) DO NOTHING;
+WHERE s.tank_id IS NULL ON CONFLICT (user_id,tank_id) WHERE tank_id IS NOT NULL DO NOTHING;
 
 -- Existing permissive owner policies remain. Restrictive guards additionally
--- require actual tank ownership; legacy baseline rows are read-only to clients.
+-- require actual tank ownership while retaining legacy owner reads/writes.
 CREATE POLICY threshold_tank_read_guard ON public.threshold_settings AS RESTRICTIVE FOR SELECT TO authenticated
 USING (user_id=auth.uid() AND (tank_id IS NULL OR EXISTS (SELECT 1 FROM public.tanks t WHERE t.id=tank_id AND t.user_id=auth.uid())));
 CREATE POLICY threshold_tank_insert_guard ON public.threshold_settings AS RESTRICTIVE FOR INSERT TO authenticated
-WITH CHECK (user_id=auth.uid() AND tank_id IS NOT NULL AND EXISTS (SELECT 1 FROM public.tanks t WHERE t.id=tank_id AND t.user_id=auth.uid()));
+WITH CHECK (user_id=auth.uid() AND (tank_id IS NULL OR EXISTS (SELECT 1 FROM public.tanks t WHERE t.id=tank_id AND t.user_id=auth.uid())));
 CREATE POLICY threshold_tank_update_guard ON public.threshold_settings AS RESTRICTIVE FOR UPDATE TO authenticated
-USING (user_id=auth.uid() AND tank_id IS NOT NULL AND EXISTS (SELECT 1 FROM public.tanks t WHERE t.id=tank_id AND t.user_id=auth.uid()))
-WITH CHECK (user_id=auth.uid() AND tank_id IS NOT NULL AND EXISTS (SELECT 1 FROM public.tanks t WHERE t.id=tank_id AND t.user_id=auth.uid()));
--- Preserve audit history: configurations are updated, not deleted by clients.
-CREATE POLICY threshold_delete_guard ON public.threshold_settings AS RESTRICTIVE FOR DELETE TO authenticated USING (false);
+USING (user_id=auth.uid() AND (tank_id IS NULL OR EXISTS (SELECT 1 FROM public.tanks t WHERE t.id=tank_id AND t.user_id=auth.uid())))
+WITH CHECK (user_id=auth.uid() AND (tank_id IS NULL OR EXISTS (SELECT 1 FROM public.tanks t WHERE t.id=tank_id AND t.user_id=auth.uid())));
+-- Preserve tank configurations/audit history without changing legacy deletes.
+CREATE POLICY threshold_delete_guard ON public.threshold_settings AS RESTRICTIVE FOR DELETE TO authenticated
+USING (user_id=auth.uid() AND tank_id IS NULL);
 CREATE POLICY threshold_activity_read_guard ON public.control_logs AS RESTRICTIVE FOR SELECT TO authenticated
 USING (action_type<>'threshold_updated' OR (user_id=auth.uid() AND EXISTS (SELECT 1 FROM public.tanks t WHERE t.id=tank_id AND t.user_id=auth.uid())));
 CREATE POLICY threshold_activity_insert_guard ON public.control_logs AS RESTRICTIVE FOR INSERT TO authenticated WITH CHECK (action_type<>'threshold_updated');
@@ -76,8 +84,7 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
 DECLARE before_values jsonb; after_values jsonb; baseline jsonb; changes text[]='{}'; item record;
  source_value text; scope_value text;
 BEGIN
- IF NEW.tank_id IS NULL THEN RETURN NEW; END IF;
- IF NOT EXISTS (SELECT 1 FROM public.tanks WHERE id=NEW.tank_id AND user_id=NEW.user_id) THEN
+ IF NEW.tank_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.tanks WHERE id=NEW.tank_id AND user_id=NEW.user_id) THEN
   RAISE EXCEPTION 'Tank ownership required' USING ERRCODE='42501';
  END IF;
  IF TG_OP='UPDATE' THEN
@@ -89,6 +96,9 @@ BEGIN
   SELECT to_jsonb(s) INTO baseline FROM public.threshold_settings s WHERE user_id=NEW.user_id AND tank_id IS NULL;
   before_values=public.craythrive_threshold_values(baseline);
  END IF;
+ -- Legacy writes have no tank attribution. Administrative/backfill writes with
+ -- no authenticated actor are not user actions and must not fabricate activity.
+ IF NEW.tank_id IS NULL OR auth.uid() IS NULL THEN RETURN NEW; END IF;
  after_values=public.craythrive_threshold_values(to_jsonb(NEW));
  IF before_values=after_values THEN RETURN NEW; END IF;
  source_value=CASE WHEN current_setting('craythrive.threshold_source',true)='ai_recommendation' THEN 'ai_recommendation' ELSE 'manual' END;
@@ -159,12 +169,27 @@ BEGIN
   VALUES(actor,target.id,next_values,(next_values->>'temperatureMin')::numeric,(next_values->>'temperatureMax')::numeric,
    (next_values->>'phMin')::numeric,(next_values->>'phMax')::numeric,(next_values->>'turbidityMax')::numeric,
    (next_values->>'waterLevelMin')::numeric,(next_values->>'ammoniaMax')::numeric)
-  ON CONFLICT (user_id,tank_id) DO UPDATE SET thresholds=excluded.thresholds,temperature_min=excluded.temperature_min,
+  ON CONFLICT (user_id,tank_id) WHERE tank_id IS NOT NULL DO UPDATE SET thresholds=excluded.thresholds,temperature_min=excluded.temperature_min,
    temperature_max=excluded.temperature_max,ph_min=excluded.ph_min,ph_max=excluded.ph_max,turbidity_max=excluded.turbidity_max,
    water_level_min=excluded.water_level_min,ammonia_max=excluded.ammonia_max,updated_at=now()
   RETURNING * INTO saved;
   result=result||jsonb_build_array(to_jsonb(saved)); affected=affected+1;
  END LOOP;
+ -- Synchronize the account-wide baseline only for an explicit Apply All.
+ -- Do this AFTER tank writes so insert audits compare with the old fallback.
+ -- Preserve legacy identity, creation time and pending metadata; bump the
+ -- update timestamp only when effective legacy values actually change.
+ IF p_scope='all_tanks' THEN
+  INSERT INTO public.threshold_settings(user_id,tank_id,thresholds,temperature_min,temperature_max,ph_min,ph_max,turbidity_max,water_level_min,ammonia_max)
+  VALUES(actor,NULL,next_values,(next_values->>'temperatureMin')::numeric,(next_values->>'temperatureMax')::numeric,
+   (next_values->>'phMin')::numeric,(next_values->>'phMax')::numeric,(next_values->>'turbidityMax')::numeric,
+   (next_values->>'waterLevelMin')::numeric,(next_values->>'ammoniaMax')::numeric)
+  ON CONFLICT (user_id) WHERE tank_id IS NULL DO UPDATE SET thresholds=excluded.thresholds,temperature_min=excluded.temperature_min,
+   temperature_max=excluded.temperature_max,ph_min=excluded.ph_min,ph_max=excluded.ph_max,turbidity_max=excluded.turbidity_max,
+   water_level_min=excluded.water_level_min,ammonia_max=excluded.ammonia_max,
+   updated_at=CASE WHEN public.craythrive_threshold_values(to_jsonb(threshold_settings)) IS DISTINCT FROM next_values
+    THEN now() ELSE threshold_settings.updated_at END;
+ END IF;
  IF p_source='ai_recommendation' THEN
   UPDATE public.threshold_settings SET pending_ai_suggestion=NULL,pending_ai_suggested_at=NULL WHERE user_id=actor AND tank_id=p_tank_id;
  END IF;

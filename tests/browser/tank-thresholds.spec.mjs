@@ -14,6 +14,7 @@ test('single-tank Apply preserves other tanks, records one activity, refresh and
  perTank(qa);await openSettings(page);await page.getByLabel('Tank',{exact:true}).selectOption('tank-b');await expect(water(page)).toHaveValue('5');
  await water(page).fill('5.5');await save(page).click();await expect(page.getByText('Threshold settings updated for Tank B.',{exact:true})).toBeVisible();
  expect(qa.data.threshold_settings.filter(row=>row.tank_id).map(row=>row.thresholds.waterLevelMin)).toEqual([4,5.5,6]);
+ expect(qa.data.threshold_settings.find(row=>!row.tank_id).thresholds.waterLevelMin).toBe(4.5);
  expect(entries(qa)).toHaveLength(1);expect(entries(qa)[0].tank_id).toBe('tank-b');
  await page.reload();await expect(water(page)).toHaveValue('5.5');
  await page.getByLabel('Tank',{exact:true}).selectOption('tank-a');await expect(water(page)).toHaveValue('4');
@@ -34,6 +35,7 @@ test('Apply All requires confirmation, updates only owned tanks and creates one 
  await expect(page.getByText('Threshold settings updated for 3 tanks.',{exact:true})).toBeVisible();
  expect(entries(qa)).toHaveLength(3);expect(entries(qa).every(row=>row.metadata.scope==='all_tanks')).toBe(true);
  expect(qa.data.threshold_settings.filter(row=>row.tank_id).map(row=>row.thresholds.waterLevelMin)).toEqual([4.8,4.8,4.8]);
+ expect(qa.data.threshold_settings.find(row=>!row.tank_id).thresholds.waterLevelMin).toBe(4.8);
  expect(qa.data.threshold_settings.some(row=>row.tank_id==='foreign')).toBe(false);
 });
 

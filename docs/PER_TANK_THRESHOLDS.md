@@ -2,12 +2,18 @@
 
 ## Implementation and rollout state
 
+**Compatibility update:** rollout is blocked pending the installed-mobile audit.
+See [THRESHOLD_COMPATIBILITY_AUDIT.md](THRESHOLD_COMPATIBILITY_AUDIT.md). The SQL
+candidate now refuses execution before DDL unless compatibility is explicitly
+reviewed. Nullable `tank_id` and partial indexes alone cannot preserve old
+user-only singular reads/upserts. Do not apply this candidate to production yet.
+
 Implemented locally for the React/Vite Web dashboard. The migration is created
 and tested against local PostgreSQL (PGlite); **it has not been applied to live
 Supabase**. No deployment, Git push, firmware edit, mobile edit, authentication
 change, marketplace change, or historical sensor-data write was performed.
 
-Apply the reviewed database migration before releasing this Web change. Without
+Apply a fully compatible, reviewed database migration before activating saves. Without
 the RPC, Apply reports that database setup is required and does not activate a
 browser-only substitute for a successful server save.
 
@@ -40,7 +46,9 @@ Migration: `supabase/migrations/20261009180000_per_tank_thresholds.sql`.
 
 - Add nullable `threshold_settings.tank_id`, referencing `tanks(id)` with cascade
   deletion when the tank is deleted.
-- Replace `UNIQUE(user_id)` with `UNIQUE(user_id,tank_id)`.
+- Candidate replaces `UNIQUE(user_id)` with a partial unique tank index on
+  `(user_id,tank_id) WHERE tank_id IS NOT NULL`; installed-client compatibility
+  is not established, so execution is guarded.
 - Add a partial unique index on `user_id WHERE tank_id IS NULL`, retaining one
   legacy baseline per user.
 - Add `pending_ai_suggestion JSONB` and `pending_ai_suggested_at TIMESTAMPTZ`.
@@ -60,7 +68,7 @@ does not fabricate user activity.
 
 A tank with no custom row uses its owner's retained legacy baseline; if no such
 baseline exists, it uses application defaults. New rows are created on Apply.
-Legacy rows are read-only to authenticated clients after migration. Older
+Legacy rows remain writable by their authenticated owner in the corrected candidate. Older
 incompatible stored values are preserved, not silently replaced; the editor
 requires valid values before applying them.
 
@@ -87,7 +95,9 @@ columns and records an event only if effective threshold values changed.
 count. After confirmation, the RPC fetches and locks the current owned tanks and
 applies the selected tank's complete edited settings to each. All writes and
 audit inserts share one transaction; a failure rolls everything back. Each tank
-whose values changed receives one activity entry. Unchanged tanks receive no
+whose values changed receives one activity entry. The corrected candidate also
+synchronizes the owner's NULL legacy row, without an extra tank activity entry.
+Unchanged tanks receive no
 misleading event. The response reports affected/changed counts.
 
 ## AI acceptance
@@ -126,8 +136,9 @@ icon. Existing command status rendering and command cleanup remain unchanged;
 configuration events are excluded from the latest-command completion check.
 
 Restrictive threshold RLS supplements existing owner policies with actual tank
-ownership checks on reads/inserts/updates. Legacy baseline rows cannot be edited
-and configurations cannot be client-deleted. Changing a row's owner/tank identity
+ownership checks on reads/inserts/updates. Owned legacy baseline rows can be
+read, inserted, updated and deleted as before. Tank configurations cannot be
+client-deleted. Changing a row's owner/tank identity
 is rejected by the audit trigger.
 
 Existing broad authenticated `control_logs` policies were found during the audit.
@@ -154,7 +165,7 @@ Web Warning rather than staying Normal. Existing firmware warning/critical tiers
 stale/error health guards and 0.1 cm display precision are retained. No critical
 water boundary or firmware severity threshold was invented or changed.
 
-## Validation
+## Previous implementation validation (before compatibility corrections)
 
 - Full unit suite: **117 passed, one existing retired-feature skip**.
 - Nine local PostgreSQL migration/RPC/RLS tests cover preservation/backfill,
