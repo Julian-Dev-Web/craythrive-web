@@ -1,11 +1,12 @@
 import { getCurrentTankSnapshot } from "./monitoringRecords";
 import { getSafetySeverity, getSafetyStatusLabel } from "./statusHelpers";
-import { evaluateReadingSafety, getLocalThresholds } from "./thresholdEvaluation";
+import { evaluateReadingSafety, getLocalThresholds, resolveTankThresholds } from "./thresholdEvaluation";
 
 // Integration contract for an AI caller. No AI endpoint exists in this web repo.
 export function buildMonitoringAIContext({ records, tank, thresholds = getLocalThresholds(), historyLimit = 10 }) {
   const snapshot = getCurrentTankSnapshot(records, tank, thresholds);
   const anchor = snapshot.waterRecord || snapshot.ammoniaRecord;
+  thresholds = resolveTankThresholds(thresholds, tank?.id || anchor?.tankKey);
   const scoped = records.filter(item => anchor && item.tankKey === anchor.tankKey)
     .sort((a, b) => (new Date(b.date || 0).getTime() || 0) - (new Date(a.date || 0).getTime() || 0));
   const sensor = item => item ? { timestamp: item.date,

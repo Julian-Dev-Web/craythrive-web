@@ -1,3 +1,4 @@
+import useThresholdRefresh from "../../hooks/useThresholdRefresh";
 import { logDiagnostic } from "../../utils/securityDiagnostics";
 import { getAmmoniaLabel, getAmmoniaNumericValue, getAmmoniaScanDate, getLatestAmmoniaForTank, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
 import { loadCurrentTankRows } from "../../services/tankSnapshotService";
@@ -43,6 +44,7 @@ import {
 import {
   evaluateReadingSafety,
   loadActiveThresholds,
+  resolveTankThresholds,
 } from "../../utils/thresholdEvaluation";
 
 import {
@@ -929,6 +931,8 @@ export default function TanksPage() {
     setThresholds,
   ] =
     useState(null);
+  useThresholdRefresh(() => { loadActiveThresholds().then(setThresholds); });
+
 
   useEffect(() => {
     let isMounted =
@@ -1109,6 +1113,7 @@ export default function TanksPage() {
           tank,
           index
         ) => {
+          const effectiveThresholds = resolveTankThresholds(thresholds, tank.id);
           const latestReading =
             getLatestReadingForTank(
               tank,
@@ -1116,7 +1121,7 @@ export default function TanksPage() {
             );
 
           const normalized =
-            normalizeSensorReading(latestReading, thresholds);
+            normalizeSensorReading(latestReading, effectiveThresholds);
 
           const readingStatus =
             latestReading
@@ -1159,7 +1164,7 @@ export default function TanksPage() {
                       latestAmmoniaValue,
                   },
 
-                  thresholds
+                  effectiveThresholds
                 )
               : null;
 

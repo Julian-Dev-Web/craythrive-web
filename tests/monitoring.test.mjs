@@ -11,7 +11,8 @@ const server = await createServer({ server: { middlewareMode: true }, define: {
 } });
 after(() => server.close());
 const { normalizeSensorReading, toNumberOrNull } = await server.ssrLoadModule('/src/utils/sensorReadingUtils.js');
-const { evaluateReadingSafety, normalizeThresholds, DEFAULT_THRESHOLDS } = await server.ssrLoadModule('/src/utils/thresholdEvaluation.js');
+const { evaluateReadingSafety, normalizeThresholds, DEFAULT_THRESHOLDS, resolveTankThresholds, getLocalThresholds } = await server.ssrLoadModule('/src/utils/thresholdEvaluation.js');
+const { thresholdBundle, cacheThresholdBundle, readThresholdCache, thresholdChanges, suggestionPatch, applyTankThresholds } = await server.ssrLoadModule('/src/services/tankThresholdService.js');
 const { getSafetySeverity, getSafetyStatusLabel, getParameterExplanation, getSafetyLabelSeverity } = await server.ssrLoadModule('/src/utils/statusHelpers.js');
 const { getWaterReadingHealth } = await server.ssrLoadModule('/src/utils/waterReadingHealth.js');
 const { buildMonitoringRecords, buildTankHistoryExportRows, buildTankSnapshotExportRows, getCurrentTankSnapshot, getLatestAmmoniaForTank, evaluateCurrentTankSafety, recordMatchesMonitoringTank } = await server.ssrLoadModule('/src/utils/monitoringRecords.js');
@@ -162,7 +163,7 @@ test('pH 4.8 is critical and configured temperature is normal', () => {
 
 test('only valid firmware water codes provide the missing warning/critical tiers', () => {
   for (const [water_status, severity] of Object.entries({ SAFE_IDEAL: 'normal', LOW_WARNING: 'warning', HIGH_WARNING: 'warning', CRITICAL_LOW: 'critical', CRITICAL_HIGH: 'critical' })) {
-    const raw = { ...normal, water_depth_cm: 4, water_status };
+    const raw = { ...normal, water_depth_cm: water_status === 'SAFE_IDEAL' ? 4.6 : 4, water_status };
     const before = JSON.stringify(raw);
     const reading = normalizeSensorReading(raw);
     const result = reading.safety;
@@ -250,7 +251,7 @@ test('known temperature pH and clarity firmware warnings are not flattened into 
 
 test('firmware water severity survives history, current summaries, CSV and AI reevaluation', () => {
   for (const [status, label] of [['LOW_WARNING', 'Warning'], ['HIGH_WARNING', 'Warning'], ['CRITICAL_LOW', 'Critical'], ['CRITICAL_HIGH', 'Critical'], ['SAFE_IDEAL', 'Normal']]) {
-    const records = buildMonitoringRecords([{ ...normal, tank_id: 'tank-a', water_depth_cm: 4, water_status: status }], [], tanks);
+    const records = buildMonitoringRecords([{ ...normal, tank_id: 'tank-a', water_depth_cm: status === 'SAFE_IDEAL' ? 4.6 : 4, water_status: status }], [], tanks);
     const snapshot = getCurrentTankSnapshot(records, tanks[0]);
     assert.equal(getSafetyStatusLabel(records[0].status), label);
     assert.equal(getSafetyStatusLabel(getSafetySeverity(snapshot.safety)), label);
@@ -269,6 +270,40 @@ test('threshold aliases and incomplete settings retain valid fallbacks', () => {
   assert.deepEqual(normalizeThresholds(snake), expected);
   assert.deepEqual(normalizeThresholds({ thresholds: expected }), expected);
   assert.deepEqual(normalizeThresholds({ temperatureMin: '', phMin: false, waterLevelMin: null }), DEFAULT_THRESHOLDS);
+  assert.equal(normalizeThresholds({ thresholds: {}, water_level_min: 5.5 }).waterLevelMin,5.5);
+});
+
+test('each tank uses its own saved thresholds in history, summaries, exports and AI without altering measurements',()=>{
+ const bundle=thresholdBundle([{thresholds:DEFAULT_THRESHOLDS},
+  {tank_id:'tank-a',thresholds:{...DEFAULT_THRESHOLDS,waterLevelMin:5.5,phMin:7.5,ammoniaMax:0.5}},
+  {tank_id:'tank-b',thresholds:{...DEFAULT_THRESHOLDS,waterLevelMin:4,phMin:6.5,ammoniaMax:0.8}}]);
+ const water=tanks.map(tank=>({...normal,tank_id:tank.id,water_status:'SAFE_IDEAL'}));
+ const scans=tanks.map(tank=>({tank_id:tank.id,ammonia:0.6}));
+ const before=JSON.stringify({water,scans});const records=buildMonitoringRecords(water,scans,tanks,bundle);
+ const a=getCurrentTankSnapshot(records,tanks[0],bundle),b=getCurrentTankSnapshot(records,tanks[1],bundle);
+ assert.equal(a.safety.parameters.waterLevel.severity,'warning');assert.equal(a.safety.parameters.ph.severity,'critical');
+ assert.equal(a.safety.parameters.ammonia.severity,'critical');assert.equal(getSafetySeverity(b.safety),'normal');
+ assert.equal(buildTankSnapshotExportRows([a,b])[0]['Water Level Condition'],'Warning');
+ assert.equal(buildTankSnapshotExportRows([a,b])[1]['Water Level Condition'],'Normal');
+ assert.equal(buildMonitoringAIContext({records,tank:tanks[0],thresholds:bundle}).latest_ammonia.condition,'Critical');
+ assert.equal(buildMonitoringAIContext({records,tank:tanks[1],thresholds:bundle}).latest_ammonia.condition,'Normal');
+ assert.equal(resolveTankThresholds(bundle,'new-tank').waterLevelMin,4.5);assert.equal(JSON.stringify({water,scans}),before);
+});
+
+test('threshold cache is account-scoped, draft patches preserve unedited fields and no-op does not call the server',async()=>{
+ const previous=globalThis.localStorage;const storage=new Map();
+ globalThis.localStorage={getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value)};
+ try {
+  const bundle=thresholdBundle([{tank_id:'tank-a',thresholds:{...DEFAULT_THRESHOLDS,waterLevelMin:7}}]);
+  cacheThresholdBundle('owner-a',bundle);assert.equal(getLocalThresholds('tank-a','owner-a').waterLevelMin,7);
+  assert.equal(getLocalThresholds('tank-a','owner-b').waterLevelMin,4.5);assert.equal(getLocalThresholds().waterLevelMin,4.5);
+  assert.deepEqual(readThresholdCache('owner-a'),bundle);
+  assert.deepEqual(thresholdChanges(DEFAULT_THRESHOLDS,{...DEFAULT_THRESHOLDS,waterLevelMin:5}),{waterLevelMin:5});
+  assert.deepEqual(suggestionPatch({parameter:'water_level',suggested_value:5}),{waterLevelMin:5});
+  assert.throws(()=>suggestionPatch({parameter:'water_level',suggested_value:null}),/incomplete/);
+  const client={rpc(){throw new Error('No-op must not call server');}};
+  assert.equal((await applyTankThresholds(client,{userId:'owner-a',tankId:'tank-a',patch:{}})).changed,0);
+ } finally {globalThis.localStorage=previous;}
 });
 
 test('only Normal Warning Critical are primary safety labels; missing data is neutral', () => {
@@ -373,7 +408,9 @@ test('confirmed water error, startup waiting, and fresh recovery have distinct h
   assert.equal(fresh.waterLabel, '4.0 cm');
   assert.equal(fresh.safety.parameters.waterLevel.health, 'fresh');
   assert.equal(fresh.safety.parameters.waterLevel.measurementFresh, true);
-  assert.equal(fresh.safety.issues.length, 0);
+  // Freshness recovery does not override the active tank minimum (4.5 cm).
+  assert.equal(fresh.safety.parameters.waterLevel.severity, 'warning');
+  assert.equal(fresh.safety.issues.length, 1);
   assert.equal(getWaterReadingHealth('SAFE_IDEAL', { sensor_health: { water_level: { health: 'ERROR' } } }).health, 'error');
   for (const invalid of [null, false, '', ' ', [], {}]) {
     assert.equal(getWaterReadingHealth('SENSOR_STALE', { water_last_good_age_ms: invalid }).lastGoodAgeMs, null);

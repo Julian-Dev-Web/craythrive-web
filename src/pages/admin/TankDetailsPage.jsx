@@ -1,3 +1,4 @@
+import useThresholdRefresh from "../../hooks/useThresholdRefresh";
 import { logDiagnostic, getSafeErrorMessage } from "../../utils/securityDiagnostics";
 import { getAmmoniaLabel, getAmmoniaNumericValue, getAmmoniaScanDate, getLatestAmmoniaForTank, recordMatchesAmmoniaTank, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
 import { loadAmmoniaHistory, loadCurrentTankRows } from "../../services/tankSnapshotService";
@@ -1692,11 +1693,13 @@ export default function TankDetailsPage() {
     thresholds,
     setThresholds,
   ] = useState(null);
+  useThresholdRefresh(() => { loadActiveThresholds(tankId).then(setThresholds); });
+
 
   useEffect(() => {
     let isMounted = true;
 
-    loadActiveThresholds().then((loaded) => {
+    loadActiveThresholds(tankId).then((loaded) => {
       if (isMounted) {
         setThresholds(loaded);
       }
@@ -1705,7 +1708,7 @@ export default function TankDetailsPage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [tankId]);
 
   /* =======================================================
      LOAD
@@ -1715,7 +1718,7 @@ export default function TankDetailsPage() {
     async (
       silent = false
     ) => {
-      setThresholds(await loadActiveThresholds());
+      setThresholds(await loadActiveThresholds(tankId));
       if (
         !isSupabaseConfigured ||
         !supabase
@@ -1933,8 +1936,12 @@ export default function TankDetailsPage() {
               )
           );
 
+          const { data: configurationLogs, error: configurationError } = await supabase.from("control_logs")
+            .select("*").eq("user_id", loadedUser.id).eq("tank_id", selectedTank.id).eq("action_type", "threshold_updated")
+            .order("created_at", { ascending: false }).limit(300);
+          if (configurationError) logDiagnostic("Threshold activity loading error", configurationError);
           setControlLogs(
-            logResult.rows
+            [...logResult.rows, ...(configurationLogs || [])]
               .filter((row) =>
                 recordMatchesTank(
                   row,
@@ -2298,7 +2305,7 @@ export default function TankDetailsPage() {
     }, [alerts]);
 
   const latestCommandLog =
-    sortedControlLogs[0] ||
+    sortedControlLogs.find(item => item.action_type !== "threshold_updated") ||
     null;
 
   const latestAlert =
@@ -4370,7 +4377,7 @@ export default function TankDetailsPage() {
             <EmptyBlock
               icon={Settings}
               title="No activity yet"
-              text="Feeding and water-control activity will appear here."
+              text="Feeding, water-control, and threshold activity will appear here."
             />
           ) : (
             <>
@@ -4381,6 +4388,16 @@ export default function TankDetailsPage() {
                     item,
                     index
                   ) => {
+                    if (item.action_type === "threshold_updated") {
+                      return <div className="modern-tank-detail-list-row" key={item.id}>
+                        <div><strong>Threshold Updated</strong>
+                          <span>{formatDate(item.created_at)}</span>
+                          <span style={{ whiteSpace: "pre-line" }}>{item.notes}</span>
+                          <span>{item.metadata?.source === "ai_recommendation" ? "AI recommendation accepted by user" : "Manual"}</span>
+                        </div>
+                        <b className="modern-tank-status normal"><Settings size={12} aria-hidden="true" /> Updated</b>
+                      </div>;
+                    }
                     const status =
                       getValue(
                         item,

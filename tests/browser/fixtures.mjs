@@ -116,6 +116,41 @@ export const test = base.extend({
         // Supabase rejects browser/public-key schema discovery. Table CRUD works.
         if (url.pathname === '/rest/v1/') return reply({ message: 'Access to schema is forbidden' }, 403);
         const table = url.pathname.split('/').at(-1);
+        if (url.pathname === '/rest/v1/rpc/apply_tank_thresholds') {
+          if (state.thresholdWriteFailure) return reply({ code: 'PGRST202', message: 'Migration not installed' }, 404);
+          const args = request.postDataJSON();
+          const selected = state.data.tanks.find(tank => tank.id === args.p_tank_id && tank.user_id === user.id);
+          if (!selected) return reply({ code: '42501', message: 'Tank ownership required' }, 403);
+          const legacy = state.data.threshold_settings.find(row => !row.tank_id)?.thresholds || {};
+          const selectedRow = state.data.threshold_settings.find(row => row.tank_id === selected.id);
+          let patch = args.p_patch;
+          if (args.p_source === 'ai_recommendation') {
+            const s = selectedRow?.pending_ai_suggestion;
+            if (!s) return reply({ message: 'No recommendation' }, 400);
+            patch = { waterLevelMin: s.suggested_value };
+          }
+          if (args.p_scope === 'all_tanks') patch = { ...(selectedRow?.thresholds || legacy), ...patch };
+          const targets = state.data.tanks.filter(tank => tank.user_id === user.id && (args.p_scope === 'all_tanks' || tank.id === selected.id));
+          const saved = []; let changed = 0;
+          for (const tank of targets) {
+            let row = state.data.threshold_settings.find(row => row.tank_id === tank.id);
+            const oldValues = structuredClone(row?.thresholds || legacy);
+            const newValues = { ...oldValues, ...patch };
+            state.writes.push({ table: 'threshold_settings', method: 'RPC', body: { ...args, tank_id: tank.id } });
+            if (!row) { row = { id: `threshold-${tank.id}`, tank_id: tank.id, user_id: user.id }; state.data.threshold_settings.push(row); }
+            row.thresholds = newValues;
+            if (JSON.stringify(oldValues) !== JSON.stringify(newValues)) {
+              changed++;
+              state.data.control_logs.push({ id: `threshold-activity-${state.data.control_logs.length}`, tank_id: tank.id, user_id: user.id,
+                action_type: 'threshold_updated', action_status: 'updated', created_at: new Date().toISOString(),
+                notes: `Water Level Minimum: ${oldValues.waterLevelMin} cm → ${newValues.waterLevelMin} cm.${args.p_source === 'ai_recommendation' ? ' AI recommendation accepted by user.' : ''}`,
+                metadata: { source: args.p_source, scope: args.p_scope, old_values: oldValues, new_values: newValues } });
+            }
+            saved.push(row);
+          }
+          if (args.p_source === 'ai_recommendation') selectedRow.pending_ai_suggestion = null;
+          return reply({ affected: targets.length, changed, rows: saved });
+        }
         if (request.method() === 'GET') state.reads.push({ table, filters: Object.fromEntries(url.searchParams) });
         let rows = structuredClone(state.data[table] || []);
         for (const [key, value] of url.searchParams) {

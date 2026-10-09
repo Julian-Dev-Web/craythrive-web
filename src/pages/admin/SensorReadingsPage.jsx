@@ -1,3 +1,4 @@
+import useThresholdRefresh from "../../hooks/useThresholdRefresh";
 import { logDiagnostic } from "../../utils/securityDiagnostics";
 import { buildMonitoringRecords, getCurrentTankSnapshot } from "../../utils/monitoringRecords";
 import { loadAmmoniaHistory, loadCurrentTankRows } from "../../services/tankSnapshotService";
@@ -895,6 +896,8 @@ export default function SensorReadingsPage() {
     setThresholds,
   ] =
     useState(null);
+  useThresholdRefresh(() => { loadActiveThresholds().then(setThresholds); });
+
 
   useEffect(() => {
     let isMounted = true;

@@ -1,4 +1,4 @@
-import { evaluateReadingSafety, getLocalThresholds } from "./thresholdEvaluation";
+import { evaluateReadingSafety, getLocalThresholds, resolveTankThresholds } from "./thresholdEvaluation";
 
 // src/utils/sensorReadingUtils.js
 
@@ -42,6 +42,7 @@ export function normalizeStatus(value) {
 }
 
 export function normalizeSensorReading(reading, thresholds = getLocalThresholds()) {
+  thresholds = resolveTankThresholds(thresholds, reading?.tank_id);
   if (!reading) {
     return {
       raw: null,

@@ -21,11 +21,11 @@ for (const [status, label] of [
   ['CRITICAL_LOW', 'Critical'], ['CRITICAL_HIGH', 'Critical'],
 ]) {
   test(`firmware ${status} agrees across monitoring pages`, async ({ page, qa }) => {
-    prepare(qa, { water_status: status });
+    prepare(qa, { water_status: status, water_depth_cm: status === 'SAFE_IDEAL' ? 4.6 : 4 });
     for (const [route, selector, overall] of pages) {
       await page.goto(route);
       const water = page.locator(selector).filter({ hasText: 'Water Level' });
-      await expect(water).toContainText('4.0 cm');
+      await expect(water).toContainText(status === 'SAFE_IDEAL' ? '4.6 cm' : '4.0 cm');
       await expect(water.locator('.safety-status')).toHaveText(label);
       await expect(water.locator('.safety-status')).toHaveClass(new RegExp(`\\b${label.toLowerCase()}\\b`));
       await expect(water.locator('.safety-status svg')).toBeVisible();

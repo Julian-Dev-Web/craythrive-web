@@ -1,3 +1,4 @@
+import useThresholdRefresh from "../../hooks/useThresholdRefresh";
 import { logDiagnostic } from "../../utils/securityDiagnostics";
 import SafetyBadge from "../../components/SafetyBadge";
 import { getSafetySeverity, getSafetyStatusLabel, getParameterExplanation } from "../../utils/statusHelpers";
@@ -1526,6 +1527,8 @@ export default function ReportsPage() {
   ======================================================= */
 
   const [thresholds, setThresholds] = useState(null);
+  useThresholdRefresh(() => { loadActiveThresholds().then(setThresholds); });
+
   const [conditionFilter, setConditionFilter] = useState("all");
   const [exportScope, setExportScope] = useState("current");
 

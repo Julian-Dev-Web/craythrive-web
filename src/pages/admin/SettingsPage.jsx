@@ -1,4 +1,6 @@
-import { DEFAULT_THRESHOLDS, normalizeThresholds } from "../../utils/thresholdEvaluation";
+import useTankThresholdSettings from "../../hooks/useTankThresholdSettings";
+import TankThresholdControls from "../../components/TankThresholdControls";
+import { DEFAULT_THRESHOLDS } from "../../utils/thresholdEvaluation";
 import { logDiagnostic } from "../../utils/securityDiagnostics";
 import DashboardTourHelp from "../../components/tour/DashboardTourHelp";
 import { useEffect, useMemo, useState } from "react";
@@ -25,7 +27,6 @@ import {
 } from "lucide-react";
 
 import {
-  isSupabaseConfigured,
   supabase,
 } from "../../lib/supabase";
 
@@ -33,11 +34,7 @@ import {
    STORAGE / DATABASE
 ========================================================= */
 
-const STORAGE_KEY =
-  "craythrive_threshold_settings";
 
-const THRESHOLD_TABLE =
-  "threshold_settings";
 
 /* =========================================================
    DEFAULT VALUES
@@ -538,29 +535,6 @@ function formatFriendlyText(value) {
 }
 
 
-function getLocalThresholds() {
-  try {
-    const saved =
-      localStorage.getItem(
-        STORAGE_KEY
-      );
-
-    if (!saved) {
-      return {
-        ...DEFAULT_THRESHOLDS,
-      };
-    }
-
-    return normalizeThresholds(
-      JSON.parse(saved)
-    );
-  } catch {
-    return {
-      ...DEFAULT_THRESHOLDS,
-    };
-  }
-}
-
 /* =========================================================
    PROFILE
 ========================================================= */
@@ -767,160 +741,6 @@ async function getCurrentUserAndProfile() {
 }
 
 /* =========================================================
-   LOAD THRESHOLDS
-========================================================= */
-
-async function loadThresholdsFromSupabase(
-  userId
-) {
-  const {
-    data,
-    error,
-  } =
-    await supabase
-      .from(
-        THRESHOLD_TABLE
-      )
-      .select("*")
-      .eq(
-        "user_id",
-        userId
-      )
-      .maybeSingle();
-
-  if (error) {
-    logDiagnostic(
-      "LOAD THRESHOLDS ERROR:",
-      error
-    );
-
-    return {
-      thresholds:
-        getLocalThresholds(),
-
-      syncMode:
-        "local",
-    };
-  }
-
-  if (!data) {
-    return {
-      thresholds:
-        getLocalThresholds(),
-
-      syncMode:
-        "local",
-    };
-  }
-
-  return {
-    thresholds:
-      normalizeThresholds(
-        data
-      ),
-
-    syncMode:
-      "online",
-  };
-}
-
-/* =========================================================
-   SAVE THRESHOLDS
-========================================================= */
-
-async function saveThresholdsToSupabase(
-  userId,
-  thresholds
-) {
-  const cleanThresholds =
-    normalizeThresholds(
-      thresholds
-    );
-
-  const payload = {
-    user_id:
-      userId,
-
-    thresholds:
-      cleanThresholds,
-
-    temperature_min:
-      Number(
-        cleanThresholds
-          .temperatureMin
-      ),
-
-    temperature_max:
-      Number(
-        cleanThresholds
-          .temperatureMax
-      ),
-
-    ph_min:
-      Number(
-        cleanThresholds
-          .phMin
-      ),
-
-    ph_max:
-      Number(
-        cleanThresholds
-          .phMax
-      ),
-
-    /*
-     * Existing column name retained
-     * for database compatibility.
-     */
-    turbidity_max:
-      Number(
-        cleanThresholds
-          .turbidityMax
-      ),
-
-    water_level_min:
-      Number(
-        cleanThresholds
-          .waterLevelMin
-      ),
-
-    ammonia_max:
-      Number(
-        cleanThresholds
-          .ammoniaMax
-      ),
-
-    updated_at:
-      new Date()
-        .toISOString(),
-  };
-
-  const {
-    data,
-    error,
-  } =
-    await supabase
-      .from(
-        THRESHOLD_TABLE
-      )
-      .upsert(
-        payload,
-        {
-          onConflict:
-            "user_id",
-        }
-      )
-      .select("*")
-      .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
-}
-
-/* =========================================================
    RESEARCH / CALIBRATION BASIS CARD
 ========================================================= */
 
@@ -1086,6 +906,8 @@ function ThresholdBasisCard({
 function ThresholdControl({
   item,
   value,
+  activeValue,
+  disabled,
   onChange,
 }) {
   const Icon =
@@ -1097,7 +919,7 @@ function ThresholdControl({
     ];
 
   const changedFromDefault =
-    Number(value) !==
+    Number(activeValue) !==
     Number(
       defaultValue
     );
@@ -1149,7 +971,7 @@ function ThresholdControl({
               activeSettingValueStyle
             }
           >
-            {value}{" "}
+            {activeValue}{" "}
             {item.unit}
           </strong>
         </div>
@@ -1176,6 +998,7 @@ function ThresholdControl({
       <div className="cray-settings-threshold-control">
         <input
           type="range"
+          disabled={disabled}
           min={
             item.min
           }
@@ -1206,6 +1029,7 @@ function ThresholdControl({
         <label>
           <input
             type="number"
+            disabled={disabled}
             min={
               item.min
             }
@@ -1382,14 +1206,8 @@ function EvidenceOverview() {
 ========================================================= */
 
 export default function SettingsPage() {
-  const [
-    thresholds,
-    setThresholds,
-  ] =
-    useState(
-      getLocalThresholds
-    );
-
+  const editor = useTankThresholdSettings();
+  const { thresholds, setThresholds, isSaving, isDirty, message, setMessage, syncMode } = editor;
   const [
     profile,
     setProfile,
@@ -1402,43 +1220,7 @@ export default function SettingsPage() {
   ] =
     useState(null);
 
-  const [
-    syncMode,
-    setSyncMode,
-  ] =
-    useState(
-      "local"
-    );
-
-  const [
-    isLoading,
-    setIsLoading,
-  ] =
-    useState(
-      true
-    );
-
-  const [
-    isSaving,
-    setIsSaving,
-  ] =
-    useState(
-      false
-    );
-
-  const [
-    isDirty,
-    setIsDirty,
-  ] =
-    useState(
-      false
-    );
-
-  const [
-    message,
-    setMessage,
-  ] =
-    useState(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   /* =======================================================
      DERIVED DATA
@@ -1476,331 +1258,34 @@ export default function SettingsPage() {
      LOAD
   ======================================================= */
 
-  const loadSettings =
-    async () => {
-      setMessage(
-        null
-      );
-
-      if (
-        !isSupabaseConfigured ||
-        !supabase
-      ) {
-        const local =
-          getLocalThresholds();
-
-        setThresholds(
-          local
-        );
-
-        setSyncMode(
-          "local"
-        );
-
-        setIsDirty(
-          false
-        );
-
-        setIsLoading(
-          false
-        );
-
-        return;
-      }
-
-      try {
-        setIsLoading(
-          true
-        );
-
-        const result =
-          await getCurrentUserAndProfile();
-
-        setUser(
-          result.user
-        );
-
-        setProfile(
-          result.profile
-        );
-
-        if (
-          !result.user?.id
-        ) {
-          const local =
-            getLocalThresholds();
-
-          setThresholds(
-            local
-          );
-
-          setSyncMode(
-            "local"
-          );
-
-          setIsDirty(
-            false
-          );
-
-          return;
-        }
-
-        const loaded =
-          await loadThresholdsFromSupabase(
-            result.user.id
-          );
-
-        setThresholds(
-          loaded.thresholds
-        );
-
-        setSyncMode(
-          loaded.syncMode
-        );
-
-        setIsDirty(
-          false
-        );
-
-        localStorage.setItem(
-          STORAGE_KEY,
-
-          JSON.stringify(
-            loaded.thresholds
-          )
-        );
-      } catch (error) {
-        logDiagnostic(
-          "Settings loading error:",
-          error
-        );
-
-        const local =
-          getLocalThresholds();
-
-        setThresholds(
-          local
-        );
-
-        setSyncMode(
-          "local"
-        );
-
-        setIsDirty(
-          false
-        );
-
-        setMessage({
-          tone:
-            "warning",
-
-          text:
-            "Online settings could not be loaded. Your saved settings on this device are being used instead.",
-        });
-      } finally {
-        setIsLoading(
-          false
-        );
-      }
-    };
-
   useEffect(() => {
-    loadSettings();
+    let mounted = true;
+    getCurrentUserAndProfile().then(result => {
+      if (mounted) { setUser(result.user); setProfile(result.profile); }
+    }).catch(error => logDiagnostic("Settings profile loading error", error))
+      .finally(() => { if (mounted) setIsLoading(false); });
+    return () => { mounted = false; };
   }, []);
 
-  /* =======================================================
-     CHANGE
-  ======================================================= */
-
-  const handleThresholdChange =
-    (
-      key,
-      value
-    ) => {
-      setMessage(
-        null
-      );
-
-      setThresholds(
-        (
-          current
-        ) => ({
-          ...current,
-
-          [key]:
-            Number(
-              value
-            ),
-        })
-      );
-
-      setIsDirty(
-        true
-      );
-    };
-
-  /* =======================================================
-     RESET
-  ======================================================= */
-
-  const handleResetDefaults =
-    () => {
-      setThresholds({
-        ...DEFAULT_THRESHOLDS,
-      });
-
-      setIsDirty(
-        true
-      );
-
-      setMessage({
-        tone:
-          "info",
-
-        text:
-          "Default values restored. Press Save Changes to apply them.",
-      });
-    };
-
-  /* =======================================================
-     SAVE
-  ======================================================= */
-
-  const handleSave =
-    async () => {
-      setMessage(
-        null
-      );
-
-      if (
-        !validation.valid
-      ) {
-        setMessage({
-          tone:
-            "warning",
-
-          text:
-            validation.message,
-        });
-
-        return;
-      }
-
-      try {
-        setIsSaving(
-          true
-        );
-
-        const cleanThresholds =
-          normalizeThresholds(
-            thresholds
-          );
-
-        /*
-         * Keep a local fallback.
-         */
-        localStorage.setItem(
-          STORAGE_KEY,
-
-          JSON.stringify(
-            cleanThresholds
-          )
-        );
-
-        if (
-          !isSupabaseConfigured ||
-          !supabase ||
-          !user?.id
-        ) {
-          setThresholds(
-            cleanThresholds
-          );
-
-          setSyncMode(
-            "local"
-          );
-
-          setIsDirty(
-            false
-          );
-
-          setMessage({
-            tone:
-              "info",
-
-            text:
-              "Changes were saved on this device. Sign in with an online connection to sync them with your account.",
-          });
-
-          return;
-        }
-
-        await saveThresholdsToSupabase(
-          user.id,
-          cleanThresholds
-        );
-
-        setThresholds(
-          cleanThresholds
-        );
-
-        setSyncMode(
-          "online"
-        );
-
-        setIsDirty(
-          false
-        );
-
-        setMessage({
-          tone:
-            "success",
-
-          text:
-            "Water safety settings were saved successfully.",
-        });
-      } catch (error) {
-        logDiagnostic(
-          "Settings saving error:",
-          error
-        );
-
-        localStorage.setItem(
-          STORAGE_KEY,
-
-          JSON.stringify(
-            thresholds
-          )
-        );
-
-        setSyncMode(
-          "local"
-        );
-
-        setIsDirty(
-          false
-        );
-
-        setMessage({
-          tone:
-            "warning",
-
-          text:
-            "Online sync was unavailable, so your changes were saved on this device instead.",
-        });
-      } finally {
-        setIsSaving(
-          false
-        );
-      }
-    };
+  const handleThresholdChange = (key, value) => {
+    setMessage(null);
+    setThresholds(current => ({ ...current, [key]: Number(value) }));
+  };
+  const handleResetDefaults = () => {
+    setThresholds({ ...DEFAULT_THRESHOLDS });
+    setMessage({ tone: "info", text: "Defaults restored in the editor. Click Apply to save them." });
+  };
+  const handleSave = () => {
+    if (!validation.valid) { setMessage({ tone: "warning", text: validation.message }); return; }
+    return editor.apply("single_tank", "manual");
+  };
 
   /* =======================================================
      LOADING
   ======================================================= */
 
   if (
-    isLoading
+    isLoading || editor.isLoading
   ) {
     return (
       <section className="cray-settings-loading">
@@ -1850,6 +1335,8 @@ export default function SettingsPage() {
             ammonia.
           </p>
 
+          <TankThresholdControls editor={editor} valid={validation.valid} />
+
           <div className="cray-settings-actions">
             <button
               type="button"
@@ -1859,6 +1346,7 @@ export default function SettingsPage() {
               }
               disabled={
                 isSaving ||
+                !editor.selectedTank ||
                 !validation.valid
               }
             >
@@ -1877,7 +1365,7 @@ export default function SettingsPage() {
                     size={18}
                   />
 
-                  Save Changes
+                  Apply to This Tank
                 </>
               )}
             </button>
@@ -2083,14 +1571,14 @@ export default function SettingsPage() {
                 {syncMode ===
                 "online"
                   ? "Synced with your account"
-                  : "Saved on this device"}
+                  : "Awaiting online settings"}
               </strong>
 
               <p>
                 {syncMode ===
                 "online"
                   ? "Your saved water safety settings can be reused by connected CrayThrive features."
-                  : "These values are available on this device while online sync is unavailable."}
+                  : "Reconnect to load and apply tank settings. Unsaved edits are not active thresholds."}
               </p>
             </div>
           </div>
@@ -2256,6 +1744,8 @@ export default function SettingsPage() {
                         item
                       ) => (
                         <ThresholdControl
+                          activeValue={editor.baseline[item.key]}
+                          disabled={isSaving || !editor.selectedTank}
                           key={
                             item.key
                           }
@@ -2310,6 +1800,7 @@ export default function SettingsPage() {
           }
           disabled={
             isSaving ||
+            !editor.selectedTank ||
             !validation.valid ||
             !isDirty
           }
@@ -2329,7 +1820,7 @@ export default function SettingsPage() {
                 size={18}
               />
 
-              Save Changes
+              Apply to This Tank
             </>
           )}
         </button>

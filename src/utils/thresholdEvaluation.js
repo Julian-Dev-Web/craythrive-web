@@ -1,3 +1,4 @@
+import { cacheThresholdBundle, fetchThresholdRows, readThresholdCache, thresholdBundle } from "../services/tankThresholdService";
 import { logDiagnostic } from "./securityDiagnostics";
 import { getWaterReadingHealth } from "./waterReadingHealth";
 // src/utils/thresholdEvaluation.js
@@ -33,11 +34,7 @@ import {
   toNumberOrNull,
 } from "./sensorReadingUtils";
 
-const STORAGE_KEY =
-  "craythrive_threshold_settings";
 
-const TABLE_NAME =
-  "threshold_settings";
 
 /*
 |--------------------------------------------------------------------------
@@ -460,10 +457,7 @@ export function normalizeThresholds(
     };
   }
 
-  const source =
-    data.thresholds ||
-    data.safe_thresholds ||
-    data;
+  const source = { ...data, ...(data.safe_thresholds || {}), ...(data.thresholds || {}) };
 
   return {
     temperatureMin:
@@ -530,132 +524,31 @@ export function normalizeThresholds(
 |--------------------------------------------------------------------------
 */
 
-export function getLocalThresholds() {
-  try {
-    const saved =
-      localStorage.getItem(
-        STORAGE_KEY
-      );
-
-    if (!saved) {
-      return {
-        ...DEFAULT_THRESHOLDS,
-      };
-    }
-
-    const parsed =
-      JSON.parse(
-        saved
-      );
-
-    return normalizeThresholds(
-      parsed
-    );
-  } catch {
-    return {
-      ...DEFAULT_THRESHOLDS,
-    };
-  }
+export function resolveTankThresholds(settings, tankId) {
+  if (settings?.byTank) return normalizeThresholds(settings.byTank[tankId] || settings.legacy);
+  return normalizeThresholds(settings);
 }
 
-/*
-|--------------------------------------------------------------------------
-| LOAD ACTIVE THRESHOLDS
-|--------------------------------------------------------------------------
-|
-| Priority:
-|
-| 1. Logged-in user's Supabase threshold_settings row
-| 2. Browser localStorage copy
-| 3. Hard fallback defaults
-|
-*/
+export function getLocalThresholds(tankId, userId) {
+  // Never use another account's global browser cache as operational settings.
+  return userId ? resolveTankThresholds(readThresholdCache(userId), tankId) : { ...DEFAULT_THRESHOLDS };
+}
 
-export async function loadActiveThresholds() {
-  if (
-    !isSupabaseConfigured ||
-    !supabase
-  ) {
-    return getLocalThresholds();
-  }
-
+export async function loadActiveThresholds(tankId) {
+  if (!isSupabaseConfigured || !supabase) return tankId ? { ...DEFAULT_THRESHOLDS } : thresholdBundle();
+  let userId;
   try {
-    const {
-      data: sessionData,
-      error: sessionError,
-    } =
-      await supabase.auth.getSession();
-
-    if (sessionError) {
-      logDiagnostic(
-        "LOAD ACTIVE THRESHOLDS SESSION ERROR:",
-        sessionError
-      );
-
-      return getLocalThresholds();
-    }
-
-    const userId =
-      sessionData?.session
-        ?.user?.id;
-
-    if (!userId) {
-      return getLocalThresholds();
-    }
-
-    const {
-      data,
-      error,
-    } =
-      await supabase
-        .from(
-          TABLE_NAME
-        )
-        .select("*")
-        .eq(
-          "user_id",
-          userId
-        )
-        .maybeSingle();
-
-    if (
-      error ||
-      !data
-    ) {
-      if (error) {
-        logDiagnostic(
-          "LOAD ACTIVE THRESHOLDS DB ERROR:",
-          error
-        );
-      }
-
-      return getLocalThresholds();
-    }
-
-    const normalized =
-      normalizeThresholds(
-        data
-      );
-
-    try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify(
-          normalized
-        )
-      );
-    } catch {
-      // Local cache failure must not prevent Supabase values from loading.
-    }
-
-    return normalized;
+    const { data, error } = await supabase.auth.getSession();
+    if (error) throw error;
+    userId = data?.session?.user?.id;
+    if (!userId) return tankId ? { ...DEFAULT_THRESHOLDS } : thresholdBundle();
+    const bundle = thresholdBundle(await fetchThresholdRows(supabase, userId));
+    cacheThresholdBundle(userId, bundle);
+    return tankId ? resolveTankThresholds(bundle, tankId) : bundle;
   } catch (error) {
-    logDiagnostic(
-      "LOAD ACTIVE THRESHOLDS ERROR:",
-      error
-    );
-
-    return getLocalThresholds();
+    logDiagnostic("LOAD TANK THRESHOLDS ERROR", error);
+    const bundle = userId ? readThresholdCache(userId) : thresholdBundle();
+    return tankId ? resolveTankThresholds(bundle, tankId) : bundle;
   }
 }
 
@@ -954,6 +847,11 @@ export function evaluateReadingSafety(
         : "Waiting for fresh reading. No last-good water level is available." };
   } else if (!hasWaterValue) {
     parameters.waterLevel = { severity: "no-data", label: "No Reading", hasValue: false };
+  } else if (waterCode === "SAFE_IDEAL" && displayedWater < displayedMinimum) {
+    // A firmware-safe value can still be below this tank's saved minimum.
+    // No separate critical-low boundary is stored, so this is a warning.
+    parameters.waterLevel = { severity: "warning", label: "Low Water Level", hasValue: true, source: "threshold",
+      explanation: "Water level is below the active tank minimum" };
   } else if (Object.hasOwn(waterFirmware, waterCode)) {
     // Firmware is the available source for low/high warning and critical bands.
     // Do not claim it used the Web minimum: the configurations can differ.

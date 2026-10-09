@@ -51,7 +51,8 @@ test('confirmed failure shows Sensor Error and refresh restores the real water s
     await page.goto(route);
     const metric = page.locator(selector).filter({ hasText: 'Water Level' });
     await expect(metric).toContainText('4.0 cm');
-    await expect(metric.locator('.safety-status')).toHaveText('Normal');
+    // Fresh recovery is still below this tank's active 4.5 cm minimum.
+    await expect(metric.locator('.safety-status')).toHaveText('Warning');
     await expect(metric).not.toContainText('Latest available');
     await expect(metric).not.toContainText('Waiting');
   }

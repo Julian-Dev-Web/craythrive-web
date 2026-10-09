@@ -1,3 +1,4 @@
+import useThresholdRefresh from "../../hooks/useThresholdRefresh";
 import { logDiagnostic } from "../../utils/securityDiagnostics";
 import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
 import { getSafetySeverity, getSafetyStatusLabel, getParameterExplanation } from "../../utils/statusHelpers";
@@ -32,6 +33,7 @@ import {
 
 import {
   loadActiveThresholds,
+  resolveTankThresholds,
 } from "../../utils/thresholdEvaluation";
 
 /* =========================================================
@@ -497,6 +499,8 @@ export default function DashboardOverview() {
 
   const [thresholds, setThresholds] =
     useState(null);
+  useThresholdRefresh(() => { loadActiveThresholds().then(setThresholds); });
+
 
   useEffect(() => {
     let isMounted = true;
@@ -654,7 +658,7 @@ export default function DashboardOverview() {
       const row = getLatestAmmoniaForTank(tank, currentRows.ammonia);
       const value = getAmmoniaNumericValue(row);
       if (value === null) { noScan += 1; return; }
-      const parameter = evaluateReadingSafety({ ammonia: value }, thresholds).parameters.ammonia;
+      const parameter = evaluateReadingSafety({ ammonia: value }, resolveTankThresholds(thresholds, tank.id)).parameters.ammonia;
       if (["warning", "critical"].includes(parameter.severity)) elevated += 1;
     });
     return { elevated, noScan };

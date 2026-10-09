@@ -1,6 +1,6 @@
 import { AMMONIA_READING_FIELDS } from "../constants/schema";
 import { normalizeSensorReading, toNumberOrNull } from "./sensorReadingUtils";
-import { evaluateReadingSafety, getLocalThresholds } from "./thresholdEvaluation";
+import { evaluateReadingSafety, getLocalThresholds, resolveTankThresholds } from "./thresholdEvaluation";
 import { getSafetySeverity, getSafetyStatusLabel } from "./statusHelpers";
 import { getWaterHealthLabel } from "./waterReadingHealth";
 
@@ -66,10 +66,11 @@ export function buildMonitoringRecords(waterRows, ammoniaRows, tanks, thresholds
       || reading?.tank_name || reading?.tank_label || reading?.tank_display_name || "Unmatched tank";
     const ammoniaValue = type === "Ammonia Reading" ? getAmmoniaNumericValue(reading) : null;
     const date = type === "Ammonia Reading" ? getAmmoniaScanDate(reading) : getMonitoringDate(reading);
+    const effective = resolveTankThresholds(thresholds, tank?.id || reading.tank_id);
     const normalized = type === "Water Reading"
-      ? normalizeSensorReading(reading, thresholds)
+      ? normalizeSensorReading(reading, effective)
       : { ...normalizeSensorReading(null), raw: reading,
-        safety: evaluateReadingSafety({ ammonia: ammoniaValue }, thresholds),
+        safety: evaluateReadingSafety({ ammonia: ammoniaValue }, effective),
         createdAt: date };
     return {
       reading, normalized, type, index, recordId: `${type}:${reading.id || index}`,
@@ -122,6 +123,7 @@ export function buildTankSnapshotExportRows(snapshots, formatDate = value => val
 
 // Only current summaries combine independent readings; history never does.
 export function evaluateCurrentTankSafety(waterRecord, ammoniaRecord, thresholds = getLocalThresholds()) {
+  thresholds = resolveTankThresholds(thresholds, waterRecord?.tankKey || ammoniaRecord?.tankKey);
   const normalized = waterRecord?.normalized;
   const sameTank = !waterRecord || !ammoniaRecord || waterRecord.tankKey === ammoniaRecord.tankKey;
   return evaluateReadingSafety({

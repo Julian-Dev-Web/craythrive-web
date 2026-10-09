@@ -116,8 +116,9 @@ test('threshold save re-evaluates existing readings across monitoring pages', as
   await page.getByLabel('Minimum Water Level value').fill('0.5');
   await page.getByLabel('Minimum pH value').fill('4.5');
   await page.getByLabel('Maximum Ammonia value').fill('0.7');
-  await page.getByRole('button', { name: 'Save Changes', exact: true }).first().click();
-  await expect.poll(() => qa.writes.filter(row => row.table === 'threshold_settings').length).toBe(1);
+  await page.getByRole('button', { name: 'Apply to All My Tanks', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Confirm Apply to All Tanks', exact: true }).click();
+  await expect.poll(() => qa.writes.filter(row => row.table === 'threshold_settings').length).toBe(3);
   for (const [route, status] of [['/admin', '.farmer-status-content h2'], ['/admin/tanks/tank-a', '.modern-tank-detail-metric-grid'], ['/admin/readings', '.modern-reading-metric-grid'], ['/admin/reports', '.cray-report-metric-grid']]) {
     await open(page, route);
     if (route === '/admin') await expect(page.locator(status)).toHaveText('Normal');
