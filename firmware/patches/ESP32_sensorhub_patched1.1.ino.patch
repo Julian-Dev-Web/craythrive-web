@@ -1,0 +1,258 @@
+diff --git a/ESP32_sensorhub_patched1.1.ino b/ESP32_sensorhub_patched1.1.ino
+--- a/ESP32_sensorhub_patched1.1.ino
++++ b/ESP32_sensorhub_patched1.1.ino
+@@ -5,6 +5,7 @@
+ #include <WiFiClientSecure.h>
+ #include <OneWire.h>
+ #include <DallasTemperature.h>
++#include "WaterReadingHealth.h"
+ #include <math.h>
+ 
+ // =====================================================
+@@ -404,6 +405,14 @@ String cachedWaterStatus = "NO_READING";
+ String cachedWaterAdvice = "Waiting for first valid water-level reading.";
+ bool hasWaterReading = false;
+ 
++// Health retry policy only; no water calibration or severity thresholds change.
++const unsigned long WATER_LAST_GOOD_MAX_AGE_MS = WATER_NORMAL_INTERVAL_MS * 3UL;
++WaterReadingHealth waterReadingHealth(WATER_LAST_GOOD_MAX_AGE_MS);
++float lastGoodWaterDepthCM = -1;
++float lastGoodRawWaterDistanceCM = -1;
++String lastGoodWaterStatus = "";
++String lastGoodWaterAdvice = "";
++
+ bool pumpRunning = false;
+ bool waitingForWaterSettle = false;
+ unsigned long pumpStoppedAt = 0;
+@@ -3476,6 +3485,32 @@ bool isBadTemperatureForUpload(
+     isnan(tempC);
+ }
+ 
++
++// Synchronize display/upload cache with measurement health. This is not an
++// actuator decision: SENSOR_STALE carries a value only for display/history.
++void refreshCachedWaterHealth() {
++  waterReadingHealth.expire(millis());
++  if (waterReadingHealth.state == WaterHealthState::Fresh) return;
++  if (waterReadingHealth.state == WaterHealthState::Stale) {
++    cachedWaterLevelCM = lastGoodWaterDepthCM;
++    cachedRawWaterDistanceCM = lastGoodRawWaterDistanceCM;
++    cachedWaterStatus = "SENSOR_STALE";
++    cachedWaterAdvice = "Water-level measurement was temporarily unavailable. Showing the latest valid reading while waiting for a fresh measurement.";
++    hasWaterReading = true;
++    return;
++  }
++  cachedWaterLevelCM = -1;
++  cachedRawWaterDistanceCM = -1;
++  hasWaterReading = false;
++  if (waterReadingHealth.state == WaterHealthState::Waiting) {
++    cachedWaterStatus = "NO_READING";
++    cachedWaterAdvice = "Waiting for the first valid water-level measurement.";
++  } else {
++    cachedWaterStatus = "SENSOR_ERROR";
++    cachedWaterAdvice = "Water-level sensor failure confirmed. Waiting for a fresh valid measurement.";
++  }
++}
++
+ bool isBadWaterForUpload(
+   float waterLevelCM,
+   String waterStatus
+@@ -4555,20 +4590,16 @@ String buildSensorHealthRawPayload(
+ 
+   json += "\"water_level\":{";
+   json += "\"health\":\"";
+-
+-  json +=
+-    waterOk
+-      ? "OK"
+-      : "ERROR";
+-
+-  json += "\",";
+-  json += "\"message\":\"";
+-
+-  json +=
+-    waterOk
+-      ? "Water-level sensor is working."
+-      : "WARNING: Water-level sensor is not responding. Check HC-SR04 power, TRIG/ECHO wiring, divider, and sensor position.";
+-
++  json += waterReadingHealth.health();
++  json += "\",\"message\":\"";
++  if (waterStatus == "SENSOR_STALE") {
++    json += "Water-level measurement was temporarily unavailable. Showing the latest valid reading while waiting for a fresh measurement.";
++  } else if (waterStatus == "NO_READING") {
++    json += "Waiting for the first valid water-level measurement.";
++  } else {
++    json += waterOk ? "Water-level sensor is working."
++      : "Water-level sensor failure confirmed. Check HC-SR04 power, TRIG/ECHO wiring, divider, and sensor position.";
++  }
+   json += "\"},";
+ 
+   json += "\"turbidity\":{";
+@@ -4675,14 +4706,11 @@ String buildSensorHealthRawPayload(
+     firstWarning = false;
+   }
+ 
+-  if (!waterOk) {
+-    if (!firstWarning) {
+-      json += ",";
+-    }
+-
+-    json +=
+-      "\"WATER_LEVEL_SENSOR_ERROR\"";
+-
++  if (waterReadingHealth.warningFlag()[0] != '\0') {
++    if (!firstWarning) json += ",";
++    json += "\"";
++    json += waterReadingHealth.warningFlag();
++    json += "\"";
+     firstWarning = false;
+   }
+ 
+@@ -4748,8 +4776,19 @@ String buildSensorHealthRawPayload(
+   json +=
+     "\"ph_calibration_mode\":\"TEMPORARY_WATER_VINEGAR\",";
+ 
+-  json +=
+-    "\"partial_upload_enabled\":true";
++  json += "\"water_value_source\":\"";
++  json += waterReadingHealth.valueSource();
++  json += "\",\"water_measurement_fresh\":";
++  json += waterReadingHealth.measurementFresh() ? "true" : "false";
++  json += ",\"water_last_good_age_ms\":";
++  json += waterReadingHealth.hasEverGoodReading
++    ? String(waterReadingHealth.lastGoodAgeMs(millis())) : "null";
++  json += ",\"water_last_good_status\":\"";
++  json += escapeJsonText(lastGoodWaterStatus);
++  json += "\",\"water_consecutive_failures\":";
++  json += String(waterReadingHealth.consecutiveFailures);
++  json += ",";
++  json += "\"partial_upload_enabled\":true";
+ 
+   json += "}";
+ 
+@@ -4931,10 +4970,8 @@ bool uploadToSupabase(
+       ? tempStatus
+       : "SENSOR_ERROR";
+ 
+-  String uploadWaterStatus =
+-    waterOk
+-      ? waterStatus
+-      : "SENSOR_ERROR";
++  String uploadWaterStatus = waterOk || waterStatus == "NO_READING"
++    ? waterStatus : "SENSOR_ERROR";
+ 
+   String uploadTurbidityStatus =
+     turbCurrentFreshOk
+@@ -4961,9 +4998,9 @@ bool uploadToSupabase(
+   }
+ 
+   if (!waterOk) {
+-    Serial.println(
+-      "WARNING: Water-level sensor failed. Uploading NULL water data while keeping other valid sensors."
+-    );
++    Serial.println(waterStatus == "NO_READING"
++      ? "Water: waiting for first valid measurement; uploading NULL without a sensor-error flag."
++      : "Water: confirmed sensor failure; uploading NULL water data while preserving other sensors.");
+   }
+ 
+   if (turbUsingLastGood) {
+@@ -5152,10 +5189,7 @@ bool uploadToSupabase(
+     ) +
+     "\",";
+ 
+-  String safeWaterAdvice =
+-    waterOk
+-      ? waterAdvice
+-      : "WARNING: Water-level sensor is not responding. Other valid sensor data continues to be recorded.";
++  String safeWaterAdvice = waterAdvice;
+ 
+   json +=
+     "\"water_advice\":\"" +
+@@ -5785,10 +5819,8 @@ void loop() {
+         &rawDistance
+       );
+ 
+-    cachedRawWaterDistanceCM =
+-      rawDistance;
+-
+-    if (level >= 0) {
++    if (level >= 0 && !isnan(level) && rawDistance >= 0 && !isnan(rawDistance)) {
++      cachedRawWaterDistanceCM = rawDistance;
+       cachedWaterLevelCM =
+         level;
+ 
+@@ -5802,8 +5834,12 @@ void loop() {
+           cachedWaterStatus
+         );
+ 
+-      hasWaterReading =
+-        true;
++      hasWaterReading = true;
++      lastGoodWaterDepthCM = cachedWaterLevelCM;
++      lastGoodRawWaterDistanceCM = cachedRawWaterDistanceCM;
++      lastGoodWaterStatus = cachedWaterStatus;
++      lastGoodWaterAdvice = cachedWaterAdvice;
++      waterReadingHealth.recordSuccess(millis());
+ 
+       Serial.print(
+         "WATER -> raw distance: "
+@@ -5831,28 +5867,12 @@ void loop() {
+         cachedWaterStatus
+       );
+     } else {
+-      cachedRawWaterDistanceCM =
+-        -1;
+-
+-      cachedWaterLevelCM =
+-        -1;
+-
+-      cachedWaterStatus =
+-        "SENSOR_ERROR";
+-
+-      cachedWaterAdvice =
+-        "WARNING: Water-level sensor is not responding. Other valid sensor data continues to be recorded.";
+-
+-      hasWaterReading =
+-        false;
+-
+-      Serial.println(
+-        "WARNING: HC-SR04 measurement failed after filtered retries."
+-      );
+-
+-      Serial.println(
+-        "Water sensor -> SENSOR_ERROR. Other valid sensors will continue uploading."
+-      );
++      waterReadingHealth.recordFailure(millis());
++      refreshCachedWaterHealth();
++      Serial.print("HC-SR04 failed measurement cycles: ");
++      Serial.print(waterReadingHealth.consecutiveFailures);
++      Serial.print(" | water health: ");
++      Serial.println(cachedWaterStatus);
+     }
+   }
+ 
+@@ -5935,10 +5955,8 @@ void loop() {
+         ? cachedTempStatus
+         : "SENSOR_ERROR";
+ 
+-    String waterUploadStatus =
+-      hasWaterReading
+-        ? cachedWaterStatus
+-        : "SENSOR_ERROR";
++    refreshCachedWaterHealth();
++    String waterUploadStatus = cachedWaterStatus;
+ 
+     String turbUploadStatus =
+       turbidityDataValid
+@@ -6023,9 +6041,8 @@ void loop() {
+           cachedWaterStatus
+         );
+       } else {
+-        Serial.println(
+-          "NULL | SENSOR_ERROR"
+-        );
++        Serial.print("NULL | ");
++        Serial.println(cachedWaterStatus);
+       }
+ 
+       Serial.print("Turbidity: ");

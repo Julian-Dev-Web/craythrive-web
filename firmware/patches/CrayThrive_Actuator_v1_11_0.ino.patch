@@ -1,0 +1,100 @@
+diff --git a/CrayThrive_Actuator_v1_11_0.ino b/CrayThrive_Actuator_v1_11_0.ino
+--- a/CrayThrive_Actuator_v1_11_0.ino
++++ b/CrayThrive_Actuator_v1_11_0.ino
+@@ -1308,6 +1308,23 @@ void attachLatestAmmoniaSnapshot(SensorSnapshot &snap) {
+   Serial.println(snap.ammoniaValue);
+ }
+ 
++
++bool isBadWaterStatusText(String status) {
++  return normalizeStatus(status) == "SENSOR_STALE" || isBadStatusText(status);
++}
++
++float getWaterDepthOnly(String body) {
++  const char* keys[] = {"water_depth_cm", "water_level"};
++  for (const char* key : keys) {
++    String value = extractJsonValueAsString(body, key);
++    if (isNumericText(value)) {
++      float depth = value.toFloat();
++      if (isfinite(depth) && depth >= 0) return depth;
++    }
++  }
++  return -1;
++}
++
+ SensorSnapshot fetchLatestSensorSnapshot() {
+   SensorSnapshot snap;
+ 
+@@ -1405,14 +1422,7 @@ SensorSnapshot fetchLatestSensorSnapshot() {
+ 
+   // Prefer calibrated WATER DEPTH. Raw water_distance_cm is the ultrasonic
+   // sensor-to-surface distance and must not be used for dynamic level rules.
+-  float distanceCm = getFirstAvailableFloat(
+-    response,
+-    "water_depth_cm",
+-    "water_level",
+-    "water_distance_cm",
+-    "distance_cm",
+-    -1
+-  );
++  float distanceCm = getWaterDepthOnly(response);
+ 
+   waterStatus = normalizeStatus(waterStatus);
+ 
+@@ -1420,6 +1430,11 @@ SensorSnapshot fetchLatestSensorSnapshot() {
+     waterStatus = deriveWaterStatusFromDistance(distanceCm);
+   }
+ 
++  if (extractJsonValueAsString(response, "water_measurement_fresh") == "false" ||
++      extractJsonString(response, "water_value_source") == "last_good") {
++    waterStatus = "SENSOR_STALE";
++  }
++
+   snap.waterLevelStatus = waterStatus;
+   snap.waterDistanceCm = distanceCm;
+ 
+@@ -1452,7 +1467,7 @@ SensorSnapshot fetchLatestSensorSnapshot() {
+   if (snap.temperatureStatus.length() == 0) snap.temperatureStatus = "UNKNOWN";
+ 
+   snap.ok =
+-    !isBadStatusText(snap.waterLevelStatus) &&
++    !isBadWaterStatusText(snap.waterLevelStatus) &&
+     snap.waterDistanceCm >= 0;
+ 
+   attachLatestAmmoniaSnapshot(snap);
+@@ -2348,15 +2363,7 @@ StableWaterAnalysis analyzeStableWaterReadings(AutomationSettings settings) {
+       "water_state"
+     );
+ 
+-    float waterDepth = getFirstAvailableFloat5(
+-      row,
+-      "water_depth_cm",
+-      "water_level",
+-      "water_distance_cm",
+-      "distance_cm",
+-      "water_cm",
+-      -1
+-    );
++    float waterDepth = getWaterDepthOnly(row);
+ 
+     String phStatus = normalizeStatus(getFirstAvailableString5(
+       row,
+@@ -2401,12 +2408,17 @@ StableWaterAnalysis analyzeStableWaterReadings(AutomationSettings settings) {
+       waterStatus = deriveWaterStatusFromDistance(waterDepth);
+     }
+ 
++    if (extractJsonValueAsString(row, "water_measurement_fresh") == "false" ||
++        extractJsonString(row, "water_value_source") == "last_good") {
++      waterStatus = "SENSOR_STALE";
++    }
++
+     String reducedStatus =
+       reduceWaterStatusForStability(waterStatus);
+ 
+     bool valid =
+       reducedStatus != "UNKNOWN" &&
+-      !isBadStatusText(waterStatus);
++      !isBadWaterStatusText(waterStatus);
+ 
+     if (waterDepth < 0) {
+       valid = false;

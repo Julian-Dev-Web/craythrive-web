@@ -8,12 +8,14 @@ export function SafetyIcon({ severity, size = 16 }) {
   return <Icon size={size} aria-hidden="true" />;
 }
 
-export default function SafetyBadge({ severity, className = "", emptyLabel = "No Data" }) {
+export default function SafetyBadge({ severity, parameter, className = "", emptyLabel = "No Data" }) {
   const level = normalizeSafetySeverity(severity);
   return (
     <b className={`safety-status ${className} ${level}`}>
       <SafetyIcon severity={level} size={12} />
-      {level === "no-data" ? emptyLabel : getSafetyStatusLabel(level)}
+      {parameter?.health === "error" ? "Sensor Error"
+        : parameter?.health === "waiting" ? "Waiting"
+        : level === "no-data" ? emptyLabel : getSafetyStatusLabel(level)}
     </b>
   );
 }

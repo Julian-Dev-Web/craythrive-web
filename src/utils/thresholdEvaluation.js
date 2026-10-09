@@ -1,4 +1,5 @@
 import { logDiagnostic } from "./securityDiagnostics";
+import { getWaterReadingHealth } from "./waterReadingHealth";
 // src/utils/thresholdEvaluation.js
 //
 // CrayThrive threshold evaluation + reference guidance.
@@ -682,6 +683,7 @@ export function evaluateReadingSafety(
     turbidityVoltage,
     waterDepth,
     waterStatus,
+    waterMetadata,
     temperatureStatus,
     phStatus,
     turbidityStatus,
@@ -926,7 +928,9 @@ export function evaluateReadingSafety(
   */
 
   const waterValue = toNumberOrNull(waterDepth);
+  const hasWaterValue = waterValue !== null && waterValue >= 0;
   const waterCode = firmwareCode(waterStatus);
+  const waterHealth = getWaterReadingHealth(waterStatus, waterMetadata);
   const waterFirmware = {
     SAFE_IDEAL: { severity: "normal", label: "Within Active Range" },
     LOW_WARNING: { severity: "warning", label: "Low Water Level", explanation: "The monitoring device reports a low water level" },
@@ -935,9 +939,20 @@ export function evaluateReadingSafety(
     CRITICAL_HIGH: { severity: "critical", label: "Critical High Water Level", explanation: "The monitoring device reports a critically high water level" },
   };
   // Match the displayed 0.1 cm precision, while leaving stored/raw values intact.
-  const displayedWater = waterValue === null ? null : Number(waterValue.toFixed(1));
+  const displayedWater = hasWaterValue ? Number(waterValue.toFixed(1)) : null;
   const displayedMinimum = Number(active.waterLevelMin.toFixed(1));
-  if (waterValue === null) {
+  if (waterHealth.health === "error") {
+    parameters.waterLevel = { severity: "warning", label: "Sensor Error", hasValue: false, source: "health",
+      explanation: "Water-level sensor failure confirmed. Waiting for a fresh valid measurement." };
+  } else if (waterHealth.health === "waiting") {
+    parameters.waterLevel = { severity: "no-data", label: "No Reading", hasValue: false, source: "health",
+      explanation: "Waiting for the first valid water-level measurement." };
+  } else if (waterHealth.health === "stale") {
+    parameters.waterLevel = { severity: "warning", label: "Waiting for Fresh Reading", hasValue: hasWaterValue, source: "health",
+      explanation: hasWaterValue
+        ? "Waiting for fresh reading. Showing the latest available water level, not a new measurement."
+        : "Waiting for fresh reading. No last-good water level is available." };
+  } else if (!hasWaterValue) {
     parameters.waterLevel = { severity: "no-data", label: "No Reading", hasValue: false };
   } else if (Object.hasOwn(waterFirmware, waterCode)) {
     // Firmware is the available source for low/high warning and critical bands.
@@ -951,9 +966,15 @@ export function evaluateReadingSafety(
   } else {
     parameters.waterLevel = { severity: "normal", label: "Within Active Range", hasValue: true, source: "threshold" };
   }
+  parameters.waterLevel = { ...parameters.waterLevel, ...waterHealth };
+  if (!hasWaterValue && waterHealth.health === "fresh") {
+    parameters.waterLevel = { ...parameters.waterLevel, health: "no-data", measurementFresh: false, valueSource: "unavailable" };
+  }
   if (["warning", "critical"].includes(parameters.waterLevel.severity)) {
     issues.push({ key: "waterLevel", label: "Water Level",
-      message: parameters.waterLevel.source === "firmware"
+      message: parameters.waterLevel.source === "health"
+        ? parameters.waterLevel.explanation
+        : parameters.waterLevel.source === "firmware"
         ? `${parameters.waterLevel.explanation} (${displayedWater.toFixed(1)} cm)`
         : `${displayedWater.toFixed(1)} cm is below the active tank minimum (${displayedMinimum.toFixed(1)} cm)` });
   }
@@ -1050,7 +1071,8 @@ export function evaluateReadingSafety(
     temp !== null ||
     phValue !== null ||
     hasTurbidityData ||
-    waterValue !== null ||
+    hasWaterValue ||
+    ["error", "stale"].includes(waterHealth.health) ||
     ammoniaValue !== null;
 
   return {

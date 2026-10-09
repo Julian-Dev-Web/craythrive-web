@@ -11,10 +11,15 @@ export function buildMonitoringAIContext({ records, tank, thresholds = getLocalT
   const sensor = item => item ? { timestamp: item.date,
     temperature: item.normalized.temperatureValue, ph: item.normalized.phValue,
     water_clarity: item.normalized.turbidityValue, water_level: item.normalized.waterValue,
+    water_sensor_health: item.normalized.safety.parameters.waterLevel.health,
+    water_value_source: item.normalized.safety.parameters.waterLevel.valueSource,
+    water_measurement_fresh: item.normalized.safety.parameters.waterLevel.measurementFresh,
+    water_last_good_age_ms: item.normalized.safety.parameters.waterLevel.lastGoodAgeMs,
     condition: getSafetyStatusLabel(getSafetySeverity(evaluateReadingSafety({
       temperature: item.normalized.temperatureValue, ph: item.normalized.phValue,
       turbidityVoltage: item.normalized.turbidityValue, waterDepth: item.normalized.waterValue,
       waterStatus: item.normalized.raw?.water_status,
+      waterMetadata: item.normalized.raw?.raw_payload,
       temperatureStatus: item.normalized.raw?.temperature_status,
       phStatus: item.normalized.raw?.ph_status,
       turbidityStatus: item.normalized.raw?.turbidity_status,
@@ -26,6 +31,6 @@ export function buildMonitoringAIContext({ records, tank, thresholds = getLocalT
     latest_sensor: sensor(snapshot.waterRecord), latest_ammonia: ammonia(snapshot.ammoniaRecord),
     recent_sensor_readings: scoped.filter(item => item.type === "Water Reading").slice(0, historyLimit).map(sensor),
     recent_ammonia_scans: scoped.filter(item => item.type === "Ammonia Reading").slice(0, historyLimit).map(ammonia),
-    instructions: "Ammonia is manually scanned and may be older than the latest sensor readings. Never describe it as a live reading. Mention the ammonia scan timestamp when it affects a recommendation. Missing scans are unknown, not zero. Do not invent an age or staleness cutoff.",
+    instructions: "Ammonia is manually scanned and may be older than the latest sensor readings. Never describe it as a live reading. Mention the ammonia scan timestamp when it affects a recommendation. Missing scans are unknown, not zero. Do not invent an age or staleness cutoff. Water marked last_good or water_measurement_fresh=false is a carried value, not a new physical measurement; do not describe it as current or recovered.",
   };
 }

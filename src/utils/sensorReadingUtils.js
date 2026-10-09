@@ -94,6 +94,7 @@ export function normalizeSensorReading(reading, thresholds = getLocalThresholds(
     temperature: temperatureValue, ph: phValue,
     turbidityVoltage: turbidityValue, waterDepth: waterValue,
     waterStatus: reading.water_status,
+    waterMetadata: reading.raw_payload,
     temperatureStatus: reading.temperature_status,
     phStatus: reading.ph_status,
     turbidityStatus: reading.turbidity_status,
@@ -130,8 +131,12 @@ export function normalizeSensorReading(reading, thresholds = getLocalThresholds(
 
     waterValue,
     waterLabel:
-      toNumberOrNull(waterValue) === null
+      safety.parameters.waterLevel.health === "error"
+        ? "Sensor Error"
+        : !safety.parameters.waterLevel.hasValue
         ? "No Data"
+        : safety.parameters.waterLevel.health === "stale"
+        ? `Latest available: ${formatNumber(waterValue, 1)} cm`
         : `${formatNumber(waterValue, 1)} cm`,
     waterStatus,
 

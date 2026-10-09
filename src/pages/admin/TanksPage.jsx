@@ -656,7 +656,7 @@ function SensorMiniCard({ icon: Icon, label, value, parameter, scanDate, manualS
       <Icon size={19} />
       <span>{label}</span>
       <strong>{value ?? "No Data"}</strong>
-      <SafetyBadge className="modern-tank-status" severity={parameter?.severity} emptyLabel={manualScan ? "No Scan" : "No Data"} />
+      <SafetyBadge className="modern-tank-status" severity={parameter?.severity} parameter={parameter} emptyLabel={manualScan ? "No Scan" : "No Data"} />
       {explanation && <small className="safety-explanation">{explanation}</small>}
       {manualScan && <small>Latest available ammonia scan</small>}
       {manualScan && value !== "No Scan" && <small>Scanned: {scanDate ? formatReadingTime(scanDate) : "Scan time unavailable"}</small>}
@@ -1150,6 +1150,7 @@ export default function TanksPage() {
 
                     waterDepth: normalized.waterValue,
                     waterStatus: normalized.raw?.water_status,
+                    waterMetadata: normalized.raw?.raw_payload,
                     temperatureStatus: normalized.raw?.temperature_status,
                     phStatus: normalized.raw?.ph_status,
                     turbidityStatus: normalized.raw?.turbidity_status,

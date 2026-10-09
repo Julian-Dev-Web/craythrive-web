@@ -2,7 +2,7 @@
 export function getSafetyLabelSeverity(statuses) {
   if (statuses.some(label => ["Critical Low Water Level", "Critical High Water Level"].includes(label))) return "critical";
   if (statuses.some(label => ["Below Active Min", "Above Active Max", "Needs Attention"].includes(label))) return "critical";
-  if (statuses.some(label => ["Low Water Level", "High Water Level"].includes(label))) return "warning";
+  if (statuses.some(label => ["Low Water Level", "High Water Level", "Sensor Error", "Waiting for Fresh Reading"].includes(label))) return "warning";
   if (statuses.every(label => ["No Reading", "No Scan Yet", ""].includes(label))) return "no-data";
   if (statuses.every(label => ["Within Active Range", "Clear", "No Reading", "No Scan Yet", ""].includes(label))) return "normal";
   return null;

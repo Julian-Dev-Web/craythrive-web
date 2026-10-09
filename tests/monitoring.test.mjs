@@ -13,6 +13,7 @@ after(() => server.close());
 const { normalizeSensorReading, toNumberOrNull } = await server.ssrLoadModule('/src/utils/sensorReadingUtils.js');
 const { evaluateReadingSafety, normalizeThresholds, DEFAULT_THRESHOLDS } = await server.ssrLoadModule('/src/utils/thresholdEvaluation.js');
 const { getSafetySeverity, getSafetyStatusLabel, getParameterExplanation, getSafetyLabelSeverity } = await server.ssrLoadModule('/src/utils/statusHelpers.js');
+const { getWaterReadingHealth } = await server.ssrLoadModule('/src/utils/waterReadingHealth.js');
 const { buildMonitoringRecords, buildTankHistoryExportRows, buildTankSnapshotExportRows, getCurrentTankSnapshot, getLatestAmmoniaForTank, evaluateCurrentTankSafety, recordMatchesMonitoringTank } = await server.ssrLoadModule('/src/utils/monitoringRecords.js');
 const { buildMonitoringAIContext } = await server.ssrLoadModule('/src/utils/monitoringAIContext.js');
 const { loadAmmoniaHistory, loadCurrentTankRows } = await server.ssrLoadModule('/src/services/tankSnapshotService.js');
@@ -298,12 +299,85 @@ test('tank CSV records keep ammonia separate and include all required columns', 
   const rows = buildTankHistoryExportRows(records);
   const water = rows.find(r => r.Type === 'Water Reading');
   const ammonia = rows.find(r => r.Type === 'Ammonia Reading');
-  assert.deepEqual(Object.keys(water), ['Type', 'Tank', 'Temperature', 'Temperature Condition', 'pH', 'pH Condition', 'Water Clarity', 'Water Clarity Condition', 'Water Level', 'Water Level Condition', 'Ammonia', 'Ammonia Condition', 'Overall Condition', 'Date']);
+  assert.deepEqual(Object.keys(water), ['Type', 'Tank', 'Temperature', 'Temperature Condition', 'pH', 'pH Condition', 'Water Clarity', 'Water Clarity Condition', 'Water Level', 'Water Level Condition', 'Water Sensor Health', 'Water Value Source', 'Water Measurement Fresh', 'Water Last Good Age (ms)', 'Ammonia', 'Ammonia Condition', 'Overall Condition', 'Date']);
   assert.equal(water.Ammonia, '');
   assert.equal(water['Water Level Condition'], 'Warning');
   assert.equal(ammonia.Temperature, '');
   assert.equal(ammonia['Ammonia Condition'], 'Critical');
   assert.equal(ammonia.Date, '2026-10-03T09:00:00Z');
+});
+
+test('water stale health never becomes Normal or physical Critical, regardless of carried depth', () => {
+  for (const depth of [0.6, 4.02, 99]) {
+    const raw = { ...normal, water_depth_cm: depth, water_status: 'SENSOR_STALE',
+      raw_payload: { water_value_source: 'last_good', water_measurement_fresh: false, water_last_good_age_ms: 5000,
+        sensor_health: { water_level: { health: 'WARNING' } }, warning_flags: ['WATER_LEVEL_SENSOR_STALE'] } };
+    const before = JSON.stringify(raw);
+    const normalized = normalizeSensorReading(raw);
+    const parameter = normalized.safety.parameters.waterLevel;
+    assert.equal(normalized.waterValue, depth);
+    assert.match(normalized.waterLabel, /^Latest available:/);
+    assert.equal(parameter.severity, 'warning');
+    assert.equal(parameter.health, 'stale');
+    assert.equal(parameter.measurementFresh, false);
+    assert.equal(parameter.valueSource, 'last_good');
+    assert.equal(getSafetySeverity(normalized.safety), 'warning');
+    assert.equal(normalized.safety.isSafe, false);
+    assert.match(getParameterExplanation(parameter, 'Water Level'), /Waiting for fresh reading/);
+    assert.equal(JSON.stringify(raw), before);
+  }
+});
+
+test('explicit carried metadata overrides a fresh-looking water status during every reevaluation', () => {
+  for (const status of ['SAFE_IDEAL', 'CRITICAL_LOW', 'HIGH_WARNING', undefined]) {
+    const payload = { water_value_source: 'last_good', water_measurement_fresh: false, water_last_good_age_ms: 10000 };
+    const records = buildMonitoringRecords([{ ...normal, tank_id: 'tank-a', water_status: status, raw_payload: JSON.stringify(payload) }], [], tanks);
+    const snapshot = getCurrentTankSnapshot(records, tanks[0]);
+    assert.equal(snapshot.safety.parameters.waterLevel.health, 'stale');
+    assert.equal(getSafetySeverity(snapshot.safety), 'warning');
+    const history = buildTankHistoryExportRows(records)[0];
+    const current = buildTankSnapshotExportRows([snapshot])[0];
+    for (const row of [history, current]) {
+      assert.equal(row['Water Value Source'], 'last_good');
+      assert.equal(row['Water Measurement Fresh'], false);
+      assert.equal(row['Water Last Good Age (ms)'], 10000);
+      assert.equal(row['Water Sensor Health'], 'Waiting for fresh reading');
+      assert.match(row['Water Level'], /Latest available/);
+    }
+    const context = buildMonitoringAIContext({ records, tank: tanks[0] });
+    assert.equal(context.latest_sensor.water_measurement_fresh, false);
+    assert.equal(context.latest_sensor.water_value_source, 'last_good');
+    assert.equal(context.latest_sensor.condition, 'Warning');
+    assert.match(context.instructions, /not a new physical measurement/);
+  }
+});
+
+test('confirmed water error, startup waiting, and fresh recovery have distinct health states', () => {
+  const error = normalizeSensorReading({ water_status: 'SENSOR_ERROR', water_depth_cm: null, water_level: null, water_distance_cm: 4 });
+  assert.equal(error.waterValue, null);
+  assert.equal(error.waterLabel, 'Sensor Error');
+  assert.equal(error.safety.parameters.waterLevel.health, 'error');
+  assert.equal(error.safety.parameters.waterLevel.hasValue, false);
+  assert.equal(getSafetySeverity(error.safety), 'warning');
+  const waiting = normalizeSensorReading({ water_status: 'NO_READING' });
+  assert.equal(waiting.waterValue, null);
+  assert.equal(waiting.safety.parameters.waterLevel.health, 'waiting');
+  assert.equal(getSafetySeverity(waiting.safety), 'no-data');
+  const staleWithoutValue = normalizeSensorReading({ water_status: 'SENSOR_STALE', water_depth_cm: null });
+  assert.equal(staleWithoutValue.waterValue, null);
+  assert.equal(staleWithoutValue.waterLabel, 'No Data');
+  assert.match(staleWithoutValue.safety.parameters.waterLevel.explanation, /No last-good water level is available/);
+  const fresh = normalizeSensorReading({ water_status: 'SAFE_IDEAL', water_depth_cm: 4.02,
+    raw_payload: { water_value_source: 'fresh', water_measurement_fresh: true, water_last_good_age_ms: 0 } });
+  assert.equal(fresh.waterValue, 4.02);
+  assert.equal(fresh.waterLabel, '4.0 cm');
+  assert.equal(fresh.safety.parameters.waterLevel.health, 'fresh');
+  assert.equal(fresh.safety.parameters.waterLevel.measurementFresh, true);
+  assert.equal(fresh.safety.issues.length, 0);
+  assert.equal(getWaterReadingHealth('SAFE_IDEAL', { sensor_health: { water_level: { health: 'ERROR' } } }).health, 'error');
+  for (const invalid of [null, false, '', ' ', [], {}]) {
+    assert.equal(getWaterReadingHealth('SENSOR_STALE', { water_last_good_age_ms: invalid }).lastGoodAgeMs, null);
+  }
 });
 
 test('actual CSV generation preserves commas, quotes, and newlines safely', async () => {

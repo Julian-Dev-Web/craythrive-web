@@ -1263,7 +1263,7 @@ export default function DashboardOverview() {
                   <div className="farmer-water-item" key={key}>
                     <span className="farmer-water-icon"><Icon size={21} /></span>
                     <div><small>{label}</small><strong>{value}</strong>
-                      <SafetyBadge severity={latestTankSafety.parameters[key].severity} emptyLabel={key === "ammonia" ? "No Scan" : "No Data"} />
+                      <SafetyBadge severity={latestTankSafety.parameters[key].severity} parameter={latestTankSafety.parameters[key]} emptyLabel={key === "ammonia" ? "No Scan" : "No Data"} />
                       {getParameterExplanation(latestTankSafety.parameters[key], label) &&
                         <span>{getParameterExplanation(latestTankSafety.parameters[key], label)}</span>}
                       {key === "ammonia" && <span>Latest available ammonia scan</span>}

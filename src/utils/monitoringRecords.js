@@ -2,6 +2,7 @@ import { AMMONIA_READING_FIELDS } from "../constants/schema";
 import { normalizeSensorReading, toNumberOrNull } from "./sensorReadingUtils";
 import { evaluateReadingSafety, getLocalThresholds } from "./thresholdEvaluation";
 import { getSafetySeverity, getSafetyStatusLabel } from "./statusHelpers";
+import { getWaterHealthLabel } from "./waterReadingHealth";
 
 const keys = values => values.filter(value => value !== null && value !== undefined && value !== "").map(String);
 export const getMonitoringTankKeys = tank => keys([
@@ -105,6 +106,10 @@ export function buildTankSnapshotExportRows(snapshots, formatDate = value => val
       pH: reading?.phNumberLabel || "No Data", "pH Condition": condition("ph"),
       "Water Clarity": reading?.turbidityNumberLabel || "No Data", "Water Clarity Condition": condition("turbidity"),
       "Water Level": reading?.waterLabel || "No Data", "Water Level Condition": condition("waterLevel"),
+      "Water Sensor Health": reading ? getWaterHealthLabel(safety.parameters.waterLevel) : "No Data",
+      "Water Value Source": reading ? safety.parameters.waterLevel.valueSource : "unavailable",
+      "Water Measurement Fresh": reading ? safety.parameters.waterLevel.measurementFresh : false,
+      "Water Last Good Age (ms)": safety.parameters.waterLevel.lastGoodAgeMs ?? "",
       "Sensor Date": waterRecord?.date ? formatDate(waterRecord.date) : "",
       Ammonia: ammoniaRecord?.ammoniaLabel || "No Scan",
       "Ammonia Condition": ammoniaRecord?.ammoniaValue != null ? condition("ammonia") : "No Scan",
@@ -123,6 +128,7 @@ export function evaluateCurrentTankSafety(waterRecord, ammoniaRecord, thresholds
     temperature: normalized?.temperatureValue, ph: normalized?.phValue,
     turbidityVoltage: normalized?.turbidityValue, waterDepth: normalized?.waterValue,
     waterStatus: normalized?.raw?.water_status,
+    waterMetadata: normalized?.raw?.raw_payload,
     temperatureStatus: normalized?.raw?.temperature_status,
     phStatus: normalized?.raw?.ph_status,
     turbidityStatus: normalized?.raw?.turbidity_status,
@@ -145,6 +151,10 @@ export function buildTankHistoryExportRows(records, formatDate = value => value 
       "Water Clarity Condition": water ? condition("turbidity") : "",
       "Water Level": water ? item.normalized.waterLabel : "",
       "Water Level Condition": water ? condition("waterLevel") : "",
+      "Water Sensor Health": water ? getWaterHealthLabel(parameters.waterLevel) : "",
+      "Water Value Source": water ? parameters.waterLevel.valueSource : "",
+      "Water Measurement Fresh": water ? parameters.waterLevel.measurementFresh : "",
+      "Water Last Good Age (ms)": water ? parameters.waterLevel.lastGoodAgeMs ?? "" : "",
       Ammonia: water ? "" : item.ammoniaLabel,
       "Ammonia Condition": water ? "" : item.ammoniaValue === null ? "No Scan" : condition("ammonia"),
       "Overall Condition": getSafetyStatusLabel(item.status), Date: formatDate(item.date),

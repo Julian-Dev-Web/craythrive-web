@@ -614,7 +614,9 @@ function isBadWaterStatus(status) {
     value.includes("NO_READING") ||
     value.includes("NO_DATA") ||
     value.includes("INVALID") ||
-    value.includes("ERROR")
+    value.includes("ERROR") ||
+    value.includes("SENSOR_STALE") ||
+    value.includes("WAITING_FOR_FRESH_READING")
   );
 }
 
@@ -674,7 +676,7 @@ function getWaterStabilityState(
   if (
     isBadWaterStatus(
       latestWaterStatus
-    )
+    ) || latestReading?.normalized?.safety?.parameters.waterLevel.measurementFresh === false
   ) {
     return {
       canPump: false,
@@ -747,7 +749,7 @@ function getWaterStabilityState(
         if (
           isBadWaterStatus(
             waterStatus
-          )
+          ) || item?.normalized?.safety?.parameters.waterLevel.measurementFresh === false
         ) {
           return null;
         }
@@ -1544,15 +1546,15 @@ async function fetchTodaysFeedCommands(
    SMALL COMPONENTS
 ========================================================= */
 
-function DetailMetricCard({ icon: Icon, label, value, severity, statusLabel, scanDate, manualScan = false }) {
-  const explanation = getParameterExplanation({ severity, label: statusLabel }, label);
+function DetailMetricCard({ icon: Icon, label, value, severity, statusLabel, parameter, scanDate, manualScan = false }) {
+  const explanation = getParameterExplanation(parameter || { severity, label: statusLabel }, label);
   return (
     <article className="modern-tank-detail-metric">
       <span><Icon size={22} /></span>
       <div>
         <strong>{value ?? "No Data"}</strong>
         <p>{label}</p>
-        <SafetyBadge className="modern-tank-status" severity={severity} emptyLabel={manualScan ? "No Scan" : "No Data"} />
+        <SafetyBadge className="modern-tank-status" severity={severity} parameter={parameter} emptyLabel={manualScan ? "No Scan" : "No Data"} />
         {explanation && <small className="safety-explanation">{explanation}</small>}
         {manualScan && <small>Latest available ammonia scan</small>}
         {manualScan && value !== "No Scan" && <small>Scanned: {scanDate ? formatReadingTime(scanDate) : "Scan time unavailable"}</small>}
@@ -2201,6 +2203,7 @@ export default function TankDetailsPage() {
           waterDepth:
             latestReading?.normalized?.waterValue,
           waterStatus: latestReading?.normalized?.raw?.water_status,
+          waterMetadata: latestReading?.normalized?.raw?.raw_payload,
           temperatureStatus: latestReading?.normalized?.raw?.temperature_status,
           phStatus: latestReading?.normalized?.raw?.ph_status,
           turbidityStatus: latestReading?.normalized?.raw?.turbidity_status,
@@ -3367,6 +3370,7 @@ export default function TankDetailsPage() {
                     Gauge
                   }
                   label="Water Level"
+                  parameter={latestSafety?.parameters?.waterLevel}
                   value={
                     latestReading
                       ?.normalized

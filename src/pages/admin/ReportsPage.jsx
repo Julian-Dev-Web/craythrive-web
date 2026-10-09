@@ -3546,7 +3546,7 @@ export default function ReportsPage() {
                 ].map(([label, value, key, Icon, date]) => (
                   <div key={key}>
                     <Icon size={20} /><strong>{value}</strong><span>{label}</span>
-                    <SafetyBadge severity={currentSafety.parameters[key].severity} emptyLabel={key === "ammonia" ? "No Scan" : "No Data"} />
+                    <SafetyBadge severity={currentSafety.parameters[key].severity} parameter={currentSafety.parameters[key]} emptyLabel={key === "ammonia" ? "No Scan" : "No Data"} />
                     {getParameterExplanation(currentSafety.parameters[key], key === "ammonia" ? "Ammonia" : label) &&
                       <small className="safety-explanation">{getParameterExplanation(currentSafety.parameters[key], key === "ammonia" ? "Ammonia" : label)}</small>}
                     <small>{date ? `${key === "ammonia" ? "Scanned: " : "Recorded: "}${formatDate(date)}` : key === "ammonia" ? "No scan timestamp available" : "No record"}</small>

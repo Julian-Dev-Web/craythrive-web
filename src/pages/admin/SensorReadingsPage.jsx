@@ -603,7 +603,7 @@ function MetricCard({ icon: Icon, label, value, parameter, scanDate }) {
       <div>
         <small>{label}</small>
         <strong>{value}</strong>
-        <SafetyBadge className="modern-reading-status" severity={parameter?.severity} emptyLabel={label === "Ammonia" ? "No Scan" : "No Data"} />
+        <SafetyBadge className="modern-reading-status" severity={parameter?.severity} parameter={parameter} emptyLabel={label === "Ammonia" ? "No Scan" : "No Data"} />
         {explanation && <small className="safety-explanation">{explanation}</small>}
         {label === "Ammonia" && <small>Latest available ammonia scan</small>}
         {label === "Ammonia" && value !== "No Scan" && <small>Scanned: {scanDate ? formatReadingTime(scanDate) : "Scan time unavailable"}</small>}
@@ -622,7 +622,7 @@ function ReadingConditionCell({ value, parameter, name, emptyLabel = "No Data" }
     <span className="reading-condition-cell">
       <span className="reading-condition-value">
         <strong>{value}</strong>
-        <SafetyBadge severity={parameter?.severity} emptyLabel={emptyLabel} />
+        <SafetyBadge severity={parameter?.severity} parameter={parameter} emptyLabel={emptyLabel} />
       </span>
       {explanation && <small className="safety-explanation" title={explanation}>{compactExplanation}</small>}
     </span>
