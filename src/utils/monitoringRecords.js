@@ -122,6 +122,10 @@ export function evaluateCurrentTankSafety(waterRecord, ammoniaRecord, thresholds
   return evaluateReadingSafety({
     temperature: normalized?.temperatureValue, ph: normalized?.phValue,
     turbidityVoltage: normalized?.turbidityValue, waterDepth: normalized?.waterValue,
+    waterStatus: normalized?.raw?.water_status,
+    temperatureStatus: normalized?.raw?.temperature_status,
+    phStatus: normalized?.raw?.ph_status,
+    turbidityStatus: normalized?.raw?.turbidity_status,
     ammonia: sameTank ? ammoniaRecord?.ammoniaValue : undefined,
   }, thresholds);
 }

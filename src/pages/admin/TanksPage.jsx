@@ -1149,6 +1149,10 @@ export default function TanksPage() {
                       normalized.turbidityValue,
 
                     waterDepth: normalized.waterValue,
+                    waterStatus: normalized.raw?.water_status,
+                    temperatureStatus: normalized.raw?.temperature_status,
+                    phStatus: normalized.raw?.ph_status,
+                    turbidityStatus: normalized.raw?.turbidity_status,
 
                     ammonia:
                       latestAmmoniaValue,
@@ -1804,7 +1808,7 @@ export default function TanksPage() {
                     <SafetyIcon severity={item.status} size={15} />
                     <span>
                       {getSafetyStatusLabel(item.status)}
-                      {item.safety.issues.length > 0 && ` ? ${item.safety.issues.length} parameter(s) outside the configured range`}
+                      {item.safety.issues.length > 0 && ` ? ${item.safety.issues.length} parameter(s) need attention`}
                     </span>
                   </div>
                 )}

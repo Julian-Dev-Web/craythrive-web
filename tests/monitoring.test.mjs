@@ -12,7 +12,7 @@ const server = await createServer({ server: { middlewareMode: true }, define: {
 after(() => server.close());
 const { normalizeSensorReading, toNumberOrNull } = await server.ssrLoadModule('/src/utils/sensorReadingUtils.js');
 const { evaluateReadingSafety, normalizeThresholds, DEFAULT_THRESHOLDS } = await server.ssrLoadModule('/src/utils/thresholdEvaluation.js');
-const { getSafetySeverity, getSafetyStatusLabel } = await server.ssrLoadModule('/src/utils/statusHelpers.js');
+const { getSafetySeverity, getSafetyStatusLabel, getParameterExplanation, getSafetyLabelSeverity } = await server.ssrLoadModule('/src/utils/statusHelpers.js');
 const { buildMonitoringRecords, buildTankHistoryExportRows, buildTankSnapshotExportRows, getCurrentTankSnapshot, getLatestAmmoniaForTank, evaluateCurrentTankSafety, recordMatchesMonitoringTank } = await server.ssrLoadModule('/src/utils/monitoringRecords.js');
 const { buildMonitoringAIContext } = await server.ssrLoadModule('/src/utils/monitoringAIContext.js');
 const { loadAmmoniaHistory, loadCurrentTankRows } = await server.ssrLoadModule('/src/services/tankSnapshotService.js');
@@ -145,9 +145,9 @@ test('current thresholds override stale raw statuses without altering raw readin
   const before = JSON.stringify(raw);
   const r = normalizeSensorReading(raw, { ...DEFAULT_THRESHOLDS, waterLevelMin: 4.5 });
   assert.equal(r.waterValue, 0.6);
-  assert.equal(r.safety.parameters.waterLevel.severity, 'critical');
+  assert.equal(r.safety.parameters.waterLevel.severity, 'warning');
   assert.equal(r.safety.parameters.temperature.severity, 'normal');
-  assert.equal(getSafetySeverity(r.safety), 'critical');
+  assert.equal(getSafetySeverity(r.safety), 'warning');
   assert.equal(JSON.stringify(raw), before);
   assert.equal(normalizeSensorReading(raw, { ...DEFAULT_THRESHOLDS, waterLevelMin: 0.5 }).safety.parameters.waterLevel.severity, 'normal');
 });
@@ -157,6 +157,109 @@ test('pH 4.8 is critical and configured temperature is normal', () => {
   assert.equal(result.parameters.ph.severity, 'critical');
   assert.equal(result.parameters.temperature.severity, 'normal');
   assert.equal(getSafetyStatusLabel(result.parameters.ph.severity), 'Critical');
+});
+
+test('only valid firmware water codes provide the missing warning/critical tiers', () => {
+  for (const [water_status, severity] of Object.entries({ SAFE_IDEAL: 'normal', LOW_WARNING: 'warning', HIGH_WARNING: 'warning', CRITICAL_LOW: 'critical', CRITICAL_HIGH: 'critical' })) {
+    const raw = { ...normal, water_depth_cm: 4, water_status };
+    const before = JSON.stringify(raw);
+    const reading = normalizeSensorReading(raw);
+    const result = reading.safety;
+    assert.equal(result.parameters.waterLevel.severity, severity);
+    assert.equal(result.parameters.waterLevel.source, 'firmware');
+    assert.equal(getSafetySeverity(result), severity);
+    assert.equal(result.isSafe, severity === 'normal');
+    assert.equal(result.issues.length, severity === 'normal' ? 0 : 1);
+    assert.equal(getSafetyLabelSeverity([reading.waterStatus]), severity);
+    assert.equal(JSON.stringify(raw), before);
+    const withoutDepth = normalizeSensorReading({ water_status });
+    assert.equal(withoutDepth.safety.parameters.waterLevel.severity, 'no-data');
+  }
+  for (const waterStatus of [undefined, '', 'Safe Ideal', 'SENSOR_ERROR', 'UNKNOWN', 'constructor', '__proto__']) {
+    assert.equal(evaluateReadingSafety({ waterDepth: 0.6, waterStatus }).parameters.waterLevel.severity, 'warning');
+  }
+});
+
+test('water comparison and alert text use the same 0.1 cm precision as the card', () => {
+  const thresholds = { ...DEFAULT_THRESHOLDS, waterLevelMin: 4 };
+  for (const rawValue of [3.96, 3.99, 4, 4.04]) {
+    const reading = normalizeSensorReading({ water_depth_cm: rawValue }, thresholds);
+    assert.equal(reading.waterValue, rawValue);
+    assert.equal(reading.waterLabel, '4.0 cm');
+    assert.equal(reading.safety.parameters.waterLevel.severity, 'normal');
+    assert.equal(reading.safety.issues.length, 0);
+  }
+  const low = normalizeSensorReading({ water_depth_cm: 3.94 }, thresholds);
+  assert.equal(low.waterLabel, '3.9 cm');
+  assert.equal(low.safety.parameters.waterLevel.severity, 'warning');
+  assert.equal(low.safety.issues[0].message, '3.9 cm is below the active tank minimum (4.0 cm)');
+  const firmware = normalizeSensorReading({ water_depth_cm: 3.99, water_status: 'LOW_WARNING' }, thresholds);
+  assert.equal(firmware.waterLabel, '4.0 cm');
+  assert.equal(firmware.safety.parameters.waterLevel.severity, 'warning');
+  assert.doesNotMatch(firmware.safety.issues[0].message, /below.*minimum/);
+  assert.match(getParameterExplanation(firmware.safety.parameters.waterLevel, 'Water Level'), /device reports a low water level/);
+});
+
+test('requested water boundary examples use supplied firmware tiers, never an invented critical cutoff', () => {
+  // 4.5 is a real saved/default Web minimum. 3.4 is only the user's example
+  // firmware boundary; it is not present in Web settings and is not inferred.
+  for (const [depth, status, severity] of [
+    [4.6, 'SAFE_IDEAL', 'normal'], [4.5, 'SAFE_IDEAL', 'normal'],
+    [4.4, 'LOW_WARNING', 'warning'], [4, 'LOW_WARNING', 'warning'],
+    [3.5, 'LOW_WARNING', 'warning'], [3.4, 'CRITICAL_LOW', 'critical'], [3.3, 'CRITICAL_LOW', 'critical'],
+  ]) {
+    assert.equal(evaluateReadingSafety({ waterDepth: depth, waterStatus: status }).parameters.waterLevel.severity, severity);
+  }
+  for (const minimum of [3.5, 4.5]) {
+    for (const [depth, severity] of [[minimum + 0.1, 'normal'], [minimum, 'normal'], [minimum - 0.1, 'warning'], [0.6, 'warning']]) {
+      assert.equal(evaluateReadingSafety({ waterDepth: depth }, { ...DEFAULT_THRESHOLDS, waterLevelMin: minimum }).parameters.waterLevel.severity, severity);
+    }
+  }
+  assert.equal(evaluateReadingSafety({ waterDepth: 3.3 }).parameters.waterLevel.severity, 'warning');
+});
+
+test('known temperature pH and clarity firmware warnings are not flattened into Critical', () => {
+  for (const [fields, key] of [
+    [{ temperature: 18.27, temperatureStatus: 'COLD_WARNING' }, 'temperature'],
+    [{ temperature: 30.02, temperatureStatus: 'HOT_WARNING' }, 'temperature'],
+    [{ ph: 6.37, phStatus: 'LOW_ACIDIC' }, 'ph'],
+    [{ ph: 8.97, phStatus: 'HIGH_ALKALINE_WARNING' }, 'ph'],
+    [{ turbidityVoltage: 2.184, turbidityStatus: 'SLIGHTLY_CLOUDY' }, 'turbidity'],
+    [{ turbidityVoltage: 1.556, turbidityStatus: 'DIRTY' }, 'turbidity'],
+  ]) {
+    const safety = evaluateReadingSafety(fields);
+    assert.equal(safety.parameters[key].severity, 'warning');
+    assert.equal(getSafetySeverity(safety), 'warning');
+    assert.equal(safety.isSafe, false);
+    assert.equal(safety.issues.length, 1);
+  }
+  for (const [fields, key] of [
+    [{ temperature: 17.15, temperatureStatus: 'CRITICAL_COLD' }, 'temperature'],
+    [{ ph: 5.97, phStatus: 'CRITICAL_ACIDIC' }, 'ph'],
+    [{ turbidityVoltage: 1.035, turbidityStatus: 'CRITICAL_DIRTY' }, 'turbidity'],
+  ]) assert.equal(evaluateReadingSafety(fields).parameters[key].severity, 'critical');
+  // Saved ranges still decide whether these three parameters are acceptable.
+  assert.equal(evaluateReadingSafety({ temperature: 28.52, temperatureStatus: 'HOT_WARNING' }).parameters.temperature.severity, 'normal');
+  assert.equal(evaluateReadingSafety({ ph: 6.37, phStatus: 'LOW_ACIDIC' }, { ...DEFAULT_THRESHOLDS, phMin: 6 }).parameters.ph.severity, 'normal');
+  assert.equal(evaluateReadingSafety({ turbidityVoltage: 2.184, turbidityStatus: 'SLIGHTLY_CLOUDY' }, { ...DEFAULT_THRESHOLDS, turbidityMax: 2 }).parameters.turbidity.severity, 'normal');
+  // Opposite-direction or arbitrary metadata cannot downgrade an alert.
+  assert.equal(evaluateReadingSafety({ temperature: 31, temperatureStatus: 'COLD_WARNING' }).parameters.temperature.severity, 'critical');
+  assert.equal(evaluateReadingSafety({ ph: 4.8, phStatus: 'HIGH_ALKALINE_WARNING' }).parameters.ph.severity, 'critical');
+});
+
+test('firmware water severity survives history, current summaries, CSV and AI reevaluation', () => {
+  for (const [status, label] of [['LOW_WARNING', 'Warning'], ['HIGH_WARNING', 'Warning'], ['CRITICAL_LOW', 'Critical'], ['CRITICAL_HIGH', 'Critical'], ['SAFE_IDEAL', 'Normal']]) {
+    const records = buildMonitoringRecords([{ ...normal, tank_id: 'tank-a', water_depth_cm: 4, water_status: status }], [], tanks);
+    const snapshot = getCurrentTankSnapshot(records, tanks[0]);
+    assert.equal(getSafetyStatusLabel(records[0].status), label);
+    assert.equal(getSafetyStatusLabel(getSafetySeverity(snapshot.safety)), label);
+    assert.equal(buildTankHistoryExportRows(records)[0]['Water Level Condition'], label);
+    assert.equal(buildTankSnapshotExportRows([snapshot])[0]['Water Level Condition'], label);
+    assert.equal(buildMonitoringAIContext({ records, tank: tanks[0] }).latest_sensor.condition, label);
+  }
+  const records = buildMonitoringRecords([{ ...normal, tank_id: 'tank-a', temperature_c: 30.02, temperature_status: 'HOT_WARNING', ph_value: 6.37, ph_status: 'LOW_ACIDIC', turbidity_voltage: 2.184, turbidity_status: 'SLIGHTLY_CLOUDY' }], [], tanks);
+  assert.equal(getSafetySeverity(getCurrentTankSnapshot(records, tanks[0]).safety), 'warning');
+  assert.equal(buildMonitoringAIContext({ records, tank: tanks[0] }).latest_sensor.condition, 'Warning');
 });
 
 test('threshold aliases and incomplete settings retain valid fallbacks', () => {
@@ -197,7 +300,7 @@ test('tank CSV records keep ammonia separate and include all required columns', 
   const ammonia = rows.find(r => r.Type === 'Ammonia Reading');
   assert.deepEqual(Object.keys(water), ['Type', 'Tank', 'Temperature', 'Temperature Condition', 'pH', 'pH Condition', 'Water Clarity', 'Water Clarity Condition', 'Water Level', 'Water Level Condition', 'Ammonia', 'Ammonia Condition', 'Overall Condition', 'Date']);
   assert.equal(water.Ammonia, '');
-  assert.equal(water['Water Level Condition'], 'Critical');
+  assert.equal(water['Water Level Condition'], 'Warning');
   assert.equal(ammonia.Temperature, '');
   assert.equal(ammonia['Ammonia Condition'], 'Critical');
   assert.equal(ammonia.Date, '2026-10-03T09:00:00Z');

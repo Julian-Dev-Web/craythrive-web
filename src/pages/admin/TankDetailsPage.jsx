@@ -2200,6 +2200,10 @@ export default function TankDetailsPage() {
             latestReading?.normalized?.turbidityValue,
           waterDepth:
             latestReading?.normalized?.waterValue,
+          waterStatus: latestReading?.normalized?.raw?.water_status,
+          temperatureStatus: latestReading?.normalized?.raw?.temperature_status,
+          phStatus: latestReading?.normalized?.raw?.ph_status,
+          turbidityStatus: latestReading?.normalized?.raw?.turbidity_status,
           ammonia: latestAmmoniaValue,
         },
         thresholds
@@ -3247,7 +3251,7 @@ export default function TankDetailsPage() {
                   {getSafetyStatusLabel(getSafetySeverity(latestSafety))}
                 </strong>
 
-                <span>Checked against your saved Threshold Settings</span>
+                <span>Checked using saved thresholds and available device severity</span>
 
                 {!latestSafety.isSafe && (
                   <ul className="modern-tank-safety-issue-list">

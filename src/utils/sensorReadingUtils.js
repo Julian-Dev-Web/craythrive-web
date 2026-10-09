@@ -93,6 +93,10 @@ export function normalizeSensorReading(reading, thresholds = getLocalThresholds(
   const safety = evaluateReadingSafety({
     temperature: temperatureValue, ph: phValue,
     turbidityVoltage: turbidityValue, waterDepth: waterValue,
+    waterStatus: reading.water_status,
+    temperatureStatus: reading.temperature_status,
+    phStatus: reading.ph_status,
+    turbidityStatus: reading.turbidity_status,
   }, thresholds);
   const temperatureStatus = safety.parameters.temperature.label;
   const phStatus = safety.parameters.ph.label;

@@ -14,6 +14,10 @@ export function buildMonitoringAIContext({ records, tank, thresholds = getLocalT
     condition: getSafetyStatusLabel(getSafetySeverity(evaluateReadingSafety({
       temperature: item.normalized.temperatureValue, ph: item.normalized.phValue,
       turbidityVoltage: item.normalized.turbidityValue, waterDepth: item.normalized.waterValue,
+      waterStatus: item.normalized.raw?.water_status,
+      temperatureStatus: item.normalized.raw?.temperature_status,
+      phStatus: item.normalized.raw?.ph_status,
+      turbidityStatus: item.normalized.raw?.turbidity_status,
     }, thresholds))) } : null;
   const ammonia = item => item ? { value: item.ammoniaValue, timestamp: item.date,
     condition: item.ammoniaValue == null ? "No Scan" : getSafetyStatusLabel(getSafetySeverity(evaluateReadingSafety({ ammonia: item.ammoniaValue }, thresholds))),

@@ -180,7 +180,7 @@ test('forgot password validates empty input and submits generic recovery respons
 
 test('Tank Details agrees with Tanks for water, pH, temperature and ammonia', async ({ page, qa }) => {
   await open(page, '/admin/tanks/tank-a');
-  for (const [name, value, severity] of [['Water Level', '0.6 cm', 'Critical'], ['pH Level', '4.8', 'Critical'], ['Temperature', '26.3', 'Normal'], ['Ammonia', '0.1 mg/L', 'Normal']]) {
+  for (const [name, value, severity] of [['Water Level', '0.6 cm', 'Warning'], ['pH Level', '4.8', 'Critical'], ['Temperature', '26.3', 'Normal'], ['Ammonia', '0.1 mg/L', 'Normal']]) {
     const metric = page.locator('.modern-tank-detail-metric').filter({ hasText: name });
     await expect(metric).toContainText(value);
     await expect(metric.locator('.safety-status')).toHaveText(severity);
@@ -206,9 +206,9 @@ test('readings sensor/severity/tank filters and refresh preserve independent amm
   await choose(page, 'Filter readings by condition', 'Normal');
   await expect(rows).toHaveCount(1);
   await choose(page, 'Filter readings by condition', 'Critical');
-  await expect(rows).toHaveCount(1);
-  await choose(page, 'Filter readings by condition', 'Warning');
   await expect(page.getByText('No readings found')).toBeVisible();
+  await choose(page, 'Filter readings by condition', 'Warning');
+  await expect(rows).toHaveCount(1);
   await choose(page, 'Filter readings by condition', 'All Conditions');
   await choose(page, 'Filter readings by water parameter', 'Ammonia');
   await expect(rows).toHaveCount(2);
@@ -250,7 +250,7 @@ test('tank and marketplace report CSV downloads and print preparation', async ({
   expect(csv).toContain('Temperature Condition');
   expect(csv).toContain('Ammonia Condition');
   expect(csv).toContain('Water Reading'); expect(csv).toContain('Ammonia Reading');
-  expect(csv).toContain('0.6 cm,Critical');
+  expect(csv).toContain('0.6 cm,Warning');
   const allTanks = await print();
   await expect(allTanks.locator('body')).toContainText('Ammonia Scans');
   await expect(allTanks.locator('body')).toContainText('0.60 mg/L');

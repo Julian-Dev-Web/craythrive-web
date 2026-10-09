@@ -1363,7 +1363,6 @@ export default function SensorReadingsPage() {
   const latestReading = snapshot.waterRecord;
   const latestAmmonia = snapshot.ammoniaRecord;
 
-  const latestWaterDepth = toNumberOrNull(latestReading?.normalized.waterValue);
   const latestTemperature = toNumberOrNull(latestReading?.normalized.temperatureValue);
   const latestPH = toNumberOrNull(latestReading?.normalized.phValue);
 
@@ -1483,7 +1482,7 @@ export default function SensorReadingsPage() {
             </strong>
 
             <span>
-              Checked against your saved Threshold Settings
+              Checked using saved thresholds and available device severity
               {lastUpdated
                 ? ` · as of ${formatReadingTime(
                     lastUpdated
@@ -1639,14 +1638,7 @@ export default function SensorReadingsPage() {
                 Gauge
               }
               label="Latest Water Level"
-              value={
-                latestWaterDepth ===
-                  null
-                  ? "No Data"
-                  : `${latestWaterDepth.toFixed(
-                      2
-                    )} cm`
-              }
+              value={latestReading?.normalized?.waterLabel || "No Data"}
               parameter={latestReading?.normalized?.safety?.parameters.waterLevel}
             />
             <MetricCard icon={FlaskConical} label="Ammonia"

@@ -8,6 +8,8 @@ import { logDiagnostic } from "./securityDiagnostics";
 // 1. ACTIVE THRESHOLDS
 //    These are the values actually used by CrayThrive when classifying
 //    readings. They come from Supabase `threshold_settings` when available.
+//    Water severity temporarily prefers recognized firmware codes because
+//    Web settings do not contain separate warning/critical water bands.
 //
 // 2. RESEARCH / REFERENCE GUIDANCE
 //    These values are informational references shown to the user.
@@ -679,6 +681,10 @@ export function evaluateReadingSafety(
     ph,
     turbidityVoltage,
     waterDepth,
+    waterStatus,
+    temperatureStatus,
+    phStatus,
+    turbidityStatus,
     ammonia,
   },
   thresholds =
@@ -692,6 +698,14 @@ export function evaluateReadingSafety(
   const issues = [];
 
   const parameters = {};
+
+  // Saved settings contain acceptable ranges, not separate critical bands.
+  // Preserve known device warning tiers outside those ranges without deriving
+  // new numeric boundaries. Other/legacy status text is not an authority.
+  const firmwareCode = value => typeof value === "string" ? value.trim().toUpperCase() : "";
+  const temperatureCode = firmwareCode(temperatureStatus);
+  const phCode = firmwareCode(phStatus);
+  const turbidityWarning = ["SLIGHTLY_CLOUDY", "DIRTY"].includes(firmwareCode(turbidityStatus));
 
   /*
   |--------------------------------------------------------------------------
@@ -723,7 +737,7 @@ export function evaluateReadingSafety(
   ) {
     parameters.temperature = {
       severity:
-        "critical",
+        temperatureCode === "COLD_WARNING" ? "warning" : "critical",
 
       label:
         "Below Active Min",
@@ -751,7 +765,7 @@ export function evaluateReadingSafety(
   ) {
     parameters.temperature = {
       severity:
-        "critical",
+        temperatureCode === "HOT_WARNING" ? "warning" : "critical",
 
       label:
         "Above Active Max",
@@ -816,7 +830,7 @@ export function evaluateReadingSafety(
   ) {
     parameters.ph = {
       severity:
-        "critical",
+        phCode === "LOW_ACIDIC" ? "warning" : "critical",
 
       label:
         "Below Active Min",
@@ -844,7 +858,7 @@ export function evaluateReadingSafety(
   ) {
     parameters.ph = {
       severity:
-        "critical",
+        phCode === "HIGH_ALKALINE_WARNING" ? "warning" : "critical",
 
       label:
         "Above Active Max",
@@ -885,7 +899,7 @@ export function evaluateReadingSafety(
   |--------------------------------------------------------------------------
   |
   | Numeric voltage is evaluated against the active clear-water minimum.
-  | Stored sensor statuses are raw metadata only.
+  | Known firmware warning codes retain their warning tier outside that range.
   |
   */
 
@@ -894,8 +908,8 @@ export function evaluateReadingSafety(
     ? { severity: "no-data", label: "No Reading", hasValue: false }
     : turbidityValue >= active.turbidityMax
       ? { severity: "normal", label: "Clear", hasValue: true }
-      : { severity: "critical", label: "Needs Attention", hasValue: true };
-  if (parameters.turbidity.severity === "critical") {
+      : { severity: turbidityWarning ? "warning" : "critical", label: "Needs Attention", hasValue: true };
+  if (["warning", "critical"].includes(parameters.turbidity.severity)) {
     issues.push({ key: "turbidity", label: "Water Clarity",
       message: `${turbidityValue} V is below the active clear-water minimum (${active.turbidityMax} V)` });
   }
@@ -911,64 +925,37 @@ export function evaluateReadingSafety(
   |
   */
 
-  const waterValue =
-    toNumberOrNull(
-      waterDepth
-    );
-
-  if (
-    waterValue ===
-    null
-  ) {
+  const waterValue = toNumberOrNull(waterDepth);
+  const waterCode = firmwareCode(waterStatus);
+  const waterFirmware = {
+    SAFE_IDEAL: { severity: "normal", label: "Within Active Range" },
+    LOW_WARNING: { severity: "warning", label: "Low Water Level", explanation: "The monitoring device reports a low water level" },
+    HIGH_WARNING: { severity: "warning", label: "High Water Level", explanation: "The monitoring device reports a high water level" },
+    CRITICAL_LOW: { severity: "critical", label: "Critical Low Water Level", explanation: "The monitoring device reports a critically low water level" },
+    CRITICAL_HIGH: { severity: "critical", label: "Critical High Water Level", explanation: "The monitoring device reports a critically high water level" },
+  };
+  // Match the displayed 0.1 cm precision, while leaving stored/raw values intact.
+  const displayedWater = waterValue === null ? null : Number(waterValue.toFixed(1));
+  const displayedMinimum = Number(active.waterLevelMin.toFixed(1));
+  if (waterValue === null) {
+    parameters.waterLevel = { severity: "no-data", label: "No Reading", hasValue: false };
+  } else if (Object.hasOwn(waterFirmware, waterCode)) {
+    // Firmware is the available source for low/high warning and critical bands.
+    // Do not claim it used the Web minimum: the configurations can differ.
+    parameters.waterLevel = { ...waterFirmware[waterCode], hasValue: true, source: "firmware" };
+  } else if (displayedWater < displayedMinimum) {
     parameters.waterLevel = {
-      severity:
-        "no-data",
-
-      label:
-        "No Reading",
-
-      hasValue:
-        false,
+      severity: "warning", label: "Low Water Level", hasValue: true, source: "threshold",
+      explanation: "Water level is below the configured minimum",
     };
-  } else if (
-    waterValue <
-    active.waterLevelMin
-  ) {
-    parameters.waterLevel = {
-      severity:
-        "critical",
-
-      label:
-        "Below Active Min",
-
-      hasValue:
-        true,
-    };
-
-    issues.push({
-      key:
-        "waterLevel",
-
-      label:
-        "Water Level",
-
-      message:
-        `${waterValue.toFixed(
-          1
-        )} cm is below the active tank minimum ` +
-        `(${active.waterLevelMin} cm)`,
-    });
   } else {
-    parameters.waterLevel = {
-      severity:
-        "normal",
-
-      label:
-        "Within Active Range",
-
-      hasValue:
-        true,
-    };
+    parameters.waterLevel = { severity: "normal", label: "Within Active Range", hasValue: true, source: "threshold" };
+  }
+  if (["warning", "critical"].includes(parameters.waterLevel.severity)) {
+    issues.push({ key: "waterLevel", label: "Water Level",
+      message: parameters.waterLevel.source === "firmware"
+        ? `${parameters.waterLevel.explanation} (${displayedWater.toFixed(1)} cm)`
+        : `${displayedWater.toFixed(1)} cm is below the active tank minimum (${displayedMinimum.toFixed(1)} cm)` });
   }
 
   /*
