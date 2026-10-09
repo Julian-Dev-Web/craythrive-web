@@ -76,7 +76,7 @@ export default function useTankThresholdSettings() {
     if (busy.current || !row?.id) return;
     busy.current = true; setIsSaving(true);
     try {
-      const { error } = await supabase.from("threshold_settings").update({ pending_ai_suggestion: null, pending_ai_suggested_at: null })
+      const { error } = await supabase.from("tank_threshold_settings").update({ pending_ai_suggestion: null, pending_ai_suggested_at: null })
         .eq("user_id", userId).eq("tank_id", selectedTankId).eq("id", row.id);
       if (error) throw error;
       setRows(await fetchThresholdRows(supabase, userId));

@@ -7,7 +7,7 @@ import { applyTankThresholdSettings, applyPendingTankRecommendation } from '../d
 // Exercise the same portable reader intended for the next Expo build and AI.
 function mockClient(responses) {
   const calls=[];
-  return { calls, from(table) {
+  return { calls, async rpc() { return { error: { code: 'PGRST202' } }; }, from(table) {
     const filters=[];const call={table,filters};calls.push(call);
     return {
       select() { return this; },
@@ -18,6 +18,16 @@ function mockClient(responses) {
   } };
 }
 const row=(tank_id,waterLevelMin)=>({user_id:'owner',tank_id,thresholds:{waterLevelMin}});
+
+test('bridge reader resolves owned overrides and legacy rows through the authenticated read RPC',async()=>{
+  const rows=[row(null,4),row('tank-a',5),{...row('tank-b',19),user_id:'other'}];
+  const client={async rpc(name) {assert.equal(name,'get_tank_threshold_settings');return {data:rows};}};
+  assert.equal((await fetchEffectiveTankThresholds(client,'owner','tank-a')).waterLevelMin,5);
+  assert.equal((await fetchEffectiveTankThresholds(client,'owner','tank-b')).waterLevelMin,4);
+  const denied={code:'42501'};
+  await assert.rejects(fetchEffectiveTankThresholds({async rpc(){return {error:denied};}},'owner','tank-a'),error=>error===denied);
+  await assert.rejects(fetchEffectiveTankThresholds({async rpc(){return {data:{}};}},'owner','tank-a'),/Invalid tank threshold/);
+});
 
 test('portable normalization preserves JSON precedence, zeros, and numeric strings without mutating rows',()=>{
   const input={water_level_min:35,thresholds:{waterLevelMin:'4',ammoniaMax:0,phMin:false}};

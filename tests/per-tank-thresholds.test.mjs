@@ -43,7 +43,7 @@ async function seedLegacy() {
 }
 await seedLegacy();
 const legacyBefore = (await db.query('SELECT * FROM threshold_settings ORDER BY user_id')).rows;
-const migrationSql = await fs.readFile(new URL('../supabase/migrations/20261009180000_per_tank_thresholds.sql',import.meta.url),'utf8');
+const migrationSql = await fs.readFile(new URL('../docs/sql/20261009180000_per_tank_thresholds.sql',import.meta.url),'utf8');
 await assert.rejects(db.exec(migrationSql), /Threshold compatibility audit required/);
 await db.exec('ROLLBACK');
 const blockedColumns = (await db.query("SELECT column_name FROM information_schema.columns WHERE table_name='threshold_settings'")).rows;

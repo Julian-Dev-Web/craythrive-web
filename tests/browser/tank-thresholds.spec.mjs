@@ -6,14 +6,14 @@ const save = page => page.getByRole('button', { name: 'Apply to This Tank', exac
 const entries = qa => qa.data.control_logs.filter(row => row.action_type === 'threshold_updated');
 function perTank(qa) {
   const baseline = qa.data.threshold_settings[0].thresholds;
-  qa.data.threshold_settings.push(...qa.data.tanks.map((tank,index) => ({ id: `setting-${tank.id}`, tank_id: tank.id, user_id: user.id,
+  qa.data.tank_threshold_settings.push(...qa.data.tanks.map((tank,index) => ({ id: `setting-${tank.id}`, tank_id: tank.id, user_id: user.id,
     thresholds: { ...baseline, waterLevelMin: 4 + index } })));
 }
 
 test('single-tank Apply preserves other tanks, records one activity, refresh and selector persist values',async({page,qa})=>{
  perTank(qa);await openSettings(page);await page.getByLabel('Tank',{exact:true}).selectOption('tank-b');await expect(water(page)).toHaveValue('5');
  await water(page).fill('5.5');await save(page).click();await expect(page.getByText('Threshold settings updated for Tank B.',{exact:true})).toBeVisible();
- expect(qa.data.threshold_settings.filter(row=>row.tank_id).map(row=>row.thresholds.waterLevelMin)).toEqual([4,5.5,6]);
+ expect(qa.data.tank_threshold_settings.map(row=>row.thresholds.waterLevelMin)).toEqual([4,5.5,6]);
  expect(qa.data.threshold_settings.find(row=>!row.tank_id).thresholds.waterLevelMin).toBe(4.5);
  expect(entries(qa)).toHaveLength(1);expect(entries(qa)[0].tank_id).toBe('tank-b');
  await page.reload();await expect(water(page)).toHaveValue('5.5');
@@ -34,13 +34,13 @@ test('Apply All requires confirmation, updates only owned tanks and creates one 
  await dialog.getByRole('button',{name:'Confirm Apply to All Tanks',exact:true}).click();
  await expect(page.getByText('Threshold settings updated for 3 tanks.',{exact:true})).toBeVisible();
  expect(entries(qa)).toHaveLength(3);expect(entries(qa).every(row=>row.metadata.scope==='all_tanks')).toBe(true);
- expect(qa.data.threshold_settings.filter(row=>row.tank_id).map(row=>row.thresholds.waterLevelMin)).toEqual([4.8,4.8,4.8]);
+ expect(qa.data.tank_threshold_settings.map(row=>row.thresholds.waterLevelMin)).toEqual([4.8,4.8,4.8]);
  expect(qa.data.threshold_settings.find(row=>!row.tank_id).thresholds.waterLevelMin).toBe(4.8);
- expect(qa.data.threshold_settings.some(row=>row.tank_id==='foreign')).toBe(false);
+ expect(qa.data.tank_threshold_settings.some(row=>row.tank_id==='foreign')).toBe(false);
 });
 
 test('AI remains pending until explicit acceptance, and activity identifies acceptance by the user',async({page,qa})=>{
- perTank(qa);qa.data.threshold_settings[1].pending_ai_suggestion={parameter:'water_level',suggested_value:4.8,reason:'Check the configured operating minimum.'};
+ perTank(qa);qa.data.tank_threshold_settings[0].pending_ai_suggestion={parameter:'water_level',suggested_value:4.8,reason:'Check the configured operating minimum.'};
  await openSettings(page);await expect(page.getByText('AI threshold recommendation',{exact:true})).toBeVisible();expect(qa.writes).toEqual([]);expect(entries(qa)).toEqual([]);
  await page.getByRole('button',{name:'Apply Recommendation to This Tank',exact:true}).click();
  await expect(water(page)).toHaveValue('4.8');expect(entries(qa)).toHaveLength(1);expect(entries(qa)[0].metadata.source).toBe('ai_recommendation');

@@ -1,5 +1,12 @@
 # Per-tank thresholds and threshold activity
 
+**Current deployment:** the separate-table compatibility bridge was approved
+and deployed on October 10, 2026. See
+[THRESHOLD_BRIDGE_DEPLOYMENT.md](THRESHOLD_BRIDGE_DEPLOYMENT.md). The legacy
+`threshold_settings` schema, rows, unique constraint and policies are preserved.
+The description below records the earlier same-table implementation, whose
+guarded SQL is now archived outside automatic migrations.
+
 ## Implementation and rollout state
 
 **Compatibility update:** rollout is blocked pending the installed-mobile audit.
@@ -42,7 +49,7 @@ Read-only inspection of the current linked project confirmed:
 
 ## Exact schema changes
 
-Migration: `supabase/migrations/20261009180000_per_tank_thresholds.sql`.
+Migration: `docs/sql/20261009180000_per_tank_thresholds.sql`.
 
 - Add nullable `threshold_settings.tank_id`, referencing `tanks(id)` with cascade
   deletion when the tank is deleted.
@@ -207,7 +214,7 @@ inspected with read-only metadata queries.
 - `src/utils/sensorReadingUtils.js`
 - `src/utils/monitoringRecords.js`
 - `src/utils/monitoringAIContext.js`
-- `supabase/migrations/20261009180000_per_tank_thresholds.sql` (new)
+- `docs/sql/20261009180000_per_tank_thresholds.sql` (new)
 - `tests/per-tank-thresholds.test.mjs` (new)
 - `tests/browser/tank-thresholds.spec.mjs` (new)
 - `tests/browser/fixtures.mjs`

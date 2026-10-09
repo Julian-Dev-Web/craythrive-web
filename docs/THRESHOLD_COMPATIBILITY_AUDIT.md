@@ -1,4 +1,10 @@
-# Threshold compatibility audit — rollout blocked
+# Historical threshold compatibility audit
+
+**Superseded on October 10, 2026:** the compatibility bridge was approved and
+deployed. The legacy table was left completely unchanged. See
+[THRESHOLD_BRIDGE_DEPLOYMENT.md](THRESHOLD_BRIDGE_DEPLOYMENT.md) for current
+objects, grants and test results. The same-table candidate below is archived
+and must not be deployed.
 
 ## Outcome
 
@@ -8,7 +14,7 @@ The migration now stops before any schema/data change unless an explicit
 compatibility-review setting is enabled. Only the isolated PostgreSQL tests
 enable it; passing those tests does not establish installed-APK compatibility.
 
-Exact candidate: [`20261009180000_per_tank_thresholds.sql`](../supabase/migrations/20261009180000_per_tank_thresholds.sql).
+Archived candidate: [`20261009180000_per_tank_thresholds.sql`](sql/20261009180000_per_tank_thresholds.sql).
 
 The actual Expo source has not been located or supplied. Consequently its
 threshold reads, recommendation persistence and Apply implementation remain
@@ -190,7 +196,7 @@ ownership, atomic rollback and the known old-client incompatibility.
 - `src/services/tankThresholdService.js`
 - `src/utils/thresholdEvaluation.js`
 - `supabase/functions/_shared/thresholdResolution.js` (new portable resolver)
-- `supabase/migrations/20261009180000_per_tank_thresholds.sql` (guarded candidate)
+- `docs/sql/20261009180000_per_tank_thresholds.sql` (guarded candidate)
 - `tests/per-tank-thresholds.test.mjs`
 - `tests/threshold-compatibility.test.mjs` (new)
 - `tests/browser/fixtures.mjs`

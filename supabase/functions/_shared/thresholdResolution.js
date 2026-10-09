@@ -37,6 +37,14 @@ export function resolveTankThresholds(settings, tankId) {
 // A missing tank is an error, rather than an inferred account-wide operation.
 export async function fetchEffectiveTankThresholds(client, userId, tankId) {
   if (!userId || !tankId) throw new Error('Authenticated user and selected tank are required.');
+  const result = await client.rpc('get_tank_threshold_settings');
+  if (!result.error) {
+    if (!Array.isArray(result.data)) throw new Error('Invalid tank threshold response.');
+    const rows = result.data.filter(row => row.user_id === userId);
+    return resolveTankThresholds(thresholdBundle(rows), tankId);
+  }
+  if (!['PGRST202', '42883'].includes(result.error.code)) throw result.error;
+  // Compatibility before the bridge read RPC is installed.
   const specific = await client.from('threshold_settings').select('*')
     .eq('user_id', userId).eq('tank_id', tankId).maybeSingle();
   if (specific.error) {

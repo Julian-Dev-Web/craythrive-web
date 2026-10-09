@@ -21,6 +21,7 @@ export function datasets() {
       { id: 'scan-b', tank_id: 'tank-b', user_id: user.id, ammonia: 0.6, ammonia_status: 'Normal', created_at: now },
     ],
     threshold_settings: [{ user_id: user.id, thresholds: { temperatureMin: 20, temperatureMax: 30, phMin: 6.5, phMax: 8.5, turbidityMax: 2.5, waterLevelMin: 4.5, ammoniaMax: 0.25 } }],
+    tank_threshold_settings: [],
     marketplace_listings: [
       { id: 'listing-a', user_id: user.id, seller_id: user.id, title: 'QA Legacy Crayfish', category: null, subcategory: 'Adult', crayfish_type: 'Redclaw Crayfish', stage: 'adult', sex: 'unknown', size_label: '1 inch', price: 150, quantity: 12, stock: 12, status: 'active', is_active: true, is_deleted: false, description: 'Healthy crayfish for QA', image_url: '/craythrive-logo.png', location: 'Manila', created_at: now },
       { id: 'listing-b', user_id: user.id, seller_id: user.id, title: 'QA Fish Feed', category: 'feeds', price: 80, quantity: 10, stock: 10, status: 'active', is_active: true, is_deleted: false, image_url: '/craythrive-logo.png', created_at: now },
@@ -116,6 +117,13 @@ export const test = base.extend({
         // Supabase rejects browser/public-key schema discovery. Table CRUD works.
         if (url.pathname === '/rest/v1/') return reply({ message: 'Access to schema is forbidden' }, 403);
         const table = url.pathname.split('/').at(-1);
+        if (url.pathname === '/rest/v1/rpc/get_tank_threshold_settings') {
+          state.reads.push({ table: 'get_tank_threshold_settings', filters: {} });
+          return reply([
+            ...state.data.threshold_settings.filter(row => row.user_id === user.id).map(row => ({ ...row, tank_id: null })),
+            ...state.data.tank_threshold_settings.filter(row => row.user_id === user.id),
+          ]);
+        }
         if (url.pathname === '/rest/v1/rpc/apply_tank_thresholds') {
           if (state.thresholdWriteFailure) return reply({ code: 'PGRST202', message: 'Migration not installed' }, 404);
           const args = request.postDataJSON();
@@ -123,7 +131,7 @@ export const test = base.extend({
           if (!selected) return reply({ code: '42501', message: 'Tank ownership required' }, 403);
           let legacyRow = state.data.threshold_settings.find(row => row.user_id === user.id && !row.tank_id);
           const legacy = legacyRow?.thresholds || {};
-          const selectedRow = state.data.threshold_settings.find(row => row.tank_id === selected.id);
+          const selectedRow = state.data.tank_threshold_settings.find(row => row.tank_id === selected.id);
           let patch = args.p_patch;
           if (args.p_source === 'ai_recommendation') {
             const s = selectedRow?.pending_ai_suggestion;
@@ -134,11 +142,11 @@ export const test = base.extend({
           const targets = state.data.tanks.filter(tank => tank.user_id === user.id && (args.p_scope === 'all_tanks' || tank.id === selected.id));
           const saved = []; let changed = 0;
           for (const tank of targets) {
-            let row = state.data.threshold_settings.find(row => row.tank_id === tank.id);
+            let row = state.data.tank_threshold_settings.find(row => row.tank_id === tank.id);
             const oldValues = structuredClone(row?.thresholds || legacy);
             const newValues = { ...oldValues, ...patch };
-            state.writes.push({ table: 'threshold_settings', method: 'RPC', body: { ...args, tank_id: tank.id } });
-            if (!row) { row = { id: `threshold-${tank.id}`, tank_id: tank.id, user_id: user.id }; state.data.threshold_settings.push(row); }
+            state.writes.push({ table: 'tank_threshold_settings', method: 'RPC', body: { ...args, tank_id: tank.id } });
+            if (!row) { row = { id: `threshold-${tank.id}`, tank_id: tank.id, user_id: user.id }; state.data.tank_threshold_settings.push(row); }
             row.thresholds = newValues;
             if (JSON.stringify(oldValues) !== JSON.stringify(newValues)) {
               changed++;

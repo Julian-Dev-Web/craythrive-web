@@ -1,0 +1,70 @@
+diff --git a/src/services/tankThresholdService.js b/src/services/tankThresholdService.js
+index 715935c..1e69f76 100644
+--- a/src/services/tankThresholdService.js
++++ b/src/services/tankThresholdService.js
+@@ -17,9 +17,17 @@ export function cacheThresholdBundle(userId, bundle, notify = false) {
+ }
+ 
+ export async function fetchThresholdRows(client, userId) {
+-  const { data, error } = await client.from("threshold_settings").select("*").eq("user_id", userId);
+-  if (error) throw error;
+-  const rows = data || [];
++  const response = await client.rpc("get_tank_threshold_settings");
++  let data = response.data;
++  if (response.error) {
++    if (!["PGRST202", "42883"].includes(response.error.code)) throw response.error;
++    // Preserve pre-migration reads; an Apply still fails if its RPC is absent.
++    const legacy = await client.from("threshold_settings").select("*").eq("user_id", userId);
++    if (legacy.error) throw legacy.error;
++    data = legacy.data || [];
++  }
++  if (!Array.isArray(data)) throw new Error("Invalid tank threshold response.");
++  const rows = data.filter(row => row.user_id === userId);
+   cacheThresholdBundle(userId, thresholdBundle(rows));
+   return rows;
+ }
+diff --git a/src/hooks/useTankThresholdSettings.js b/src/hooks/useTankThresholdSettings.js
+index 04baae4..37a944c 100644
+--- a/src/hooks/useTankThresholdSettings.js
++++ b/src/hooks/useTankThresholdSettings.js
+@@ -76,7 +76,7 @@ export default function useTankThresholdSettings() {
+     if (busy.current || !row?.id) return;
+     busy.current = true; setIsSaving(true);
+     try {
+-      const { error } = await supabase.from("threshold_settings").update({ pending_ai_suggestion: null, pending_ai_suggested_at: null })
++      const { error } = await supabase.from("tank_threshold_settings").update({ pending_ai_suggestion: null, pending_ai_suggested_at: null })
+         .eq("user_id", userId).eq("tank_id", selectedTankId).eq("id", row.id);
+       if (error) throw error;
+       setRows(await fetchThresholdRows(supabase, userId));
+diff --git a/supabase/functions/_shared/thresholdResolution.js b/supabase/functions/_shared/thresholdResolution.js
+index f10cb35..686a6da 100644
+--- a/supabase/functions/_shared/thresholdResolution.js
++++ b/supabase/functions/_shared/thresholdResolution.js
+@@ -37,6 +37,14 @@ export function resolveTankThresholds(settings, tankId) {
+ // A missing tank is an error, rather than an inferred account-wide operation.
+ export async function fetchEffectiveTankThresholds(client, userId, tankId) {
+   if (!userId || !tankId) throw new Error('Authenticated user and selected tank are required.');
++  const result = await client.rpc('get_tank_threshold_settings');
++  if (!result.error) {
++    if (!Array.isArray(result.data)) throw new Error('Invalid tank threshold response.');
++    const rows = result.data.filter(row => row.user_id === userId);
++    return resolveTankThresholds(thresholdBundle(rows), tankId);
++  }
++  if (!['PGRST202', '42883'].includes(result.error.code)) throw result.error;
++  // Compatibility before the bridge read RPC is installed.
+   const specific = await client.from('threshold_settings').select('*')
+     .eq('user_id', userId).eq('tank_id', tankId).maybeSingle();
+   if (specific.error) {
+diff --git a/supabase/functions/_shared/developerBackup.js b/supabase/functions/_shared/developerBackup.js
+index 6bbd052..1d5ac24 100644
+--- a/supabase/functions/_shared/developerBackup.js
++++ b/supabase/functions/_shared/developerBackup.js
+@@ -4,7 +4,7 @@ export const BACKUP_TABLES = Object.freeze([
+   'devices', 'iot_devices', 'marketplace_chat_messages', 'marketplace_chat_threads',
+   'marketplace_listings', 'marketplace_orders', 'notification_preferences', 'profiles',
+   'push_tokens', 'seller_profiles', 'sensor_readings', 'tank_automation_logs',
+-  'tank_automation_settings', 'tanks', 'threshold_settings', 'turbidity_readings', 'water_thresholds',
++  'tank_automation_settings', 'tank_threshold_settings', 'tanks', 'threshold_settings', 'turbidity_readings', 'water_thresholds',
+ ]);
+ // Never reactivate historical actuator work, automation configuration or push recipients.
+ export const EXPORT_ONLY_TABLES = Object.freeze(['device_commands', 'push_tokens', 'tank_automation_settings']);

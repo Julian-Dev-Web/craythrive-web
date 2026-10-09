@@ -4,7 +4,7 @@ export const BACKUP_TABLES = Object.freeze([
   'devices', 'iot_devices', 'marketplace_chat_messages', 'marketplace_chat_threads',
   'marketplace_listings', 'marketplace_orders', 'notification_preferences', 'profiles',
   'push_tokens', 'seller_profiles', 'sensor_readings', 'tank_automation_logs',
-  'tank_automation_settings', 'tanks', 'threshold_settings', 'turbidity_readings', 'water_thresholds',
+  'tank_automation_settings', 'tank_threshold_settings', 'tanks', 'threshold_settings', 'turbidity_readings', 'water_thresholds',
 ]);
 // Never reactivate historical actuator work, automation configuration or push recipients.
 export const EXPORT_ONLY_TABLES = Object.freeze(['device_commands', 'push_tokens', 'tank_automation_settings']);

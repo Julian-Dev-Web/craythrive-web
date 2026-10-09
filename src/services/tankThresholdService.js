@@ -17,9 +17,17 @@ export function cacheThresholdBundle(userId, bundle, notify = false) {
 }
 
 export async function fetchThresholdRows(client, userId) {
-  const { data, error } = await client.from("threshold_settings").select("*").eq("user_id", userId);
-  if (error) throw error;
-  const rows = data || [];
+  const response = await client.rpc("get_tank_threshold_settings");
+  let data = response.data;
+  if (response.error) {
+    if (!["PGRST202", "42883"].includes(response.error.code)) throw response.error;
+    // Preserve pre-migration reads; an Apply still fails if its RPC is absent.
+    const legacy = await client.from("threshold_settings").select("*").eq("user_id", userId);
+    if (legacy.error) throw legacy.error;
+    data = legacy.data || [];
+  }
+  if (!Array.isArray(data)) throw new Error("Invalid tank threshold response.");
+  const rows = data.filter(row => row.user_id === userId);
   cacheThresholdBundle(userId, thresholdBundle(rows));
   return rows;
 }
