@@ -5,6 +5,7 @@ import { useSearchParams } from "react-router-dom";
 import { applyTankThresholds, cacheThresholdBundle, fetchOwnedThresholdTanks, fetchThresholdRows,
   suggestionPatch, tankThresholdName, thresholdBundle, thresholdChanges } from "../services/tankThresholdService";
 import { logDiagnostic } from "../utils/securityDiagnostics";
+import useThresholdRefresh from "./useThresholdRefresh";
 
 export default function useTankThresholdSettings() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -18,6 +19,7 @@ export default function useTankThresholdSettings() {
   const [message, setMessage] = useState(null);
   const [syncMode, setSyncMode] = useState("local");
   const busy = useRef(false);
+  const loadVersion = useRef(0);
   const row = rows.find(item => item.tank_id === selectedTankId);
   const selectedTank = tanks.find(tank => tank.id === selectedTankId);
   const baseline = useMemo(() => normalizeThresholds(rows.find(item => item.tank_id === selectedTankId)
@@ -27,23 +29,30 @@ export default function useTankThresholdSettings() {
   const setSelectedTankId = id => {
     selectTank(id); setDraft(null);
     setSearchParams(current => { const next = new URLSearchParams(current); next.set("tank", id); return next; }, { replace: true });
+    // Mobile can apply while this editor is open. Tank switches read the
+    // canonical database rows again instead of relying on the last bundle.
+    void load();
   };
   const isDirty = useMemo(() => Object.keys(thresholdChanges(baseline, thresholds)).length > 0, [baseline, thresholds]);
 
   const load = useCallback(async () => {
+    const version = ++loadVersion.current;
     try {
       if (!isSupabaseConfigured || !supabase) throw new Error("Online settings unavailable");
       const { data, error } = await supabase.auth.getSession();
       if (error || !data?.session?.user?.id) throw new Error("Sign in to configure your tanks.");
       const id = data.session.user.id;
       const [owned, saved] = await Promise.all([fetchOwnedThresholdTanks(supabase, id), fetchThresholdRows(supabase, id)]);
+      if (version !== loadVersion.current) return;
       setUserId(id); setTanks(owned); setRows(saved); setSyncMode("online");
       selectTank(current => owned.some(tank => tank.id === current) ? current : owned[0]?.id || "");
     } catch (error) {
+      if (version !== loadVersion.current) return;
       logDiagnostic("Tank threshold load failed", error);
       setMessage({ tone: "warning", text: "Could not load tank settings. Reconnect and retry before applying changes." });
-    } finally { setIsLoading(false); }
+    } finally { if (version === loadVersion.current) setIsLoading(false); }
   }, []);
+  useThresholdRefresh(load);
   useEffect(() => {
     let active = true;
     Promise.resolve().then(() => { if (active) return load(); });
@@ -59,6 +68,7 @@ export default function useTankThresholdSettings() {
       const result = await applyTankThresholds(supabase, { userId, tankId: selectedTankId, patch, scope, source });
       if (!result.affected) { setMessage({ tone: "info", text: "No threshold values changed. No activity was recorded." }); return; }
       // Refetch authoritative settings; publish only after the transaction succeeds.
+      ++loadVersion.current;
       const saved = await fetchThresholdRows(supabase, userId);
       setRows(saved); setDraft(null); cacheThresholdBundle(userId, thresholdBundle(saved), true);
       setMessage({ tone: "success", text: result.changed === 0 ? "Threshold values are unchanged. No activity was recorded."

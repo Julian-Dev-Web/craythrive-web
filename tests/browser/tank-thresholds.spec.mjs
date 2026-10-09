@@ -77,3 +77,17 @@ test('tank threshold editor and confirmation fit a phone viewport',async({page,q
  await expect(page.getByRole('dialog')).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.getByRole('dialog').getByRole('button',{name:'Cancel',exact:true}).click();
 });
+
+test('tank switch and window focus refetch canonical updates made outside this Web editor',async({page,qa})=>{
+ perTank(qa);await openSettings(page);await expect(water(page)).toHaveValue('4');
+ // Represents a committed canonical write by another client, without a local
+ // storage notification or Web Apply. This does not simulate a legacy write.
+ qa.data.tank_threshold_settings.find(row=>row.tank_id==='tank-b').thresholds.waterLevelMin=3.5;
+ await page.getByLabel('Tank',{exact:true}).selectOption('tank-b');
+ await expect(water(page)).toHaveValue('3.5');
+ qa.data.tank_threshold_settings.find(row=>row.tank_id==='tank-b').thresholds.waterLevelMin=3.7;
+ await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+ await expect(water(page)).toHaveValue('3.7');
+ expect(qa.writes).toEqual([]);expect(entries(qa)).toEqual([]);
+ await page.reload();await expect(water(page)).toHaveValue('3.7');
+});
