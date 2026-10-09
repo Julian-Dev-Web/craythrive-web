@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_THRESHOLDS, fetchEffectiveTankThresholds, normalizeThresholds,
+import { DEFAULT_THRESHOLDS, fetchEffectiveTankThresholds, fetchTankThresholdRows, normalizeThresholds,
   resolveTankThresholds, thresholdBundle } from '../supabase/functions/_shared/thresholdResolution.js';
 import { applyTankThresholdSettings, applyPendingTankRecommendation } from '../docs/mobile-next-apk/thresholdSettings.js';
 
@@ -12,7 +12,7 @@ function mockClient(responses) {
     return {
       select() { return this; },
       eq(key,value) { filters.push(['eq',key,value]);return this; },
-      is(key,value) { filters.push(['is',key,value]);return this; },
+      then(resolve,reject) { assert.ok(responses.length,'unexpected database read');return Promise.resolve(responses.shift()).then(resolve,reject); },
       async maybeSingle() { assert.ok(responses.length,'unexpected database read');return responses.shift(); },
     };
   } };
@@ -38,19 +38,21 @@ test('portable normalization preserves JSON precedence, zeros, and numeric strin
 
 test('Web bundle, next-mobile reader and AI reader resolve tank -> legacy -> defaults identically',async()=>{
   const rows=[row(null,4),row('tank-a',5)];const bundle=thresholdBundle(rows);
-  const a=mockClient([{data:rows[1]}]);
+  const a=mockClient([{data:[rows[1]]},{data:rows[0]}]);
   assert.deepEqual(await fetchEffectiveTankThresholds(a,'owner','tank-a'),resolveTankThresholds(bundle,'tank-a'));
-  assert.deepEqual(a.calls[0].filters,[['eq','user_id','owner'],['eq','tank_id','tank-a']]);
-  const b=mockClient([{data:null},{data:rows[0]}]);
+  assert.equal(a.calls[0].table,'tank_threshold_settings');
+  assert.deepEqual(a.calls[0].filters,[['eq','user_id','owner']]);
+  const b=mockClient([{data:[]},{data:rows[0]}]);
   assert.deepEqual(await fetchEffectiveTankThresholds(b,'owner','tank-b'),resolveTankThresholds(bundle,'tank-b'));
-  assert.deepEqual(b.calls[1].filters,[['eq','user_id','owner'],['is','tank_id',null]]);
-  const c=mockClient([{data:null},{data:null}]);
+  assert.equal(b.calls[1].table,'threshold_settings');
+  assert.deepEqual(b.calls[1].filters,[['eq','user_id','owner']]);
+  const c=mockClient([{data:[]},{data:null}]);
   assert.deepEqual(await fetchEffectiveTankThresholds(c,'owner','tank-c'),DEFAULT_THRESHOLDS);
 });
 
-test('pre-migration reader handles only a genuinely missing tank_id column, preserving the old account row',async()=>{
-  for(const code of ['42703','PGRST204']) {
-    const client=mockClient([{error:{code,message:'column threshold_settings.tank_id does not exist'}},{data:row(null,4)}]);
+test('pre-bridge reader handles only a genuinely missing override table, preserving the old account row',async()=>{
+  for(const code of ['42P01','PGRST205']) {
+    const client=mockClient([{error:{code,message:'relation public.tank_threshold_settings does not exist'}},{data:row(null,4)}]);
     assert.equal((await fetchEffectiveTankThresholds(client,'owner','tank-a')).waterLevelMin,4);
     assert.deepEqual(client.calls[1].filters,[['eq','user_id','owner']]);
   }
@@ -67,7 +69,20 @@ test('reader rejects missing tank, authorization errors, duplicate rows and netw
     assert.equal(denied.calls.length,1);
   }
   const legacyError={code:'42501',message:'permission denied'};
-  await assert.rejects(fetchEffectiveTankThresholds(mockClient([{data:null},{error:legacyError}]),'owner','tank-a'),value=>value===legacyError);
+  await assert.rejects(fetchEffectiveTankThresholds(mockClient([{data:[]},{error:legacyError}]),'owner','tank-a'),value=>value===legacyError);
+});
+
+test('shared collection fallback keeps overrides even when legacy changes later, with no legacy tank_id query',async()=>{
+  const canonical=row('tank-a',3.5),legacy=row(null,4.5);
+  const client=mockClient([{data:[canonical,{...row('tank-b',19),user_id:'other'}]},{data:legacy}]);
+  const rows=await fetchTankThresholdRows(client,'owner');
+  assert.deepEqual(rows,[legacy,canonical]);
+  assert.equal(resolveTankThresholds(thresholdBundle(rows),'tank-a').waterLevelMin,3.5);
+  assert.equal(resolveTankThresholds(thresholdBundle(rows),'tank-b').waterLevelMin,4.5);
+  assert.ok(client.calls.every(call=>call.filters.every(([,key])=>key!=='tank_id')));
+  const missingWrongTable=mockClient([{error:{code:'42P01',message:'relation public.other_table does not exist'}}]);
+  await assert.rejects(fetchTankThresholdRows(missingWrongTable,'owner'),error=>error.code==='42P01');
+  await assert.rejects(fetchTankThresholdRows(mockClient([{data:{}},{data:legacy}]),'owner'),/Invalid tank threshold response/);
 });
 
 test('prepared mobile Apply adapter requires tank context and never falls back to a user-only write',async()=>{

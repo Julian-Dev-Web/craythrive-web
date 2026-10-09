@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
-import { normalizeThresholds } from "../utils/thresholdEvaluation";
+import { normalizeThresholds, resolveTankThresholds } from "../utils/thresholdEvaluation";
 import { useSearchParams } from "react-router-dom";
 import { applyTankThresholds, cacheThresholdBundle, fetchOwnedThresholdTanks, fetchThresholdRows,
   suggestionPatch, tankThresholdName, thresholdBundle, thresholdChanges } from "../services/tankThresholdService";
@@ -22,8 +22,7 @@ export default function useTankThresholdSettings() {
   const loadVersion = useRef(0);
   const row = rows.find(item => item.tank_id === selectedTankId);
   const selectedTank = tanks.find(tank => tank.id === selectedTankId);
-  const baseline = useMemo(() => normalizeThresholds(rows.find(item => item.tank_id === selectedTankId)
-    || rows.find(item => !item.tank_id)), [rows, selectedTankId]);
+  const baseline = useMemo(() => resolveTankThresholds(thresholdBundle(rows), selectedTankId), [rows, selectedTankId]);
   const thresholds = draft || baseline;
   const setThresholds = update => setDraft(current => typeof update === "function" ? update(current || baseline) : update);
   const setSelectedTankId = id => {

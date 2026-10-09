@@ -2,6 +2,9 @@ import test, { after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
+import { fetchEffectiveTankThresholds, resolveTankThresholds, thresholdBundle } from '../supabase/functions/_shared/thresholdResolution.js';
+import { applyTankThresholds, fetchThresholdRows } from '../src/services/tankThresholdService.js';
+import { applyPendingTankRecommendation, loadTankThresholdSettings } from '../docs/mobile-next-apk/thresholdSettings.js';
 
 const db = new PGlite();
 after(() => db.close());
@@ -165,4 +168,38 @@ test('reconciliation refuses unrelated parameter differences even with fresh fin
  await apply(ids[0],{phMin:6});const sql=await prepareRepair();const before=await bundle();
  await assert.rejects(db.exec(sql),/Unrelated threshold differences/);await db.exec('ROLLBACK');
  assert.deepEqual(await bundle(),before);
+});
+
+test('local canonical contract: prepared mobile AI Apply -> Web, isolated fallback, Web -> prepared mobile, All and rejection',async()=>{
+ // This exercises real SQL/RLS with adapters, NOT the missing Expo UI or remote APK.
+ const client={async rpc(name,args) {
+  if(name==='get_tank_threshold_settings') return {data:await bundle()};
+  assert.equal(name,'apply_tank_thresholds');
+  return {data:await apply(args.p_tank_id,args.p_patch,args.p_scope,args.p_source)};
+ }};
+ await apply(ids[0],{waterLevelMin:4});
+ await db.query('UPDATE tank_threshold_settings SET pending_ai_suggestion=$1 WHERE tank_id=$2',[
+  {parameter:'water_level',suggested_value:3.5},ids[0]]);
+ assert.equal((await fetchEffectiveTankThresholds(client,owner,ids[0])).waterLevelMin,4);
+ assert.equal((await logs()).length,0,'recommendation alone creates no activity');
+ await applyPendingTankRecommendation(client,ids[0]);
+ const webRows=await fetchThresholdRows(client,owner);
+ assert.equal(resolveTankThresholds(thresholdBundle(webRows),ids[0]).waterLevelMin,3.5);
+ assert.equal(resolveTankThresholds(thresholdBundle(webRows),ids[1]).waterLevelMin,4,'Tank B keeps legacy fallback');
+ assert.equal(webRows.find(row=>!row.tank_id).thresholds.waterLevelMin,4,'Single never synchronizes legacy');
+ const acceptance=(await logs())[0];
+ assert.equal(acceptance.action_status,'updated');assert.equal(acceptance.metadata.source,'ai_recommendation');
+ assert.match(acceptance.notes,/AI recommendation accepted by user/);
+ await applyTankThresholds(client,{userId:owner,tankId:ids[0],patch:{waterLevelMin:3.7}});
+ assert.equal((await loadTankThresholdSettings(client,owner,ids[0])).waterLevelMin,3.7);
+ assert.equal((await loadTankThresholdSettings(client,owner,ids[1])).waterLevelMin,4);
+ await applyTankThresholds(client,{userId:owner,tankId:ids[0],patch:{waterLevelMin:4},scope:'all_tanks'});
+ const saved=await fetchThresholdRows(client,owner);
+ assert.equal(saved.length,4);assert.ok(saved.every(row=>row.thresholds.waterLevelMin===4));
+ const legacy=saved.find(row=>!row.tank_id);
+ assert.equal(Number(legacy.water_level_min),4);
+ assert.equal((await loadTankThresholdSettings(client,owner,ids[0])).waterLevelMin,4,'fresh read persists All');
+ assert.equal((await logs()).length,3,'unchanged fallback values do not fabricate activities');
+ await assert.rejects(applyTankThresholds(client,{userId:owner,tankId:foreign,patch:{waterLevelMin:3.5}}),/ownership/);
+ await assert.rejects(applyTankThresholds(client,{userId:owner,tankId:ids[0],patch:{water_level_min:3.5}}),/Invalid threshold value/);
 });

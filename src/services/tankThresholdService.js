@@ -1,4 +1,4 @@
-import { DEFAULT_THRESHOLDS, thresholdBundle } from "../../supabase/functions/_shared/thresholdResolution.js";
+import { DEFAULT_THRESHOLDS, fetchTankThresholdRows, thresholdBundle } from "../../supabase/functions/_shared/thresholdResolution.js";
 export { thresholdBundle };
 
 export const THRESHOLDS_CHANGED = "craythrive:thresholds-changed";
@@ -17,17 +17,7 @@ export function cacheThresholdBundle(userId, bundle, notify = false) {
 }
 
 export async function fetchThresholdRows(client, userId) {
-  const response = await client.rpc("get_tank_threshold_settings");
-  let data = response.data;
-  if (response.error) {
-    if (!["PGRST202", "42883"].includes(response.error.code)) throw response.error;
-    // Preserve pre-migration reads; an Apply still fails if its RPC is absent.
-    const legacy = await client.from("threshold_settings").select("*").eq("user_id", userId);
-    if (legacy.error) throw legacy.error;
-    data = legacy.data || [];
-  }
-  if (!Array.isArray(data)) throw new Error("Invalid tank threshold response.");
-  const rows = data.filter(row => row.user_id === userId);
+  const rows = await fetchTankThresholdRows(client, userId);
   cacheThresholdBundle(userId, thresholdBundle(rows));
   return rows;
 }

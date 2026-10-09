@@ -32,34 +32,38 @@ export function resolveTankThresholds(settings, tankId) {
   return normalizeThresholds(settings?.byTank ? settings.byTank[tankId] || settings.legacy : settings);
 }
 
+// The same collection reader serves Web, Expo and the verified AI caller.
+// Never query a nonexistent legacy tank_id or discard overrides on RPC fallback.
+export async function fetchTankThresholdRows(client, userId) {
+  if (!userId) throw new Error('Authenticated user is required.');
+  const result = await client.rpc('get_tank_threshold_settings');
+  if (!result.error) {
+    if (!Array.isArray(result.data)) throw new Error('Invalid tank threshold response.');
+    return result.data.filter(row => row.user_id === userId);
+  }
+  if (!['PGRST202', '42883'].includes(result.error.code)) throw result.error;
+  const specific = await client.from('tank_threshold_settings').select('*').eq('user_id', userId);
+  if (specific.error) {
+    // Only an absent pre-bridge table permits legacy-only reads. Authorization,
+    // network and other schema failures must not silently become defaults.
+    const missingTable = ['42P01', 'PGRST205'].includes(specific.error.code)
+      && /\btank_threshold_settings\b/.test(specific.error.message || '');
+    if (!missingTable) throw specific.error;
+  }
+  const legacy = await client.from('threshold_settings').select('*')
+    .eq('user_id', userId).maybeSingle();
+  if (legacy.error) throw legacy.error;
+  if (!specific.error && !Array.isArray(specific.data)) throw new Error('Invalid tank threshold response.');
+  return [
+    ...(legacy.data?.user_id === userId ? [{ ...legacy.data, tank_id: null }] : []),
+    ...(specific.data || []).filter(row => row.user_id === userId && row.tank_id),
+  ];
+}
+
 // Caller supplies its authenticated client and verified user ID. AI must verify
 // tank ownership first. Do not use a service-role client to bypass caller RLS.
 // A missing tank is an error, rather than an inferred account-wide operation.
 export async function fetchEffectiveTankThresholds(client, userId, tankId) {
   if (!userId || !tankId) throw new Error('Authenticated user and selected tank are required.');
-  const result = await client.rpc('get_tank_threshold_settings');
-  if (!result.error) {
-    if (!Array.isArray(result.data)) throw new Error('Invalid tank threshold response.');
-    const rows = result.data.filter(row => row.user_id === userId);
-    return resolveTankThresholds(thresholdBundle(rows), tankId);
-  }
-  if (!['PGRST202', '42883'].includes(result.error.code)) throw result.error;
-  // Compatibility before the bridge read RPC is installed.
-  const specific = await client.from('threshold_settings').select('*')
-    .eq('user_id', userId).eq('tank_id', tankId).maybeSingle();
-  if (specific.error) {
-    // Pre-migration schema only. Never turn authorization/network/duplicate-row
-    // failures into seemingly successful default settings.
-    const missingTankColumn = ['42703', 'PGRST204'].includes(specific.error.code)
-      && /\btank_id\b/.test(specific.error.message || '');
-    if (!missingTankColumn) throw specific.error;
-    const legacy = await client.from('threshold_settings').select('*').eq('user_id', userId).maybeSingle();
-    if (legacy.error) throw legacy.error;
-    return normalizeThresholds(legacy.data);
-  }
-  if (specific.data) return normalizeThresholds(specific.data);
-  const legacy = await client.from('threshold_settings').select('*')
-    .eq('user_id', userId).is('tank_id', null).maybeSingle();
-  if (legacy.error) throw legacy.error;
-  return normalizeThresholds(legacy.data);
+  return resolveTankThresholds(thresholdBundle(await fetchTankThresholdRows(client, userId)), tankId);
 }
