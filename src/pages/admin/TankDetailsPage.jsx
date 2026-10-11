@@ -1,12 +1,22 @@
-import useThresholdRefresh from "../../hooks/useThresholdRefresh";
+import useTankMonitoring from '../../hooks/useTankMonitoring';
+import MonitoringSyncNotice from '../../components/MonitoringSyncNotice';
+import { mergeSensorHistoryRows, currentSensorSafety } from '../../../supabase/functions/_shared/sensorReadingContract.js';
+import { philippineDayBounds, philippineDateKey, timestampMs, formatPhilippineDateTime, compareTimestamps } from '../../utils/philippineTime';
+import useServerTime from '../../hooks/useServerTime';
+import { fetchServerTimestamp } from '../../services/serverTimeService';
+import { formatPumpAlert } from "../../../supabase/functions/_shared/pumpActionWording.js";
+import { formatRecordedPumpAction, getRecordedActionOutcome } from "../../../supabase/functions/_shared/tankActivity.js";
 import { logDiagnostic, getSafeErrorMessage } from "../../utils/securityDiagnostics";
 import { getAmmoniaLabel, getAmmoniaNumericValue, getAmmoniaScanDate, getLatestAmmoniaForTank, recordMatchesAmmoniaTank, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
-import { loadAmmoniaHistory, loadCurrentTankRows } from "../../services/tankSnapshotService";
+import { loadAmmoniaHistory, loadSensorHistory } from "../../services/tankSnapshotService";
 import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
+import SensorSafeRange, { SensorReadingValue } from "../../components/SensorSafeRange";
+import SensorRecommendations from "../../components/SensorRecommendations";
+import TankActivityHistory from "../../components/TankActivityHistory";
 import { getTankPairingState } from "../../utils/tankPairing";
 import { getTankPopulationLabel } from "../../utils/tankCreationRules";
 import { getSafetyLabelSeverity, getSafetySeverity, getParameterExplanation, getSafetyStatusLabel } from "../../utils/statusHelpers";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   Activity,
@@ -43,7 +53,7 @@ import {
 
 import {
   evaluateReadingSafety,
-  loadActiveThresholds,
+  resolveTankThresholds,
 } from "../../utils/thresholdEvaluation";
 
 /* =========================================================
@@ -51,12 +61,10 @@ import {
 ========================================================= */
 
 const tankTables = ["tanks"];
-const readingTables = ["sensor_readings"];
 const alertTables = ["alerts"];
 const controlLogTables = ["device_commands"];
 
 const READINGS_PER_PAGE = 5;
-const LOGS_PER_PAGE = 5;
 
 const ACTION_WAIT_MS = 5 * 60 * 1000;
 
@@ -122,7 +130,7 @@ function getPhNumericLabel(reading) {
   const numberValue = normalizeSensorReading(reading).phValue;
 
   return numberValue !== null
-    ? numberValue.toFixed(1)
+    ? numberValue.toFixed(2)
     : null;
 }
 
@@ -183,25 +191,7 @@ function getOverallReadingStatus(normalizedReading) {
    FORMATTERS
 ========================================================= */
 
-function formatDate(value) {
-  if (!value) {
-    return "No date";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "No date";
-  }
-
-  return date.toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
+function formatDate(value) { return formatPhilippineDateTime(value); }
 
 function getValue(
   row,
@@ -396,34 +386,7 @@ function uniqueRows(rows) {
    TODAY RANGE
 ========================================================= */
 
-function getTodayRangeForSupabase() {
-  const now = new Date();
-
-  const start = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-    0,
-    0,
-    0,
-    0
-  );
-
-  const end = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate() + 1,
-    0,
-    0,
-    0,
-    0
-  );
-
-  return {
-    startIso: start.toISOString(),
-    endIso: end.toISOString(),
-  };
-}
+async function getTodayRangeForSupabase() { return philippineDayBounds(philippineDateKey(await fetchServerTimestamp())); }
 
 /* =========================================================
    COMMAND HELPERS
@@ -445,21 +408,20 @@ function getCommandLabel(commandType) {
 }
 
 function getShortResultMessage(
-  message = ""
+  command = {}
 ) {
+  const pump = formatRecordedPumpAction(command);
+  if (pump) return pump.message;
+  const outcome = getRecordedActionOutcome(command);
+  if (outcome === "Unknown / Unconfirmed") return "Execution has not been confirmed.";
+  if (outcome === "Requested") return "Request recorded; awaiting completion confirmation.";
+  if (outcome === "Started") return "Execution was reported as started; completion is unconfirmed.";
+  if (outcome === "Completed") return "Device reports a completed command cycle; physical water flow or feed delivery is not measured.";
   const text =
-    String(message || "").trim();
+    String(command.result_message || command.notes || "").trim();
 
   if (!text) {
     return "";
-  }
-
-  if (
-    text
-      .toLowerCase()
-      .includes("completed")
-  ) {
-    return "Completed successfully.";
   }
 
   if (
@@ -480,23 +442,7 @@ function getShortResultMessage(
   return text;
 }
 
-function getTimeMs(value) {
-  if (!value) {
-    return 0;
-  }
-
-  const date = new Date(value);
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return 0;
-  }
-
-  return date.getTime();
-}
+function getTimeMs(value) { return timestampMs(value) || 0; }
 
 function formatCountdown(ms) {
   const totalSeconds =
@@ -651,6 +597,11 @@ function getWaterStabilityState(
       message:
         "Water controls are temporarily unavailable until a fresh water-level reading is received.",
     };
+  }
+
+  if (nowMs === null) {
+    return { canPump: false, level: 'warning', title: 'Waiting for server time',
+      message: 'Server time is unavailable. Reconnect and retry.' };
   }
 
   if (
@@ -824,6 +775,8 @@ function getWaterStabilityState(
 ========================================================= */
 
 function getSimpleAlertTitle(item) {
+  const pump = formatPumpAlert(item);
+  if (pump.title) return pump.title;
   return getValue(
     item,
     [
@@ -838,6 +791,7 @@ function getSimpleAlertTitle(item) {
 
 function getSimpleAlertMessage(item) {
   const message =
+    formatPumpAlert(item).message ||
     getValue(
       item,
       [
@@ -865,10 +819,7 @@ function getSimpleAlertMessage(item) {
    ACTUATOR STATUS
 ========================================================= */
 
-function getActuatorConnectionState(
-  device,
-  tank
-) {
+function getActuatorConnectionState(device, tank, nowMs) {
   if (!device) {
     const unpaired = getTankPairingState(tank) === 'Unpaired';
     return {
@@ -924,8 +875,8 @@ function getActuatorConnectionState(
     );
 
   const minutesSinceSeen =
-    validLastSeen
-      ? (Date.now() -
+    validLastSeen && nowMs !== null
+      ? (nowMs -
           lastSeenDate.getTime()) /
         60000
       : null;
@@ -1489,11 +1440,10 @@ async function fetchTodaysFeedCommands(
       routeTankId
     );
 
-  const {
-    startIso,
-    endIso,
-  } =
-    getTodayRangeForSupabase();
+  let range;
+  try { range = await getTodayRangeForSupabase(); }
+  catch { return []; } // Keep other saved tank data usable; sending needs trusted time.
+  const { startIso, endIso } = range;
 
   const {
     data,
@@ -1547,13 +1497,14 @@ async function fetchTodaysFeedCommands(
    SMALL COMPONENTS
 ========================================================= */
 
-function DetailMetricCard({ icon: Icon, label, value, severity, statusLabel, parameter, scanDate, manualScan = false }) {
+function DetailMetricCard({ icon: Icon, label, value, severity, statusLabel, parameter, sensor, thresholds, scanDate, manualScan = false }) {
   const explanation = getParameterExplanation(parameter || { severity, label: statusLabel }, label);
   return (
     <article className="modern-tank-detail-metric">
       <span><Icon size={22} /></span>
       <div>
-        <strong>{value ?? "No Data"}</strong>
+        <SensorReadingValue value={value} sensor={sensor} />
+        <SensorSafeRange sensor={sensor} thresholds={thresholds} />
         <p>{label}</p>
         <SafetyBadge className="modern-tank-status" severity={severity} parameter={parameter} emptyLabel={manualScan ? "No Scan" : "No Data"} />
         {explanation && <small className="safety-explanation">{explanation}</small>}
@@ -1590,7 +1541,6 @@ function EmptyBlock({
 
 export default function TankDetailsPage() {
   const [ammoniaHistoryError, setAmmoniaHistoryError] = useState(false);
-  const [currentRows, setCurrentRows] = useState({ sensor: [], ammonia: [] });
   const { tankId } =
     useParams();
 
@@ -1654,10 +1604,6 @@ export default function TankDetailsPage() {
     setReadingsPage,
   ] = useState(1);
 
-  const [
-    logsPage,
-    setLogsPage,
-  ] = useState(1);
 
   const [
     isSendingCommand,
@@ -1684,41 +1630,28 @@ export default function TankDetailsPage() {
     setCommandWaitSeconds,
   ] = useState(0);
 
-  const [
-    nowMs,
-    setNowMs,
-  ] = useState(Date.now);
+  const nowMs = useServerTime();
 
-  const [
-    thresholds,
-    setThresholds,
-  ] = useState(null);
-  useThresholdRefresh(() => { loadActiveThresholds(tankId).then(setThresholds); });
-
-
-  useEffect(() => {
-    let isMounted = true;
-
-    loadActiveThresholds(tankId).then((loaded) => {
-      if (isMounted) {
-        setThresholds(loaded);
-      }
-    });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [tankId]);
+  const monitoring = useTankMonitoring(tank?.id === tankId ? [tank] : []);
+  const { rows: currentRows, thresholds: thresholdBundle, refresh: refreshMonitoring } = monitoring;
+  const thresholds = useMemo(() => thresholdBundle ? resolveTankThresholds(thresholdBundle, tankId) : null, [thresholdBundle, tankId]);
 
   /* =======================================================
      LOAD
   ======================================================= */
 
-  const loadTankDetails =
+  const pageLoadVersion = useRef(0);
+  const controlRefreshVersion = useRef(0);
+  const controlCommitVersion = useRef(0);
+  const loadTankDetails = useCallback(
     async (
       silent = false
     ) => {
-      setThresholds(await loadActiveThresholds(tankId));
+      const version = ++pageLoadVersion.current;
+      controlRefreshVersion.current++;
+      const controlVersion = controlCommitVersion.current;
+      refreshMonitoring();
+
       if (
         !isSupabaseConfigured ||
         !supabase
@@ -1735,6 +1668,7 @@ export default function TankDetailsPage() {
         const loadedUser =
           await getCurrentUserWithRole();
 
+        if (version !== pageLoadVersion.current) return;
         setCurrentUser(
           loadedUser
         );
@@ -1771,13 +1705,9 @@ export default function TankDetailsPage() {
               400
             ),
 
-            fetchRowsByScope(
-              readingTables,
-              loadedUser,
-              400
-            ),
+            loadSensorHistory(loadedUser, { tankId, limit: 400 }),
 
-            loadAmmoniaHistory(loadedUser),
+            loadAmmoniaHistory(loadedUser, supabase, { tankId }),
 
             fetchRowsByScope(
               alertTables,
@@ -1796,6 +1726,7 @@ export default function TankDetailsPage() {
             ),
           ]);
 
+        if (version !== pageLoadVersion.current) return;
         const selectedTank =
           tankResult.rows.find(
             (
@@ -1827,7 +1758,6 @@ export default function TankDetailsPage() {
             }
           ) || null;
 
-        setCurrentRows(await loadCurrentTankRows(selectedTank ? [selectedTank] : [], loadedUser, { sensor: readingResult.rows, ammonia: ammoniaResult.rows }));
         setAmmoniaHistoryError(ammoniaResult.error);
         setTank(
           selectedTank
@@ -1867,6 +1797,7 @@ export default function TankDetailsPage() {
               tankId
             );
 
+          if (version !== pageLoadVersion.current || controlVersion !== controlCommitVersion.current) return;
           setReadings(
             readingResult.rows
               .filter((row) =>
@@ -1877,16 +1808,11 @@ export default function TankDetailsPage() {
               )
               .sort(
                 (a, b) =>
-                  new Date(
-                    getRecordDate(
+                  compareTimestamps(getRecordDate(
                       b
-                    )
-                  ) -
-                  new Date(
-                    getRecordDate(
+                    ), getRecordDate(
                       a
-                    )
-                  )
+                    ))
               )
           );
 
@@ -1900,16 +1826,11 @@ export default function TankDetailsPage() {
               )
               .sort(
                 (a, b) =>
-                  new Date(
-                    getAmmoniaScanDate(
+                  compareTimestamps(getAmmoniaScanDate(
                       b
-                    )
-                  ) -
-                  new Date(
-                    getAmmoniaScanDate(
+                    ), getAmmoniaScanDate(
                       a
-                    )
-                  )
+                    ))
               )
           );
 
@@ -1923,22 +1844,18 @@ export default function TankDetailsPage() {
               )
               .sort(
                 (a, b) =>
-                  new Date(
-                    getRecordDate(
+                  compareTimestamps(getRecordDate(
                       b
-                    )
-                  ) -
-                  new Date(
-                    getRecordDate(
+                    ), getRecordDate(
                       a
-                    )
-                  )
+                    ))
               )
           );
 
           const { data: configurationLogs, error: configurationError } = await supabase.from("control_logs")
             .select("*").eq("user_id", loadedUser.id).eq("tank_id", selectedTank.id).eq("action_type", "threshold_updated")
             .order("created_at", { ascending: false }).limit(300);
+          if (version !== pageLoadVersion.current || controlVersion !== controlCommitVersion.current) return;
           if (configurationError) logDiagnostic("Threshold activity loading error", configurationError);
           setControlLogs(
             [...logResult.rows, ...(configurationLogs || [])]
@@ -1950,16 +1867,11 @@ export default function TankDetailsPage() {
               )
               .sort(
                 (a, b) =>
-                  new Date(
-                    getRecordDate(
+                  compareTimestamps(getRecordDate(
                       b
-                    )
-                  ) -
-                  new Date(
-                    getRecordDate(
+                    ), getRecordDate(
                       a
-                    )
-                  )
+                    ))
               )
           );
         } else {
@@ -1971,6 +1883,8 @@ export default function TankDetailsPage() {
           setControlLogs([]);
         }
 
+        if (version !== pageLoadVersion.current || controlVersion !== controlCommitVersion.current) return;
+        controlCommitVersion.current++;
         setActuatorDevice(
           loadedActuator
         );
@@ -1988,21 +1902,23 @@ export default function TankDetailsPage() {
           error
         );
       } finally {
-        if (!silent) {
+        if (!silent && version === pageLoadVersion.current) {
           setIsLoading(
             false
           );
         }
       }
-    };
+    }, [refreshMonitoring, tankId]);
 
   useEffect(() => {
     loadTankDetails(false);
-  }, [tankId]);
+    const loadState = pageLoadVersion;
+    return () => { loadState.current++; };
+  }, [loadTankDetails]);
 
   useEffect(() => {
     setReadingsPage(1);
-    setLogsPage(1);
+
     setCommandWaitSeconds(0);
     setCommandMessage("");
     setActiveTankTab(
@@ -2013,8 +1929,30 @@ export default function TankDetailsPage() {
   const hasActiveCommand =
     activeCommands.length > 0;
 
+  const refreshTankControls = useCallback(async () => {
+    if (!tank || tank.id !== tankId || !currentUser?.id) return;
+    const version = ++controlRefreshVersion.current;
+    try {
+      const device = await fetchActuatorDeviceForTank(tank, tankId);
+      const [commands, feeds, history, commandHistory] = await Promise.all([
+        fetchActiveCommandsForActuator(tank, device, tankId),
+        fetchTodaysFeedCommands(tank, device, tankId),
+        loadSensorHistory(currentUser, { tankId: tank.id, limit: 400 }),
+        supabase.from('device_commands').select('*').eq('tank_id', tank.id).eq('user_id', currentUser.id)
+          .order('created_at', { ascending: false }).order('id', { ascending: false }).limit(300),
+      ]);
+      if (version !== controlRefreshVersion.current) return;
+      controlCommitVersion.current++;
+      setActuatorDevice(device); setActiveCommands(commands); setTodaysFeedCommands(feeds);
+      if (!history.error) setReadings(history.rows);
+      if (!commandHistory.error) setControlLogs(previous => [
+        ...previous.filter(row => row.action_type === 'threshold_updated'), ...(commandHistory.data || []),
+      ]);
+    } catch (error) { logDiagnostic('Tank control refresh unavailable', error); }
+  }, [tank, tankId, currentUser]);
+
   useEffect(() => {
-    if (!tankId) {
+    if (!tankId || isLoading) {
       return;
     }
 
@@ -2025,18 +1963,18 @@ export default function TankDetailsPage() {
 
     const interval =
       setInterval(() => {
-        loadTankDetails(
-          true
-        );
+        if (document.visibilityState === 'visible') void refreshTankControls();
       }, intervalMs);
 
-    return () =>
-      clearInterval(
-        interval
-      );
+    const controlState = controlRefreshVersion;
+    return () => {
+      controlState.current++;
+      clearInterval(interval);
+    };
   }, [
     tankId,
-    hasActiveCommand,
+    isLoading,
+    hasActiveCommand, refreshTankControls,
   ]);
 
   useEffect(() => {
@@ -2061,17 +1999,7 @@ export default function TankDetailsPage() {
       clearInterval(timer);
   }, [hasActiveCommand]);
 
-  useEffect(() => {
-    const timer =
-      setInterval(() => {
-        setNowMs(
-          Date.now()
-        );
-      }, 1000);
 
-    return () =>
-      clearInterval(timer);
-  }, []);
 
   /* =======================================================
      OWNER
@@ -2156,7 +2084,7 @@ export default function TankDetailsPage() {
 
   const enrichedReadings =
     useMemo(() => {
-      return readings.map(
+      return mergeSensorHistoryRows(readings, currentRows.sensor).map(
         (
           reading,
           index
@@ -2175,15 +2103,11 @@ export default function TankDetailsPage() {
             status,
             index,
 
-            date:
-              normalized.createdAt ||
-              reading?.timestamp ||
-              reading?.date ||
-              reading?.updated_at,
+            date: normalized.createdAt,
           };
         }
       );
-    }, [readings, thresholds]);
+    }, [readings, thresholds, currentRows.sensor]);
 
   const latestReading = useMemo(() => {
     const reading = currentRows.sensor[0];
@@ -2201,7 +2125,7 @@ export default function TankDetailsPage() {
         return null;
       }
 
-      return evaluateReadingSafety(
+      return currentSensorSafety(evaluateReadingSafety(
         {
           temperature: latestReading?.normalized?.temperatureValue,
           ph: latestReading?.normalized?.phValue,
@@ -2217,8 +2141,8 @@ export default function TankDetailsPage() {
           ammonia: latestAmmoniaValue,
         },
         thresholds
-      );
-    }, [latestReading, thresholds, latestAmmoniaValue]);
+      ), latestReading?.reading, monitoring.nowMs, monitoring.availability.verified);
+    }, [latestReading, thresholds, latestAmmoniaValue, monitoring.nowMs, monitoring.availability.verified]);
 
   const totalReadingPages =
     Math.max(
@@ -2255,39 +2179,9 @@ export default function TankDetailsPage() {
         ...controlLogs,
       ].sort(
         (a, b) =>
-          new Date(
-            getRecordDate(b)
-          ) -
-          new Date(
-            getRecordDate(a)
-          )
+          compareTimestamps(getRecordDate(b), getRecordDate(a))
       );
     }, [controlLogs]);
-
-  const totalLogPages =
-    Math.max(
-      1,
-      Math.ceil(
-        sortedControlLogs.length /
-          LOGS_PER_PAGE
-      )
-    );
-
-  const currentLogPage =
-    Math.min(
-      logsPage,
-      totalLogPages
-    );
-
-  const paginatedControlLogs =
-    sortedControlLogs.slice(
-      (currentLogPage -
-        1) *
-        LOGS_PER_PAGE,
-
-      currentLogPage *
-        LOGS_PER_PAGE
-    );
 
   const sortedAlerts =
     useMemo(() => {
@@ -2295,18 +2189,14 @@ export default function TankDetailsPage() {
         ...alerts,
       ].sort(
         (a, b) =>
-          new Date(
-            getRecordDate(b)
-          ) -
-          new Date(
-            getRecordDate(a)
-          )
+          compareTimestamps(getRecordDate(b), getRecordDate(a))
       );
     }, [alerts]);
 
   const latestCommandLog =
     sortedControlLogs.find(item => item.action_type !== "threshold_updated") ||
     null;
+  const latestActionOutcome = latestCommandLog ? getRecordedActionOutcome(latestCommandLog) : null;
 
   const latestAlert =
     sortedAlerts[0] ||
@@ -2359,7 +2249,7 @@ export default function TankDetailsPage() {
 
   const actionWaitRemainingMs =
     latestCompletedActionTimeMs >
-    0
+    0 && nowMs !== null
       ? Math.max(
           0,
           latestCompletedActionTimeMs +
@@ -2391,10 +2281,7 @@ export default function TankDetailsPage() {
   const tankStatus = getSafetySeverity(latestSafety);
 
   const actuatorState =
-    getActuatorConnectionState(
-      actuatorDevice,
-      tank
-    );
+    getActuatorConnectionState(actuatorDevice, tank, nowMs);
 
   const ActuatorIcon =
     actuatorState.icon;
@@ -2516,7 +2403,7 @@ export default function TankDetailsPage() {
               "Manually reset from web because the command stayed pending/running.",
 
             executed_at:
-              new Date().toISOString(),
+              await fetchServerTimestamp(),
           })
           .in(
             "id",
@@ -2586,7 +2473,7 @@ export default function TankDetailsPage() {
         startIso,
         endIso,
       } =
-        getTodayRangeForSupabase();
+        await getTodayRangeForSupabase();
 
       const { error } =
         await supabase
@@ -2601,7 +2488,7 @@ export default function TankDetailsPage() {
               "Successful feed log reset from web for feeder testing.",
 
             executed_at:
-              new Date().toISOString(),
+              await fetchServerTimestamp(),
           })
           .eq(
             "tank_id",
@@ -2661,6 +2548,11 @@ export default function TankDetailsPage() {
     durationMs = 0
   ) {
     setCommandMessage("");
+
+    if (nowMs === null && commandType !== "STOP_ALL") {
+      setCommandMessage("Server time is unavailable. Reconnect and retry.");
+      return;
+    }
 
     if (
       !isSupabaseConfigured ||
@@ -2911,7 +2803,8 @@ export default function TankDetailsPage() {
   ======================================================= */
 
   return (
-    <div className="modern-tank-detail-page">
+    <div className="modern-tank-detail-page sensor-recommendations-page">
+      <SensorRecommendations key={tankId} tanks={tank ? [tank] : []} initialTankId={tankId} />
 
       {/* ===============================================
           HERO
@@ -3248,6 +3141,7 @@ export default function TankDetailsPage() {
 
           {/* SAFE RANGE STATUS */}
 
+      <MonitoringSyncNotice monitoring={monitoring} reading={latestReading?.reading} />
           {latestSafety && (
             <section
               className={`modern-tank-safety-banner safety-surface ${getSafetySeverity(latestSafety)}`}
@@ -3302,6 +3196,7 @@ export default function TankDetailsPage() {
                     Thermometer
                   }
                   label="Temperature"
+                  sensor="temperature" thresholds={latestSafety?.activeThresholds} parameter={latestSafety?.parameters.temperature}
                   value={
                     latestReading
                       ?.normalized
@@ -3326,6 +3221,7 @@ export default function TankDetailsPage() {
                     Droplets
                   }
                   label="pH Level"
+                  sensor="ph" thresholds={latestSafety?.activeThresholds} parameter={latestSafety?.parameters.ph}
                   value={
                     getPhNumericLabel(
                       latestReading?.reading
@@ -3353,10 +3249,11 @@ export default function TankDetailsPage() {
                     Waves
                   }
                   label="Water Clarity"
+                  sensor="turbidity" thresholds={latestSafety?.activeThresholds} parameter={latestSafety?.parameters.turbidity}
                   value={
                     latestReading
                       ?.normalized
-                      ?.turbidityStatus || "No Data"
+                      ?.turbidityNumberLabel || "No Data"
                   }
                   severity={
                     latestSafety
@@ -3377,6 +3274,7 @@ export default function TankDetailsPage() {
                     Gauge
                   }
                   label="Water Level"
+                  sensor="waterLevel" thresholds={latestSafety?.activeThresholds}
                   parameter={latestSafety?.parameters?.waterLevel}
                   value={
                     latestReading
@@ -3402,12 +3300,13 @@ export default function TankDetailsPage() {
                     FlaskConical
                   }
                   label="Ammonia"
+                  sensor="ammonia" thresholds={latestSafety?.activeThresholds} parameter={latestSafety?.parameters.ammonia}
                   manualScan scanDate={getAmmoniaScanDate(latestAmmoniaRow)}
                   value={
                     latestAmmoniaValue ===
                       null
                       ? "No Scan"
-                      : `${latestAmmoniaValue} mg/L`
+                      : getAmmoniaLabel(latestAmmoniaValue)
                   }
                   severity={
                     latestSafety
@@ -3512,45 +3411,19 @@ export default function TankDetailsPage() {
 
                 <div>
                   <strong>
-                    {getCommandLabel(
-                      latestCommandLog
-                        ?.command_type ||
-                        latestCommandLog
-                          ?.action
-                    )}
+                    {formatRecordedPumpAction(latestCommandLog || {})?.title || getCommandLabel(latestCommandLog?.command_type || latestCommandLog?.action)}
                   </strong>
 
                   <p>
                     Status:{" "}
 
-                    <b
-                      className={`modern-tank-status ${getStatusSeverity(
-                        [
-                          latestCommandLog
-                            ?.command_status ||
-                            latestCommandLog
-                              ?.status ||
-                            latestCommandLog
-                              ?.result ||
-                            "",
-                        ]
-                      )}`}
-                    >
-                      {formatFriendlyText(
-                        latestCommandLog
-                          ?.command_status ||
-                          latestCommandLog
-                            ?.status ||
-                          latestCommandLog
-                            ?.result ||
-                          "Logged"
-                      )}
+                    <b className={`modern-tank-status ${latestActionOutcome === "Completed" ? "normal" : latestActionOutcome === "Failed" ? "critical" : latestActionOutcome === "Skipped" ? "warning" : "no-data"}`}>
+                      {latestActionOutcome}
                     </b>
 
-                    {latestCommandLog
-                      ?.result_message
+                    {getShortResultMessage(latestCommandLog)
                       ? ` • ${getShortResultMessage(
-                          latestCommandLog.result_message
+                          latestCommandLog
                         )}`
                       : ""}
                   </p>
@@ -4351,185 +4224,7 @@ export default function TankDetailsPage() {
           ACTIVITY TAB
       ================================================ */}
 
-      {activeTankTab ===
-        "logs" && (
-        <section className="modern-tank-detail-panel">
-
-          <div className="modern-panel-heading">
-
-            <div>
-              <p className="dashboard-eyebrow">
-                Activity
-              </p>
-
-              <h3>
-                Recent tank actions
-              </h3>
-            </div>
-
-            <Settings
-              size={22}
-            />
-          </div>
-
-          {sortedControlLogs.length ===
-          0 ? (
-            <EmptyBlock
-              icon={Settings}
-              title="No activity yet"
-              text="Feeding, water-control, and threshold activity will appear here."
-            />
-          ) : (
-            <>
-              <div className="modern-tank-detail-list">
-
-                {paginatedControlLogs.map(
-                  (
-                    item,
-                    index
-                  ) => {
-                    if (item.action_type === "threshold_updated") {
-                      return <div className="modern-tank-detail-list-row" key={item.id}>
-                        <div><strong>Threshold Updated</strong>
-                          <span>{formatDate(item.created_at)}</span>
-                          <span style={{ whiteSpace: "pre-line" }}>{item.notes}</span>
-                          <span>{item.metadata?.source === "ai_recommendation" ? "AI recommendation accepted by user" : "Manual"}</span>
-                        </div>
-                        <b className="modern-tank-status normal"><Settings size={12} aria-hidden="true" /> Updated</b>
-                      </div>;
-                    }
-                    const status =
-                      getValue(
-                        item,
-                        [
-                          "command_status",
-                          "status",
-                          "result",
-                          "state",
-                        ],
-                        "Logged"
-                      );
-
-                    const severity =
-                      getStatusSeverity(
-                        [status]
-                      );
-
-                    return (
-                      <div
-                        className="modern-tank-detail-list-row"
-                        key={
-                          item?.id ||
-                          `log-${currentLogPage}-${index}`
-                        }
-                      >
-                        <div>
-                          <strong>
-                            {getCommandLabel(
-                              getValue(
-                                item,
-                                [
-                                  "command_type",
-                                  "action",
-                                  "control_action",
-                                  "command",
-                                  "type",
-                                ],
-                                `Activity ${
-                                  index +
-                                  1
-                                }`
-                              )
-                            )}
-                          </strong>
-
-                          <span>
-                            {formatDate(
-                              getRecordDate(
-                                item
-                              )
-                            )}
-
-                            {item
-                              ?.result_message
-                              ? ` • ${getShortResultMessage(
-                                  item.result_message
-                                )}`
-                              : ""}
-                          </span>
-                        </div>
-
-                        <b
-                          className={`modern-tank-status ${severity}`}
-                        >
-                          {formatFriendlyText(
-                            status
-                          )}
-                        </b>
-                      </div>
-                    );
-                  }
-                )}
-              </div>
-
-              {sortedControlLogs.length >
-                LOGS_PER_PAGE && (
-                <div className="modern-list-pagination">
-
-                  <button
-                    type="button"
-                    disabled={
-                      currentLogPage ===
-                      1
-                    }
-                    onClick={() =>
-                      setLogsPage(
-                        (page) =>
-                          Math.max(
-                            1,
-                            page - 1
-                          )
-                      )
-                    }
-                  >
-                    Previous
-                  </button>
-
-                  <span>
-                    Page{" "}
-                    {
-                      currentLogPage
-                    }{" "}
-                    of{" "}
-                    {
-                      totalLogPages
-                    }
-                  </span>
-
-                  <button
-                    type="button"
-                    disabled={
-                      currentLogPage ===
-                      totalLogPages
-                    }
-                    onClick={() =>
-                      setLogsPage(
-                        (page) =>
-                          Math.min(
-                            totalLogPages,
-                            page + 1
-                          )
-                      )
-                    }
-                  >
-                    Next
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-        </section>
-      )}
+      {activeTankTab === "logs" && <TankActivityHistory key={tankId} tankId={tankId} />}
     </div>
   );
 }

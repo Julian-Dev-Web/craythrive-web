@@ -1,3 +1,4 @@
+import { formatPhilippineDateTime } from '../utils/philippineTime';
 import { useEffect, useRef, useState } from 'react';
 import { Download, FileCheck, RotateCcw } from 'lucide-react';
 import { developerService } from '../services/developerService';
@@ -7,7 +8,7 @@ const MAX_FILE_BYTES = 12 * 1024 * 1024;
 function downloadBackup(backup, prefix) {
   const url = URL.createObjectURL(new Blob([JSON.stringify(backup)], { type: 'application/json' }));
   const link = document.createElement('a');
-  link.href = url; link.download = `${prefix}-${new Date().toISOString().replaceAll(':', '-')}.ctbackup`;
+  link.href = url; link.download = `${prefix}-${crypto.randomUUID()}.ctbackup`;
   document.body.append(link); link.click(); link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
@@ -101,7 +102,7 @@ export default function DeveloperBackupTools({ onReauthenticationRequired }) {
       <button type="button" className="dashboard-primary-button" disabled={busy || !backup} onClick={() => run(() => previewRestore())}>Preview restore</button>
       {preview && <div className="developer-restore-preview">
         <h3><FileCheck size={18} aria-hidden="true" />Restore preview</h3>
-        <p>Backup created: {new Date(preview.createdAt).toLocaleString()}</p>
+        <p>Backup created: {formatPhilippineDateTime(preview.createdAt)}</p>
         <div className="developer-preview-scroll"><table>
           <caption>Records affected by this restore</caption>
           <thead><tr><th scope="col">Table</th><th scope="col">Add</th><th scope="col">Update</th><th scope="col">Same</th></tr></thead>
@@ -125,7 +126,7 @@ export default function DeveloperBackupTools({ onReauthenticationRequired }) {
       onPreview={item => run(async () => {
         const result = await developerService.downloadStoredBackup(item.id);
         if (!active.current) return;
-        setBackup(result.backup); setFilename(`Saved backup · ${new Date(result.createdAt).toLocaleString()}`);
+        setBackup(result.backup); setFilename(`Saved backup · ${formatPhilippineDateTime(result.createdAt)}`);
         await previewRestore(result.backup);
       })} />
     {error && <p role="alert" className="developer-error">{error}</p>}

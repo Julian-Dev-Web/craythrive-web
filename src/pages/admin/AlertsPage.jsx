@@ -1,5 +1,8 @@
+import { formatPhilippineDateTime, formatPhilippineTime, compareTimestamps } from '../../utils/philippineTime';
+import { getServerNowDate } from '../../services/serverTimeService';
 import { logDiagnostic } from "../../utils/securityDiagnostics";
 import SafetyBadge from "../../components/SafetyBadge";
+import { formatPumpAlert } from "../../../supabase/functions/_shared/pumpActionWording.js";
 import {
   useEffect,
   useMemo,
@@ -168,50 +171,9 @@ function formatFriendlyText(value) {
     );
 }
 
-function formatDate(value) {
-  if (!value) {
-    return "No date";
-  }
+function formatDate(value) { return formatPhilippineDateTime(value); }
 
-  const date = new Date(value);
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return "No date";
-  }
-
-  return date.toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function formatShortTime(value) {
-  if (!value) {
-    return "";
-  }
-
-  const date = new Date(value);
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return "";
-  }
-
-  return date.toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
+function formatShortTime(value) { return formatPhilippineTime(value); }
 
 function getValue(
   row,
@@ -240,6 +202,7 @@ function getAlertTitle(
   index
 ) {
   return (
+    formatPumpAlert(row).title ||
     row?.title ||
     row?.alert_title ||
     row?.notification_title ||
@@ -251,6 +214,7 @@ function getAlertTitle(
 
 function getAlertMessage(row) {
   return (
+    formatPumpAlert(row).message ||
     row?.message ||
     row?.description ||
     row?.body ||
@@ -1225,7 +1189,7 @@ export default function AlertsPage() {
         );
 
         setLastUpdated(
-          new Date()
+          getServerNowDate()
         );
       } catch (error) {
         logDiagnostic(
@@ -1425,12 +1389,7 @@ export default function AlertsPage() {
           }
 
           return (
-            new Date(
-              b.date || 0
-            ) -
-            new Date(
-              a.date || 0
-            )
+            compareTimestamps(b.date || 0, a.date || 0)
           );
         }
       );
@@ -1593,12 +1552,7 @@ export default function AlertsPage() {
         )
         .sort(
           (a, b) =>
-            new Date(
-              b.date || 0
-            ) -
-            new Date(
-              a.date || 0
-            )
+            compareTimestamps(b.date || 0, a.date || 0)
         )[0] || null;
     }, [
       enrichedAlerts,

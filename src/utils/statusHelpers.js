@@ -17,6 +17,7 @@ export function getSafetySeverity(safety) {
   // A listed issue must never appear as Normal.
   if (safety.issues?.length) return "critical";
   if (!safety.hasData) return "no-data";
+  if (safety.currentEvidenceIncomplete) return "no-data";
   return safety.isSafe ? "normal" : "critical";
 }
 

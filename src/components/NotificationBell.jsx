@@ -1,28 +1,16 @@
+import { formatPhilippineRelativeTime } from '../utils/philippineTime';
+import { getServerNowMs } from '../services/serverTimeService';
 import { getSafeErrorMessage } from "../utils/securityDiagnostics";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AlertTriangle, Bell, Loader2 } from "lucide-react";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import { TABLES } from "../constants/schema";
+import { formatPumpAlert } from "../../supabase/functions/_shared/pumpActionWording.js";
 
 const RECENT_ALERTS_LIMIT = 6;
 
-function formatRelativeTime(isoString) {
-  if (!isoString) return "";
-
-  const then = new Date(isoString).getTime();
-  const diffMs = Date.now() - then;
-  const diffMinutes = Math.round(diffMs / 60000);
-
-  if (diffMinutes < 1) return "Just now";
-  if (diffMinutes < 60) return `${diffMinutes}m ago`;
-
-  const diffHours = Math.round(diffMinutes / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-
-  const diffDays = Math.round(diffHours / 24);
-  return `${diffDays}d ago`;
-}
+function formatRelativeTime(value) { return formatPhilippineRelativeTime(value, getServerNowMs()); }
 
 /**
  * Notification bell with an inline dropdown, instead of navigating straight
@@ -73,14 +61,14 @@ export default function NotificationBell() {
 
       const { data, error } = await supabase
         .from(TABLES.ALERTS)
-        .select("id, tank_id, title, message, status, is_read, created_at")
+        .select("id, tank_id, title, message, status, is_read, metadata, type, source, created_at")
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
         .limit(RECENT_ALERTS_LIMIT);
 
       if (error) throw error;
 
-      setAlerts(data || []);
+      setAlerts((data || []).map(alert => ({ ...alert, ...formatPumpAlert(alert) })));
     } catch (error) {
       setErrorMessage(getSafeErrorMessage(error, "Could not load notifications."));
     } finally {

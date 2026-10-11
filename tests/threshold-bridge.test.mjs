@@ -60,7 +60,6 @@ async function apply(id,patch,scope='single_tank',source='manual'){
 }
 const bundle=async()=>(await db.query('SELECT get_tank_threshold_settings() AS rows')).rows[0].rows;
 const logs=async()=>(await db.query("SELECT * FROM control_logs WHERE action_type='threshold_updated' ORDER BY tank_id")).rows;
-const repairTemplate=await fs.readFile(new URL('../docs/sql/reconcile_confirmed_water_threshold.sql',import.meta.url),'utf8');
 
 test('bridge migration preserves the original legacy table and rows exactly without cloning',async()=>{
  assert.deepEqual(migrated,legacyBefore);
@@ -127,47 +126,6 @@ test('legacy synchronization failure rolls back all tank writes and activity',as
  await asUser(owner);await assert.rejects(apply(ids[0],{waterLevelMin:5},'all_tanks'),/legacy failure/);
  assert.deepEqual(await bundle(),before);assert.equal((await logs()).length,0);
  await db.exec('RESET ROLE; DROP TRIGGER test_fail_legacy ON threshold_settings; DROP FUNCTION test_fail_legacy();');
-});
-
-async function prepareRepair(single=true) {
- await apply(ids[0],{waterLevelMin:4});
- await asUser(null);await db.exec('RESET ROLE');
- if(single) await db.query('DELETE FROM tanks WHERE id IN ($1,$2)',ids.slice(1));
- await db.query("UPDATE threshold_settings SET thresholds=jsonb_set(thresholds,'{waterLevelMin}','3.5'),water_level_min=3.5,updated_at=now()+interval '1 minute' WHERE user_id=$1",[owner]);
- const legacy=(await db.query('SELECT md5(to_jsonb(s)::text) AS fingerprint FROM threshold_settings s WHERE user_id=$1',[owner])).rows[0].fingerprint;
- const canonical=(await db.query('SELECT md5(to_jsonb(s)::text) AS fingerprint FROM tank_threshold_settings s WHERE tank_id=$1',[ids[0]])).rows[0].fingerprint;
- return repairTemplate.replace('VERIFIED_LEGACY_FINGERPRINT',legacy).replace('VERIFIED_OVERRIDE_FINGERPRINT',canonical);
-}
-
-test('confirmed single-tank reconciliation repairs only water and preserves legacy/activity',async()=>{
- const sql=await prepareRepair();
- const legacy=(await db.query('SELECT * FROM threshold_settings ORDER BY user_id')).rows;
- const canonical=(await db.query('SELECT * FROM tank_threshold_settings')).rows[0];
- const activity=await logs();await db.exec(sql);
- assert.deepEqual((await db.query('SELECT * FROM threshold_settings ORDER BY user_id')).rows,legacy);
- const repaired=(await db.query('SELECT * FROM tank_threshold_settings')).rows[0];
- assert.deepEqual(repaired.thresholds,{...canonical.thresholds,waterLevelMin:3.5});
- assert.equal(Number(repaired.water_level_min),3.5);assert.equal(repaired.id,canonical.id);
- assert.deepEqual(repaired.created_at,canonical.created_at);assert.deepEqual(await logs(),activity);
-});
-
-test('reconciliation refuses ambiguous multi-tank owners and leaves all data unchanged',async()=>{
- const sql=await prepareRepair(false);const before=await bundle();
- await assert.rejects(db.exec(sql),/single verified owned tank/);await db.exec('ROLLBACK');
- assert.deepEqual(await bundle(),before);
-});
-
-test('reconciliation refuses a stale audited snapshot without overwriting a newer Apply',async()=>{
- const sql=await prepareRepair();
- await db.query("UPDATE tank_threshold_settings SET thresholds=jsonb_set(thresholds,'{waterLevelMin}','3.7'),water_level_min=3.7 WHERE tank_id=$1",[ids[0]]);
- const before=await bundle();await assert.rejects(db.exec(sql),/query returned no rows/);await db.exec('ROLLBACK');
- assert.deepEqual(await bundle(),before);
-});
-
-test('reconciliation refuses unrelated parameter differences even with fresh fingerprints',async()=>{
- await apply(ids[0],{phMin:6});const sql=await prepareRepair();const before=await bundle();
- await assert.rejects(db.exec(sql),/Unrelated threshold differences/);await db.exec('ROLLBACK');
- assert.deepEqual(await bundle(),before);
 });
 
 test('local canonical contract: prepared mobile AI Apply -> Web, isolated fallback, Web -> prepared mobile, All and rejection',async()=>{

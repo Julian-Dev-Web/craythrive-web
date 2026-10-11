@@ -1,3 +1,4 @@
+import { compareSensorRowsNewestFirst, currentSensorSafety, sensorRowBelongsToTank } from '../../supabase/functions/_shared/sensorReadingContract.js';
 import { AMMONIA_READING_FIELDS } from "../constants/schema";
 import { normalizeSensorReading, toNumberOrNull } from "./sensorReadingUtils";
 import { evaluateReadingSafety, getLocalThresholds, resolveTankThresholds } from "./thresholdEvaluation";
@@ -11,14 +12,14 @@ export const getMonitoringTankKeys = tank => keys([
 export const getMonitoringRecordKeys = row => keys([
   row?.tank_id, row?.tankId, row?.tank_uuid, row?.tank_profile_id, row?.device_uid, row?.device_id, row?.iot_device_id,
 ]);
-export const getMonitoringDate = row => row?.created_at || row?.timestamp || row?.date || row?.updated_at || null;
+export const getMonitoringDate = row => row?.created_at || null;
 // A scan is an event. Editing its metadata must not change when it was scanned.
 export const getAmmoniaScanDate = row => row?.created_at || null;
 
 export function getAmmoniaNumericValue(row) {
   for (const field of [AMMONIA_READING_FIELDS.VALUE, ...AMMONIA_READING_FIELDS.VALUE_FALLBACKS, "value", "ppm"]) {
     const value = toNumberOrNull(row?.[field]);
-    if (value !== null) return value;
+    if (value !== null) return value >= 0 ? value : null;
   }
   return null;
 }
@@ -33,15 +34,11 @@ export function recordMatchesMonitoringTank(row, tank) {
 // A manual scan needs a tank reference; a reused device is not evidence that
 // the scan belongs to the device's current tank.
 export function recordMatchesAmmoniaTank(row, tank) {
-  return keys([row?.tank_id, row?.tankId, row?.tank_uuid, row?.tank_profile_id]).length > 0
-    && recordMatchesMonitoringTank(row, tank);
+  return sensorRowBelongsToTank(row, tank);
 }
 
 export function findMonitoringTank(row, tanks) {
-  // Prefer an explicit tank reference before considering device aliases.
-  const references = keys([row?.tank_id, row?.tankId, row?.tank_uuid, row?.tank_profile_id]);
-  return tanks.find(tank => references.some(key => keys([tank?.id, tank?.tank_id, tank?.uuid]).includes(key)))
-    || tanks.find(tank => recordMatchesMonitoringTank(row, tank)) || null;
+  return tanks.find(tank => sensorRowBelongsToTank(row, tank)) || null;
 }
 
 export function getMonitoringTankKey(row, tanks) {
@@ -52,7 +49,7 @@ export function getMonitoringTankKey(row, tanks) {
 
 export function getLatestAmmoniaForTank(tank, rows) {
   return rows.filter(row => recordMatchesAmmoniaTank(row, tank))
-    .sort((a, b) => (new Date(getAmmoniaScanDate(b) || 0).getTime() || 0) - (new Date(getAmmoniaScanDate(a) || 0).getTime() || 0))[0] || null;
+    .sort(compareSensorRowsNewestFirst)[0] || null;
 }
 
 export function getAmmoniaLabel(value) {
@@ -83,19 +80,21 @@ export function buildMonitoringRecords(waterRows, ammoniaRows, tanks, thresholds
   };
   return [...waterRows.map((row, index) => enrich(row, "Water Reading", index)),
     ...ammoniaRows.map((row, index) => enrich(row, "Ammonia Reading", index))]
-    .sort((a, b) => (new Date(b.date || 0).getTime() || 0) - (new Date(a.date || 0).getTime() || 0));
+    .sort((a, b) => compareSensorRowsNewestFirst(a.reading, b.reading));
 }
 
-export function getCurrentTankSnapshot(records, tank = null, thresholds = getLocalThresholds()) {
-  const scoped = tank ? records.filter(item => (item.type === "Ammonia Reading" ? recordMatchesAmmoniaTank : recordMatchesMonitoringTank)(item.reading, tank)) : records;
-  const sorted = [...scoped].sort((a, b) => (new Date(b.date || 0).getTime() || 0) - (new Date(a.date || 0).getTime() || 0));
+export function getCurrentTankSnapshot(records, tank = null, thresholds = getLocalThresholds(), availability) {
+  const scoped = tank ? records.filter(item => sensorRowBelongsToTank(item.reading, tank)) : records;
+  const sorted = [...scoped].sort((a, b) => compareSensorRowsNewestFirst(a.reading, b.reading));
   const waterRecord = sorted.find(item => item.type === "Water Reading") || null;
   const anchor = waterRecord || sorted.find(item => item.type === "Ammonia Reading");
   const ammoniaRecord = sorted.find(item => item.type === "Ammonia Reading" && (!anchor || item.tankKey === anchor.tankKey)) || null;
   return { waterRecord, ammoniaRecord,
     tankName: tank?.name || tank?.tank_name || tank?.title || anchor?.tankName || "No tank selected",
     tankId: tank?.id || tank?.tank_id || null,
-    safety: evaluateCurrentTankSafety(waterRecord, ammoniaRecord, thresholds) };
+    // A selected tank still has configured limits even before its first reading.
+    safety: evaluateCurrentTankSafety(waterRecord, ammoniaRecord,
+      tank ? resolveTankThresholds(thresholds, tank.id || tank.tank_id) : thresholds, availability) };
 }
 
 export function buildTankSnapshotExportRows(snapshots, formatDate = value => value || "") {
@@ -112,6 +111,7 @@ export function buildTankSnapshotExportRows(snapshots, formatDate = value => val
       "Water Measurement Fresh": reading ? safety.parameters.waterLevel.measurementFresh : false,
       "Water Last Good Age (ms)": safety.parameters.waterLevel.lastGoodAgeMs ?? "",
       "Sensor Date": waterRecord?.date ? formatDate(waterRecord.date) : "",
+      "Sensor Observation Freshness": safety.observationHealth || "Historical evaluation",
       Ammonia: ammoniaRecord?.ammoniaLabel || "No Scan",
       "Ammonia Condition": ammoniaRecord?.ammoniaValue != null ? condition("ammonia") : "No Scan",
       "Ammonia Scan Date": ammoniaRecord?.date ? formatDate(ammoniaRecord.date) : "",
@@ -122,11 +122,11 @@ export function buildTankSnapshotExportRows(snapshots, formatDate = value => val
 }
 
 // Only current summaries combine independent readings; history never does.
-export function evaluateCurrentTankSafety(waterRecord, ammoniaRecord, thresholds = getLocalThresholds()) {
+export function evaluateCurrentTankSafety(waterRecord, ammoniaRecord, thresholds = getLocalThresholds(), availability) {
   thresholds = resolveTankThresholds(thresholds, waterRecord?.tankKey || ammoniaRecord?.tankKey);
   const normalized = waterRecord?.normalized;
   const sameTank = !waterRecord || !ammoniaRecord || waterRecord.tankKey === ammoniaRecord.tankKey;
-  return evaluateReadingSafety({
+  const safety = evaluateReadingSafety({
     temperature: normalized?.temperatureValue, ph: normalized?.phValue,
     turbidityVoltage: normalized?.turbidityValue, waterDepth: normalized?.waterValue,
     waterStatus: normalized?.raw?.water_status,
@@ -136,6 +136,8 @@ export function evaluateCurrentTankSafety(waterRecord, ammoniaRecord, thresholds
     turbidityStatus: normalized?.raw?.turbidity_status,
     ammonia: sameTank ? ammoniaRecord?.ammoniaValue : undefined,
   }, thresholds);
+  return availability ? currentSensorSafety(safety, waterRecord?.reading || normalized?.raw,
+    availability.nowMs, availability.verified) : safety;
 }
 
 export function buildTankHistoryExportRows(records, formatDate = value => value || "") {

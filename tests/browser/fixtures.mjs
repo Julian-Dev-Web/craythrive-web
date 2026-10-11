@@ -28,14 +28,14 @@ export function datasets() {
     ],
     seller_profiles: [{ id: user.id, user_id: user.id, seller_id: user.id, store_name: 'QA Store With A Long Name For Responsive Verification', seller_mobile: '09000000000', phone: '09000000000', pickup_municipality: 'Malolos', pickup_municipality_code: '031410000', pickup_barangay: 'Poblacion', pickup_barangay_code: '031410001', is_active: true, website_url: 'javascript:alert(1)', facebook_url: 'https://example.invalid/store', created_at: now }],
     marketplace_orders: [{ id: 'order-a', listing_id: 'listing-a', seller_id: user.id, buyer_id: user.id, user_id: user.id, quantity: 1, total_price: 150, status: 'pending', created_at: now }],
-    alerts: [], iot_devices: [], device_commands: [], control_logs: [], notification_preferences: [],
+    alerts: [], iot_devices: [], device_commands: [], control_logs: [], tank_automation_logs: [], notification_preferences: [],
     marketplace_chat_threads: [], marketplace_chat_messages: [],
   };
 }
 
 export const test = base.extend({
   qa: async ({ context, page }, use) => {
-    const state = { data: datasets(), authenticated: true, invalidLogin: false, expired: false, authDelay: 0, tankWriteDelay: 0, tankWriteFailure: false,
+    const state = { data: datasets(), serverTime: null, serverTimeFailure: false, authenticated: true, invalidLogin: false, expired: false, authDelay: 0, tankWriteDelay: 0, tankWriteFailure: false,
       developerAuthorized: false, developerVerified: false, developerDenied: false, developerInvalidOtp: false, developerOperationStatus: 0,
       backupHistory: [], backupUnchanged: false, backupScheduleEnabled: true, backupLastRun: null,
       developerFactors: [{ id: '33333333-3333-4333-8333-333333333333', factor_type: 'totp', status: 'verified', friendly_name: 'QA Authenticator' }],
@@ -57,6 +57,12 @@ export const test = base.extend({
         return route.fulfill({ status: 200, contentType: url.pathname.endsWith('.css') ? 'text/css' : 'application/json', body: url.pathname.endsWith('.css') ? '' : '[]' });
       }
       const reply = (json, status = 200) => route.fulfill({ status, json });
+      if (url.pathname === '/functions/v1/craythrive-ai-guide') {
+        state.aiGuideRequests ||= [];
+        state.aiGuideRequests.push({ body: request.postDataJSON() });
+        if (state.aiGuideDelay) await new Promise(resolve => setTimeout(resolve, state.aiGuideDelay));
+        return reply(state.aiGuideResponse || { message: 'Check this tank with a fresh measurement before intervening.' }, state.aiGuideStatus || 200);
+      }
       if (url.pathname.startsWith('/functions/v1/developer-')) {
         state.developerRequests.push({ path: url.pathname, body: request.postDataJSON(), authorization: request.headers().authorization });
         if (!state.authenticated || state.expired || !state.developerAuthorized) {
@@ -117,8 +123,25 @@ export const test = base.extend({
         // Supabase rejects browser/public-key schema discovery. Table CRUD works.
         if (url.pathname === '/rest/v1/') return reply({ message: 'Access to schema is forbidden' }, 403);
         const table = url.pathname.split('/').at(-1);
+        if (url.pathname === '/rest/v1/rpc/craythrive_server_time') {
+          state.reads.push({ table: 'craythrive_server_time', filters: {} });
+          if (state.serverTimeFailure) return reply({ code: 'PGRST202', message: 'Server time unavailable' }, 404);
+          return reply(state.serverTime || new Date().toISOString());
+        }
+        if (url.pathname === '/rest/v1/rpc/get_tank_automation_history') {
+          const args = request.postDataJSON();
+          state.reads.push({ table: 'get_tank_automation_history', filters: args });
+          if (state.activityRPCMissing) return reply({ code: 'PGRST202', message: 'History RPC not installed' }, 404);
+          if (state.activityReadFailure) return reply({ code: '42501', message: 'History unavailable' }, 403);
+          if (!state.data.tanks.some(tank => tank.id === args.p_tank_id && tank.user_id === user.id)) return reply({ code: '42501' }, 403);
+          const rows = state.data.tank_automation_logs.filter(row => row.tank_id === args.p_tank_id && row.user_id === user.id
+            && (!args.p_from || row.created_at >= args.p_from) && (!args.p_to || row.created_at < args.p_to))
+            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at) || b.id.localeCompare(a.id));
+          return reply(rows.slice(args.p_offset, args.p_offset + args.p_limit));
+        }
         if (url.pathname === '/rest/v1/rpc/get_tank_threshold_settings') {
           state.reads.push({ table: 'get_tank_threshold_settings', filters: {} });
+          if (state.thresholdReadFailure) return reply({ code: '42501', message: 'Threshold settings unavailable' }, 503);
           return reply([
             ...state.data.threshold_settings.filter(row => row.user_id === user.id).map(row => ({ ...row, tank_id: null })),
             ...state.data.tank_threshold_settings.filter(row => row.user_id === user.id),
@@ -167,12 +190,22 @@ export const test = base.extend({
           if (args.p_source === 'ai_recommendation') selectedRow.pending_ai_suggestion = null;
           return reply({ affected: targets.length, changed, rows: saved });
         }
-        if (request.method() === 'GET') state.reads.push({ table, filters: Object.fromEntries(url.searchParams) });
+        if (request.method() === 'GET') state.reads.push({ table, filters: Object.fromEntries(url.searchParams), query: [...url.searchParams] });
+        if (request.method() === 'GET' && state.activityReadDelay && table === 'control_logs') await new Promise(resolve => setTimeout(resolve, state.activityReadDelay));
+        if (request.method() === 'GET' && state.activityReadFailure && ['control_logs', 'device_commands', 'alerts', 'ammonia_readings'].includes(table)) return reply({ code: '42501', message: 'History unavailable' }, 403);
         let rows = structuredClone(state.data[table] || []);
+        if (request.method() === 'GET' && table === 'sensor_readings' && url.searchParams.get('limit') === '1') {
+          const delay = state.currentReadingDelays?.shift() || 0;
+          if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+          if (state.currentReadingFailure) return reply({ code: '42501', message: 'Current reading unavailable' }, 503);
+        }
         for (const [key, value] of url.searchParams) {
           if (value.startsWith('eq.')) rows = rows.filter(row => String(row[key]) === value.slice(3));
           if (value.startsWith('neq.')) rows = rows.filter(row => String(row[key]) !== value.slice(4));
           if (value.startsWith('is.')) rows = rows.filter(row => value === 'is.null' ? row[key] == null : String(row[key]) === value.slice(3));
+          if (value.startsWith('gte.')) rows = rows.filter(row => new Date(row[key]).getTime() >= new Date(value.slice(4)).getTime());
+          if (value.startsWith('lt.')) rows = rows.filter(row => new Date(row[key]).getTime() < new Date(value.slice(3)).getTime());
+          if (value.startsWith('in.(')) rows = rows.filter(row => value.slice(4, -1).split(',').map(item => item.replaceAll('"', '')).includes(String(row[key])));
         }
         if (request.method() !== 'GET' && request.method() !== 'HEAD') {
           const body = request.postDataJSON();
@@ -197,7 +230,9 @@ export const test = base.extend({
             else { rows = [{ id: `qa-created-${state.writes.length}`, ...(table === 'tanks' ? { male_count: 0, female_count: 0, juvenile_count: 0, population_label: null, tank_size_label: null, status: 'Unpaired', has_paired_device: false, created_at: new Date().toISOString() } : {}), ...body }]; state.data[table] = [...(state.data[table] || []), ...rows]; }
           }
         }
-        if (url.searchParams.get('order')?.includes('created_at.desc')) rows.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        if (url.searchParams.get('order')?.includes('created_at.desc')) rows.sort((a, b) =>
+          (b.created_at ? new Date(b.created_at).getTime() : -Infinity) - (a.created_at ? new Date(a.created_at).getTime() : -Infinity)
+          || (url.searchParams.get('order').includes('id.desc') ? String(b.id).localeCompare(String(a.id)) : 0));
         const total = rows.length;
         if (url.searchParams.has('limit')) rows = rows.slice(Number(url.searchParams.get('offset') || 0), Number(url.searchParams.get('offset') || 0) + Number(url.searchParams.get('limit')));
         const singular = request.headers().accept?.includes('vnd.pgrst.object');
@@ -205,16 +240,61 @@ export const test = base.extend({
       }
       return reply({});
     });
-    await context.routeWebSocket(/supabase\.invalid/, () => {});
+    state.realtimeChannels = new Map();
+    state.realtimeJoinCount = 0;
+    state.realtimeSockets = new Set();
+    await context.routeWebSocket(/supabase\.invalid/, socket => {
+      state.realtimeSockets.add(socket);
+      socket.onMessage(message => {
+        if (typeof message !== 'string') return;
+        const [joinRef, ref, topic, event, payload] = JSON.parse(message);
+        if (event === 'phx_join') {
+          const filters = (payload.config?.postgres_changes || []).map((filter, index) => ({ ...filter, id: index + 1 }));
+          state.realtimeChannels.set(topic, { socket, joinRef, filters });
+          state.realtimeJoinCount++;
+          socket.send(JSON.stringify([joinRef, ref, topic, 'phx_reply', { status: 'ok', response: { postgres_changes: filters } }]));
+        } else if (event === 'phx_leave') {
+          state.realtimeChannels.delete(topic);
+          socket.send(JSON.stringify([joinRef, ref, topic, 'phx_reply', { status: 'ok', response: {} }]));
+        } else if (event === 'heartbeat') {
+          socket.send(JSON.stringify([joinRef, ref, topic, 'phx_reply', { status: 'ok', response: {} }]));
+        }
+      });
+      socket.onClose(() => {
+        state.realtimeSockets.delete(socket);
+        for (const [topic, entry] of state.realtimeChannels) if (entry.socket === socket) state.realtimeChannels.delete(topic);
+      });
+    });
+    state.emitReading = (table, row, type = 'INSERT') => {
+      for (const [topic, channel] of state.realtimeChannels) {
+        const filters = channel.filters.filter(filter => filter.table === table &&
+          (!filter.filter || filter.filter === `user_id=eq.${row.user_id}`));
+        if (!filters.length) continue;
+        channel.socket.send(JSON.stringify([channel.joinRef, null, topic, 'postgres_changes', {
+          ids: filters.map(filter => filter.id), data: { schema: 'public', table, type,
+            commit_timestamp: new Date().toISOString(), columns: [], record: type === 'DELETE' ? {} : row,
+            old_record: type === 'DELETE' || type === 'UPDATE' ? row : {}, errors: [] },
+        }]));
+      }
+    };
+    state.disconnectRealtime = () => {
+      for (const socket of state.realtimeSockets) socket.close({ code: 1012, reason: 'QA reconnect test' });
+      state.realtimeSockets.clear(); state.realtimeChannels.clear();
+    };
     page.on('pageerror', error => state.errors.push(error.message));
     page.on('console', message => {
       const expectedAuthFailure = (state.expired || state.invalidLogin || !state.authenticated) &&
         /^Failed to load resource:.*status of (400|401)/.test(message.text());
       const expectedTankFailure = state.tankWriteFailure && /^Failed to load resource:.*status of 403/.test(message.text());
+      const expectedRecommendationFailure = (state.aiGuideStatus && new RegExp(`^Failed to load resource:.*status of ${state.aiGuideStatus}`).test(message.text()))
+        || (state.thresholdReadFailure && /^Failed to load resource:.*status of 503/.test(message.text()));
+      const expectedActivityFailure = (state.activityRPCMissing && /^Failed to load resource:.*status of 404/.test(message.text()))
+        || (state.activityReadFailure && /^Failed to load resource:.*status of (403|503)/.test(message.text()));
+      const expectedReadingFailure = state.currentReadingFailure && /^Failed to load resource:.*status of 503/.test(message.text());
       const expectedDeveloperFailure = (state.developerDenied && /^Failed to load resource:.*status of 403/.test(message.text())) ||
         (state.developerInvalidOtp && /^Failed to load resource:.*status of 401/.test(message.text())) ||
         (state.developerOperationStatus && new RegExp(`^Failed to load resource:.*status of ${state.developerOperationStatus}`).test(message.text()));
-      if (message.type() === 'error' && !expectedAuthFailure && !expectedTankFailure && !expectedDeveloperFailure) state.errors.push(message.text());
+      if (message.type() === 'error' && !expectedAuthFailure && !expectedTankFailure && !expectedDeveloperFailure && !expectedRecommendationFailure && !expectedActivityFailure && !expectedReadingFailure) state.errors.push(message.text());
       if (message.type() === 'warning') state.warnings.push(message.text());
     });
     page.on('response', response => {

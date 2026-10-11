@@ -1,3 +1,5 @@
+import { formatPhilippineDateTime, formatPhilippineTime, compareTimestamps } from '../../utils/philippineTime';
+import { getServerNowDate } from '../../services/serverTimeService';
 import { logDiagnostic } from "../../utils/securityDiagnostics";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -125,42 +127,9 @@ function formatFriendlyText(value) {
     );
 }
 
-function formatDate(value) {
-  if (!value) {
-    return "No date";
-  }
+function formatDate(value) { return formatPhilippineDateTime(value); }
 
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "No date";
-  }
-
-  return date.toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function formatShortTime(value) {
-  if (!value) {
-    return "";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  return date.toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
+function formatShortTime(value) { return formatPhilippineTime(value); }
 
 function formatPeso(value) {
   const amount = Number(value);
@@ -788,7 +757,7 @@ export default function OrdersPage() {
         );
 
         setLastUpdated(
-          new Date()
+          getServerNowDate()
         );
       } catch (error) {
         logDiagnostic(
@@ -930,12 +899,7 @@ export default function OrdersPage() {
             "oldest"
           ) {
             return (
-              new Date(
-                a.date || 0
-              ) -
-              new Date(
-                b.date || 0
-              )
+              compareTimestamps(a.date || 0, b.date || 0)
             );
           }
 
@@ -960,12 +924,7 @@ export default function OrdersPage() {
           }
 
           return (
-            new Date(
-              b.date || 0
-            ) -
-            new Date(
-              a.date || 0
-            )
+            compareTimestamps(b.date || 0, a.date || 0)
           );
         }
       );

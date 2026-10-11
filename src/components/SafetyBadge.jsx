@@ -15,7 +15,8 @@ export default function SafetyBadge({ severity, parameter, className = "", empty
       <SafetyIcon severity={level} size={12} />
       {parameter?.health === "error" ? "Sensor Error"
         : parameter?.health === "waiting" ? "Waiting"
-        : level === "no-data" ? emptyLabel : getSafetyStatusLabel(level)}
+        : level === "no-data" ? parameter?.availability === "stale" ? "Stale"
+          : parameter?.availability === "manual-scan" && parameter.hasValue ? "Manual Scan" : emptyLabel : getSafetyStatusLabel(level)}
     </b>
   );
 }

@@ -1,3 +1,5 @@
+import useServerTime from '../hooks/useServerTime';
+import { formatPhilippineDate, formatPhilippineTime } from '../utils/philippineTime';
 import { useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
@@ -40,25 +42,9 @@ function getPageTitle(pathname) {
   return current?.label || "Dashboard";
 }
 
-function formatPhilippinesTime(date) {
-  return new Intl.DateTimeFormat("en-PH", {
-    timeZone: "Asia/Manila",
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  }).format(date);
-}
+function formatPhilippinesTime(date) { return formatPhilippineTime(date, { second: '2-digit' }, 'Time unavailable'); }
 
-function formatPhilippinesDate(date) {
-  return new Intl.DateTimeFormat("en-PH", {
-    timeZone: "Asia/Manila",
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(date);
-}
+function formatPhilippinesDate(date) { return formatPhilippineDate(date, { weekday: 'short' }, ''); }
 
 export default function AdminLayout() {
   const navigate = useNavigate();
@@ -68,7 +54,7 @@ export default function AdminLayout() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [themeMode, setThemeMode] = useState(getInitialTheme);
   const [profile, setProfile] = useState(null);
-  const [clock, setClock] = useState(new Date());
+  const clock = useServerTime();
 
   const pageTitle = useMemo(() => getPageTitle(location.pathname), [location.pathname]);
 
@@ -86,10 +72,7 @@ export default function AdminLayout() {
     profile?.photo_url ||
     "";
 
-  useEffect(() => {
-    const timer = setInterval(() => setClock(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
+
 
   useEffect(() => {
     localStorage.setItem("craythrive_dashboard_theme", themeMode);

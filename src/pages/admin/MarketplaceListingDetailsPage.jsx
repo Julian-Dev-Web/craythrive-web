@@ -1,3 +1,4 @@
+import { formatPhilippineDateTime } from '../../utils/philippineTime';
 import { logDiagnostic, getSafeErrorMessage } from "../../utils/securityDiagnostics";
 import { normalizeExternalUrl } from "../../utils/safeUrls";
 import {
@@ -103,33 +104,7 @@ function formatPeso(value) {
   ).format(number);
 }
 
-function formatDate(value) {
-  if (!value) {
-    return "No date";
-  }
-
-  const date =
-    new Date(value);
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return "No date";
-  }
-
-  return date.toLocaleString(
-    "en-PH",
-    {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    }
-  );
-}
+function formatDate(value) { return formatPhilippineDateTime(value); }
 
 function getCategory(listing) {
   return (

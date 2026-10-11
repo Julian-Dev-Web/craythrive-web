@@ -1,0 +1,92 @@
+/* Reserve room below the last monitoring controls for the small launcher. */
+.sensor-recommendations-page { padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
+.sensor-recommendations-dock {
+  position: fixed;
+  right: max(18px, env(safe-area-inset-right, 0px));
+  bottom: max(18px, env(safe-area-inset-bottom, 0px));
+  z-index: 24;
+  pointer-events: none;
+}
+.sensor-recommendations-launcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid var(--ct-border-strong);
+  border-radius: 24px;
+  background: var(--ct-surface-strong);
+  color: var(--ct-text);
+  box-shadow: 0 4px 16px rgba(0, 20, 30, .16);
+  font: inherit;
+  font-size: .8rem;
+  font-weight: 700;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.sensor-recommendations-launcher svg { color: var(--ct-brand); }
+.sensor-recommendations-dialog {
+  position: fixed;
+  inset: auto 18px 76px auto;
+  width: min(560px, calc(100vw - 36px));
+  max-width: calc(100vw - 36px);
+  max-height: calc(100dvh - 100px);
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--ct-border-strong);
+  border-radius: 18px;
+  background: var(--ct-surface-strong);
+  color: var(--ct-text);
+  box-shadow: 0 12px 45px rgba(0, 15, 25, .3);
+  font-size: .85rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.sensor-recommendations-dialog::backdrop { background: rgba(0, 15, 25, .42); }
+.sensor-recommendations-content { padding: 18px; }
+.sensor-recommendations-content header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.sensor-recommendations-content h2 { margin: 0; font-size: 1.25rem; }
+.sensor-recommendations-content h3 { margin: 0; font-size: .9rem; }
+.sensor-recommendations-content p { margin: 6px 0; }
+.sensor-recommendations-content header p,
+.sensor-recommendations-date,
+.sensor-recommendation-date,
+.sensor-recommendation-tank,
+.sensor-recommendations-ai > p { color: var(--ct-muted); font-size: .75rem; }
+.sensor-recommendations-content button,
+.sensor-recommendations-content select {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--ct-border-strong);
+  border-radius: 10px;
+  background: var(--ct-surface-soft);
+  color: var(--ct-text);
+  font: inherit;
+}
+.sensor-recommendations-content button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }
+.sensor-recommendations-content button:disabled { opacity: .6; cursor: wait; }
+.sensor-recommendations-content button:focus-visible,
+.sensor-recommendations-content select:focus-visible,
+.sensor-recommendations-launcher:focus-visible { outline: 2px solid var(--ct-brand); outline-offset: 3px; }
+.sensor-recommendations-close { flex: 0 0 44px; }
+.sensor-recommendations-toolbar { display: flex; align-items: center; gap: 8px; margin: 16px 0; }
+.sensor-recommendations-toolbar select { flex: 1; min-width: 0; max-width: 100%; }
+.sensor-recommendations-note,
+.sensor-recommendation-note { color: var(--ct-muted); font-size: .75rem; }
+.sensor-recommendations-empty { padding: 10px; border-radius: 10px; background: var(--ct-surface-soft); }
+.sensor-recommendations-list { display: grid; gap: 12px; margin-top: 14px; }
+.sensor-recommendation { padding: 12px; border: 1px solid var(--ct-border); border-radius: 12px; background: var(--ct-surface-soft); }
+.sensor-recommendation-heading { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.sensor-recommendation-value { display: block; margin-top: 8px; font-size: 1rem; }
+.sensor-recommendations-ai { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--ct-border); }
+.sensor-recommendations-ai-answer p { white-space: pre-wrap; }
+.sensor-recommendations-spin { animation: recommendations-spin 1s linear infinite; }
+@keyframes recommendations-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .sensor-recommendations-spin { animation: none; } }
+@media (max-width: 600px) {
+  .sensor-recommendations-dialog { inset: 12px 12px auto; width: calc(100vw - 24px); max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px); }
+  .sensor-recommendations-content { padding: 14px; }
+  .sensor-recommendations-dock { right: max(12px, env(safe-area-inset-right, 0px)); }
+}

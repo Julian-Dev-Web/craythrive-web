@@ -1,3 +1,5 @@
+import { formatPhilippineTime } from '../../utils/philippineTime';
+import { getServerNowDate } from '../../services/serverTimeService';
 import { logDiagnostic, getSafeErrorMessage } from "../../utils/securityDiagnostics";
 import { normalizeExternalUrl } from "../../utils/safeUrls";
 import {
@@ -481,7 +483,7 @@ export default function SellerProfilePage() {
       ]);
 
       setLastUpdated(
-        new Date()
+        getServerNowDate()
       );
     } catch (
       error
@@ -1325,7 +1327,7 @@ export default function SellerProfilePage() {
       );
 
       setLastUpdated(
-        new Date()
+        getServerNowDate()
       );
     } catch (
       error
@@ -1456,16 +1458,7 @@ export default function SellerProfilePage() {
 
             <span>
               {lastUpdated
-                ? `Updated ${lastUpdated.toLocaleTimeString(
-                    [],
-                    {
-                      hour:
-                        "numeric",
-
-                      minute:
-                        "2-digit",
-                    }
-                  )}`
+                ? `Updated ${formatPhilippineTime(lastUpdated)}`
                 : "Seller profile ready"}
             </span>
 

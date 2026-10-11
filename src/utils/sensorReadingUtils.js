@@ -1,4 +1,6 @@
+import { formatPhilippineDateTime } from './philippineTime';
 import { evaluateReadingSafety, getLocalThresholds, resolveTankThresholds } from "./thresholdEvaluation";
+import { sensorNumber, sensorValues } from '../../supabase/functions/_shared/sensorReadingContract.js';
 
 // src/utils/sensorReadingUtils.js
 
@@ -13,15 +15,7 @@ export function getFirstValue(...values) {
 }
 
 export function toNumberOrNull(value) {
-  if (typeof value !== "number" && typeof value !== "string") return null;
-  if (value === null || value === undefined || value === "") return null;
-  if (typeof value === "string" && value.trim() === "") return null;
-
-  const numberValue = Number(value);
-
-  if (!Number.isFinite(numberValue)) return null;
-
-  return numberValue;
+  return sensorNumber(value);
 }
 
 export function formatNumber(value, decimals = 1) {
@@ -71,25 +65,8 @@ export function normalizeSensorReading(reading, thresholds = getLocalThresholds(
     };
   }
 
-  const temperatureValue = [
-    reading.temperature_c,
-    reading.temperature
-  ].map(toNumberOrNull).find(value => value !== null) ?? null;
-
-  const phValue = [reading.ph_value, reading.ph]
-    .map(toNumberOrNull).find(value => value !== null) ?? null;
-
-  const turbidityValue = [
-    reading.turbidity_voltage,
-    reading.turbidity,
-    reading.raw_turbidity_value
-  ].map(toNumberOrNull).find(value => value !== null) ?? null;
-
-  const waterValue = [
-    reading.water_depth_cm,
-    reading.water_level,
-    reading.waterValue
-  ].map(toNumberOrNull).find(value => value !== null) ?? null;
+  const { temperature: temperatureValue, ph: phValue, turbidityVoltage: turbidityValue,
+    waterDepth: waterValue } = sensorValues(reading);
 
   const safety = evaluateReadingSafety({
     temperature: temperatureValue, ph: phValue,
@@ -141,7 +118,7 @@ export function normalizeSensorReading(reading, thresholds = getLocalThresholds(
         : `${formatNumber(waterValue, 1)} cm`,
     waterStatus,
 
-    createdAt: reading.created_at || reading.timestamp || reading.date || null,
+    createdAt: reading.created_at || null,
     deviceUid: reading.device_uid || "",
   };
 }
@@ -162,12 +139,4 @@ export function getWaterStatus(value, thresholds = getLocalThresholds()) {
   return evaluateReadingSafety({ waterDepth: value }, thresholds).parameters.waterLevel.label;
 }
 
-export function formatReadingTime(value) {
-  if (!value) return "No time";
-
-  try {
-    return new Date(value).toLocaleString();
-  } catch {
-    return "Invalid time";
-  }
-}
+export function formatReadingTime(value) { return !value ? 'No time' : formatPhilippineDateTime(value, {}, 'Invalid time'); }

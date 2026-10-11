@@ -1,10 +1,15 @@
-import useThresholdRefresh from "../../hooks/useThresholdRefresh";
+import useTankMonitoring from '../../hooks/useTankMonitoring';
+import MonitoringSyncNotice from '../../components/MonitoringSyncNotice';
+import { mergeSensorHistoryRows } from '../../../supabase/functions/_shared/sensorReadingContract.js';
+import { formatPhilippineDateTime, compareTimestamps } from '../../utils/philippineTime';
+import { getServerNowDate } from '../../services/serverTimeService';
 import { logDiagnostic } from "../../utils/securityDiagnostics";
 import { buildMonitoringRecords, getCurrentTankSnapshot } from "../../utils/monitoringRecords";
-import { loadAmmoniaHistory, loadCurrentTankRows } from "../../services/tankSnapshotService";
+import { loadAmmoniaHistory, loadSensorHistory } from "../../services/tankSnapshotService";
 import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
+import SensorSafeRange, { SensorReadingValue } from "../../components/SensorSafeRange";
 import { getSafetySeverity, getParameterExplanation, getSafetyStatusLabel } from "../../utils/statusHelpers";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   Activity,
@@ -35,15 +40,6 @@ import {
   toNumberOrNull,
 } from "../../utils/sensorReadingUtils";
 
-import {
-  loadActiveThresholds,
-} from "../../utils/thresholdEvaluation";
-
-const readingTables = [
-  "sensor_readings",
-  "tank_readings",
-  "readings",
-];
 
 const tankTables = [
   "tanks",
@@ -98,25 +94,7 @@ function lower(value) {
 }
 
 
-function formatDate(value) {
-  if (!value) {
-    return "No date";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "No date";
-  }
-
-  return date.toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
+function formatDate(value) { return formatPhilippineDateTime(value); }
 
 
 function getSeverityRank(severity) {
@@ -596,14 +574,15 @@ function SummaryCard({
   );
 }
 
-function MetricCard({ icon: Icon, label, value, parameter, scanDate }) {
+function MetricCard({ icon: Icon, label, value, parameter, sensor, thresholds, scanDate }) {
   const explanation = getParameterExplanation(parameter, label.replace(/^Latest /, ""));
   return (
     <div className="modern-reading-metric">
       <span className="modern-reading-metric-icon"><Icon size={20} /></span>
       <div>
         <small>{label}</small>
-        <strong>{value}</strong>
+        <SensorReadingValue value={value} sensor={sensor} />
+        <SensorSafeRange sensor={sensor} thresholds={thresholds} />
         <SafetyBadge className="modern-reading-status" severity={parameter?.severity} parameter={parameter} emptyLabel={label === "Ammonia" ? "No Scan" : "No Data"} />
         {explanation && <small className="safety-explanation">{explanation}</small>}
         {label === "Ammonia" && <small>Latest available ammonia scan</small>}
@@ -834,7 +813,6 @@ function ReadingFilterDropdown({
 
 export default function SensorReadingsPage() {
   const [ammoniaHistoryError, setAmmoniaHistoryError] = useState(false);
-  const [currentRows, setCurrentRows] = useState({ sensor: [], ammonia: [] });
   const [
     readings,
     setReadings,
@@ -891,35 +869,15 @@ export default function SensorReadingsPage() {
 
   const [ammoniaReadings, setAmmoniaReadings] = useState([]);
 
-  const [
-    thresholds,
-    setThresholds,
-  ] =
-    useState(null);
-  useThresholdRefresh(() => { loadActiveThresholds().then(setThresholds); });
+  const monitoring = useTankMonitoring(tanks);
+  const { rows: currentRows, thresholds, refresh: refreshMonitoring } = monitoring;
 
-
-  useEffect(() => {
-    let isMounted = true;
-
-    loadActiveThresholds().then(
-      (loaded) => {
-        if (isMounted) {
-          setThresholds(
-            loaded
-          );
-        }
-      }
-    );
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  const loadReadings =
+  const pageLoadVersion = useRef(0);
+  const loadReadings = useCallback(
     async () => {
-      setThresholds(await loadActiveThresholds());
+      const version = ++pageLoadVersion.current;
+      refreshMonitoring();
+
       if (
         !isSupabaseConfigured ||
         !supabase
@@ -933,6 +891,7 @@ export default function SensorReadingsPage() {
 
         const currentUser =
           await getCurrentUserWithRole();
+        if (version !== pageLoadVersion.current) return;
 
         if (
           !currentUser.id
@@ -950,14 +909,7 @@ export default function SensorReadingsPage() {
         ] =
           await Promise.all([
 
-            currentUser.isAdmin
-              ? fetchAdminRows(
-                  readingTables
-                )
-              : fetchUserRows(
-                  readingTables,
-                  currentUser.id
-                ),
+            loadSensorHistory(currentUser, { limit: 400 }),
 
             currentUser.isAdmin
               ? fetchAdminRows(
@@ -972,7 +924,7 @@ export default function SensorReadingsPage() {
             loadAmmoniaHistory(currentUser),
           ]);
 
-        setCurrentRows(await loadCurrentTankRows(tankResult.rows, currentUser, { sensor: readingResult.rows, ammonia: ammoniaResult.rows }));
+        if (version !== pageLoadVersion.current) return;
         setReadings(
           readingResult.rows
         );
@@ -984,7 +936,7 @@ export default function SensorReadingsPage() {
         setAmmoniaHistoryError(ammoniaResult.error);
 
         setLastUpdated(
-          new Date()
+          getServerNowDate()
         );
       } catch (error) {
         logDiagnostic(
@@ -992,13 +944,15 @@ export default function SensorReadingsPage() {
           error
         );
       } finally {
-        setIsLoading(false);
+      if (version === pageLoadVersion.current) setIsLoading(false);
       }
-    };
+    }, [refreshMonitoring]);
 
   useEffect(() => {
     loadReadings();
-  }, []);
+    const loadState = pageLoadVersion;
+    return () => { loadState.current++; };
+  }, [loadReadings]);
 
   useEffect(() => {
     setReadingsPage(1);
@@ -1010,8 +964,8 @@ export default function SensorReadingsPage() {
   ]);
 
   const enrichedReadings = useMemo(
-    () => buildMonitoringRecords(readings, ammoniaReadings, tanks, thresholds),
-    [readings, ammoniaReadings, tanks, thresholds]
+    () => buildMonitoringRecords(mergeSensorHistoryRows(readings, currentRows.sensor), mergeSensorHistoryRows(ammoniaReadings, currentRows.ammonia), tanks, thresholds),
+    [readings, ammoniaReadings, tanks, thresholds, currentRows]
   );
 
   const tankFilterOptions =
@@ -1252,12 +1206,7 @@ export default function SensorReadingsPage() {
           }
 
           return (
-            new Date(
-              b.date || 0
-            ) -
-            new Date(
-              a.date || 0
-            )
+            compareTimestamps(b.date || 0, a.date || 0)
           );
         }
       );
@@ -1362,7 +1311,8 @@ export default function SensorReadingsPage() {
     ]);
 
   const currentRecords = useMemo(() => buildMonitoringRecords(currentRows.sensor, currentRows.ammonia, tanks, thresholds), [currentRows, tanks, thresholds]);
-  const snapshot = getCurrentTankSnapshot(tankFilter === "all" ? currentRecords : currentRecords.filter(item => item.tankKey === tankFilter), null, thresholds);
+  const snapshot = getCurrentTankSnapshot(currentRecords,
+    tankFilter === "all" ? null : tanks.find(tank => tank.id === tankFilter), thresholds, monitoring.availability);
   const latestReading = snapshot.waterRecord;
   const latestAmmonia = snapshot.ammoniaRecord;
 
@@ -1471,6 +1421,7 @@ export default function SensorReadingsPage() {
         </div>
       </section>
 
+      <MonitoringSyncNotice monitoring={monitoring} reading={latestReading?.reading} />
       {latestSafety && (
         <section
           className={`modern-safety-banner safety-surface ${getSafetySeverity(latestSafety)}`}
@@ -1592,10 +1543,11 @@ export default function SensorReadingsPage() {
                   null
                   ? "No Data"
                   : `${latestTemperature.toFixed(
-                      2
+                      1
                     )}°C`
               }
-              parameter={latestReading?.normalized?.safety?.parameters.temperature}
+              parameter={latestSafety.parameters.temperature}
+              sensor="temperature" thresholds={latestSafety.activeThresholds}
             />
 
             <MetricCard
@@ -1619,7 +1571,8 @@ export default function SensorReadingsPage() {
                       2
                     )
               }
-              parameter={latestReading?.normalized?.safety?.parameters.ph}
+              parameter={latestSafety.parameters.ph}
+              sensor="ph" thresholds={latestSafety.activeThresholds}
             />
 
             <MetricCard
@@ -1630,10 +1583,11 @@ export default function SensorReadingsPage() {
               value={
                 latestReading
                   ?.normalized
-                  ?.turbidityStatus ||
+                  ?.turbidityNumberLabel ||
                 "No Reading"
               }
-              parameter={latestReading?.normalized?.safety?.parameters.turbidity}
+              parameter={latestSafety.parameters.turbidity}
+              sensor="turbidity" thresholds={latestSafety.activeThresholds}
             />
 
             <MetricCard
@@ -1642,9 +1596,11 @@ export default function SensorReadingsPage() {
               }
               label="Latest Water Level"
               value={latestReading?.normalized?.waterLabel || "No Data"}
-              parameter={latestReading?.normalized?.safety?.parameters.waterLevel}
+              parameter={latestSafety.parameters.waterLevel}
+              sensor="waterLevel" thresholds={latestSafety.activeThresholds}
             />
             <MetricCard icon={FlaskConical} label="Ammonia"
+              sensor="ammonia" thresholds={latestSafety.activeThresholds}
               value={latestAmmonia?.ammoniaLabel || "No Scan"}
               parameter={latestSafety.parameters.ammonia} scanDate={latestAmmonia?.date} />
           </div>

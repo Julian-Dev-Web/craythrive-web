@@ -1,3 +1,5 @@
+import { timestampMs, formatPhilippineDateTime, formatPhilippineTime } from '../../utils/philippineTime';
+import { getServerNowDate } from '../../services/serverTimeService';
 import { logDiagnostic } from "../../utils/securityDiagnostics";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -134,42 +136,9 @@ function formatFriendlyText(value) {
     );
 }
 
-function formatDate(value) {
-  if (!value) {
-    return "No date";
-  }
+function formatDate(value) { return formatPhilippineDateTime(value); }
 
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "No date";
-  }
-
-  return date.toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function formatShortTime(value) {
-  if (!value) {
-    return "";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  return date.toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
+function formatShortTime(value) { return formatPhilippineTime(value); }
 
 function formatPrice(value) {
   const amount = Number(value);
@@ -949,18 +918,14 @@ export default function MarketplaceOrdersPage() {
           ].sort(
             (a, b) => {
               const aDate =
-                new Date(
-                  a.created_at ||
+                timestampMs(a.created_at ||
                     a.updated_at ||
-                    0
-                ).getTime();
+                    0);
 
               const bDate =
-                new Date(
-                  b.created_at ||
+                timestampMs(b.created_at ||
                     b.updated_at ||
-                    0
-                ).getTime();
+                    0);
 
               return (
                 bDate -
@@ -982,7 +947,7 @@ export default function MarketplaceOrdersPage() {
         );
 
         setLastUpdated(
-          new Date()
+          getServerNowDate()
         );
       } catch (error) {
         logDiagnostic(

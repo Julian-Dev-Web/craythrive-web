@@ -21,6 +21,19 @@ const { loadAmmoniaHistory, loadCurrentTankRows } = await server.ssrLoadModule('
 const tanks = [{ id: 'tank-a', name: 'Tank A', device_uid: 'device-a' }, { id: 'tank-b', name: 'Tank B', device_uid: 'device-b' }];
 const normal = { temperature_c: 26.3, ph_value: 7.2, turbidity_voltage: 2.8, water_depth_cm: 5 };
 
+test('selected tank without readings retains its own limits and neutral status', () => {
+  const bundle = thresholdBundle([{ tank_id: null, thresholds: { waterLevelMin: 4.5 } },
+    { tank_id: 'tank-b', thresholds: { waterLevelMin: 3.2, ammoniaMax: 0.4 } }]);
+  const records = buildMonitoringRecords([{ ...normal, tank_id: 'tank-a' }], [], tanks, bundle);
+  const snapshot = getCurrentTankSnapshot(records, tanks[1], bundle);
+  assert.equal(snapshot.waterRecord, null);
+  assert.equal(snapshot.ammoniaRecord, null);
+  assert.equal(snapshot.safety.activeThresholds.waterLevelMin, 3.2);
+  assert.equal(snapshot.safety.activeThresholds.ammoniaMax, 0.4);
+  assert.equal(getSafetySeverity(snapshot.safety), 'no-data');
+  assert.ok(Object.values(snapshot.safety.parameters).every(parameter => !parameter.hasValue));
+});
+
 test('scan edits do not move scan history dates or override a newer scan', () => {
   const scans = [
     { id: 'old', tank_id: 'tank-a', ammonia: 0.7, created_at: '2025-01-01T00:00:00Z', updated_at: '2026-10-05T00:00:00Z' },
@@ -77,7 +90,7 @@ test('latest per-tank fetch finds scans outside a bounded global history', async
   const client = { from(table) {
     const filters = {};
     const query = { select() { return query; }, eq(key, value) { filters[key] = value; return query; },
-      order(key, options) { assert.equal(key, 'created_at'); assert.equal(options.ascending, false); return query; },
+      order(key, options) { assert.ok(['created_at', 'id'].includes(key)); assert.equal(options.ascending, false); return query; },
       async limit(value) { requests.push({ table, filters, limit: value }); return { data: table === 'ammonia_readings' ? [old] : [], error: null }; } };
     return query;
   } };
@@ -108,7 +121,7 @@ test('manual scan history pages past an API row limit without repeating events',
   const client = { from(table) {
     assert.equal(table, 'ammonia_readings');
     const query = { select() { return query; }, eq(key, value) { assert.equal(key, 'user_id'); assert.equal(value, 'farmer'); return query; },
-      order(key) { assert.equal(key, 'created_at'); return query; },
+      order(key) { assert.ok(['created_at', 'id'].includes(key)); return query; },
       async range(start, end) { pages.push(start); return { data: scans.slice(start, end + 1), count: scans.length }; } };
     return query;
   } };

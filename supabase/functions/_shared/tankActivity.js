@@ -1,0 +1,171 @@
+import { compareTimestamps, formatPhilippineDateTime, timestampMs } from './philippineTime.js';
+import { getSensorInspectionAction } from './sensorRecommendations.js';
+import { formatSensorSafeRange } from './sensorSafeRanges.js';
+import { formatPumpAction } from './pumpActionWording.js';
+
+const text = value => typeof value === 'string' ? value.trim() : '';
+const code = value => text(value).toLowerCase().replace(/[\s-]+/g, '_');
+const object = value => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+const finite = value => (typeof value === 'number' || typeof value === 'string' && value.trim() !== '') && Number.isFinite(Number(value)) ? Number(value) : null;
+const names = { temperature: 'Temperature', ph: 'pH', waterLevel: 'Water level', turbidity: 'Water clarity', ammonia: 'Ammonia' };
+const units = { temperature: '°C', ph: '', waterLevel: 'cm', turbidity: 'V', ammonia: 'mg/L' };
+export const ACTIVITY_CATEGORIES = { sensor: 'Sensor conditions', feeding: 'Feeding', water: 'Water control',
+  ammonia: 'Ammonia results', thresholds: 'Threshold changes', device: 'Device connection', other: 'Other activity' };
+
+function parameterFor(row) {
+  const metadata = object(row.metadata);
+  const explicit = metadata.parameter || metadata.sensor_snapshot?.parameter;
+  if (Object.hasOwn(names, explicit)) return explicit;
+  const value = code(`${row.type || ''} ${row.title || ''} ${row.action_type || ''}`);
+  if (/ammonia/.test(value)) return 'ammonia';
+  if (/temperature/.test(value)) return 'temperature';
+  if (/(^|_)ph(_|$)/.test(value)) return 'ph';
+  if (/turbidity|clarity/.test(value)) return 'turbidity';
+  if (/water_level|water_depth/.test(value)) return 'waterLevel';
+  return null;
+}
+
+function recordedSeverity(row) {
+  const value = code(row.severity);
+  return ['critical', 'danger', 'unsafe'].includes(value) ? 'critical'
+    : value === 'warning' ? 'warning' : ['normal', 'safe', 'success'].includes(value) ? 'normal' : 'no-data';
+}
+
+export function getRecordedActionOutcome(row, source = 'device_commands') {
+  const status = code(source === 'device_commands' ? row.command_status : row.action_status || row.status);
+  const note = text(row.result_message || row.notes || row.reason);
+  if (['skipped', 'blocked', 'rejected', 'cancelled', 'canceled'].includes(status)) return 'Skipped';
+  if (['failed', 'error'].includes(status)) return 'Failed';
+  if (['running', 'started', 'executing'].includes(status)) return 'Started';
+  if (['pending', 'queued', 'sent', 'requested', 'acknowledged'].includes(status)) return 'Requested';
+  if (source === 'control_logs' && row.action_type === 'threshold_updated') return 'Completed';
+  // Status defaults and copied "done" fields are insufficient. Recognize the
+  // inspected manual firmware acknowledgement, or explicit backend evidence.
+  const manualAck = source === 'device_commands' && Number.isFinite(timestampMs(row.executed_at))
+    && /^(?:FEED_ONCE completed\.|(?:REFILL_FOR|DRAIN_FOR) completed for \d+ ms\.|STOP_ALL executed[. ])/i.test(note)
+    && !/Auto log id:/i.test(note);
+  const autoAck = source === 'tank_automation_logs' && ['AUTO_REFILL', 'AUTO_DRAIN'].includes(row.action_type)
+    && Number.isFinite(timestampMs(row.created_at)) && note === 'Automatic water-level correction pulse completed.';
+  if (['done', 'completed', 'success', 'succeeded'].includes(status) && (manualAck || autoAck)) return 'Completed';
+  return 'Unknown / Unconfirmed';
+}
+
+function actionFor(row) {
+  const action = code(row.command_type || row.action_type || row.type);
+  if (/feed/.test(action)) return /scheduled/.test(action) ? 'Scheduled feeding'
+    : /auto/.test(action) || row.command_value === 'auto' ? 'Automatic feeding' : /manual/.test(action) ? 'Manual feeding' : 'Feeding';
+  if (/refill|fill|add_water/.test(action)) return /auto/.test(action) || row.command_value === 'auto' ? 'Automatic water refill' : 'Manual water refill';
+  if (/drain/.test(action)) return /auto/.test(action) || row.command_value === 'auto' ? 'Automatic water draining' : 'Manual water draining';
+  if (/stop/.test(action)) return 'Stop equipment';
+  return text(row.action_type || row.command_type).replaceAll('_', ' ') || 'Tank activity';
+}
+
+// Reuse pump wording only after checking execution evidence. A copied "done"
+// status must not turn an unconfirmed history record into successful execution.
+export function formatRecordedPumpAction(row, source = 'device_commands') {
+  const pump = formatPumpAction(row);
+  if (!pump) return null;
+  const outcome = getRecordedActionOutcome(row, source);
+  if (outcome === 'Unknown / Unconfirmed') return { ...pump,
+    title: `${pump.kind === 'drain' ? 'Drain' : 'Add Water'} recorded`,
+    message: 'Execution has not been confirmed.' };
+  const status = { Completed: 'done', Requested: 'queued', Started: 'running', Failed: 'failed' }[outcome];
+  return status ? formatPumpAction({ ...row, command_status: status }) : pump;
+}
+
+// Only saved event evidence is accepted. Current settings/readings are never an
+// input: changing today's thresholds cannot rewrite a historical event.
+export function buildTankActivity({ tank, userId, sources = {} }) {
+  if (!tank?.id || tank.user_id !== userId) return [];
+  const rows = Object.entries(sources).flatMap(([source, items]) => (Array.isArray(items) ? items : [])
+    .filter(row => row?.id && row.user_id === userId && String(row.tank_id) === String(tank.id))
+    .map(row => ({ source, row })));
+  const lookup = source => new Set(rows.filter(item => item.source === source).map(item => String(item.row.id)));
+  const commands = lookup('device_commands'), controls = lookup('control_logs'), scans = lookup('ammonia_readings'), autos = lookup('tank_automation_logs');
+  const scanAlerts = new Map(rows.filter(item => item.source === 'alerts' && scans.has(String(item.row.metadata?.ammonia_reading_id)))
+    .sort((a, b) => compareTimestamps(a.row.created_at, b.row.created_at))
+    .map(item => [String(item.row.metadata.ammonia_reading_id), item.row]));
+  const events = new Map();
+  for (const { source, row } of rows) {
+    const metadata = object(row.metadata);
+    if (source === 'device_commands') {
+      const autoId = /Auto log id:\s*([\w-]+)/i.exec(text(row.result_message))?.[1];
+      if (autoId && autos.has(autoId)) continue;
+    }
+    if (source === 'control_logs' && commands.has(String(metadata.command_id))) continue;
+    if (source === 'alerts' && (commands.has(String(row.command_id || metadata.command_id))
+      || controls.has(String(metadata.control_log_id)) || scans.has(String(metadata.ammonia_reading_id)))) continue;
+
+    const parameter = parameterFor(row);
+    const savedSnapshot = object(metadata.sensor_snapshot);
+    const event = { id: `${source}:${row.id}`, source, tankId: tank.id,
+      tankName: tank.tank_name || tank.name || 'Tank', timestamp: row.created_at,
+      timestampLabel: formatPhilippineDateTime(row.created_at, {}, 'Timestamp unavailable'),
+      severity: recordedSeverity(row), outcome: null, title: text(row.title) || actionFor(row),
+      category: 'other', reason: text(row.reason || row.result_message || row.notes || row.message),
+      action: null, result: null, reading: null, threshold: null, recommendation: null, parameter };
+    if (source === 'device_commands' || source === 'control_logs' || source === 'tank_automation_logs') {
+      event.action = actionFor(row);
+      event.outcome = getRecordedActionOutcome(row, source);
+      const kind = code(row.command_type || row.action_type);
+      event.category = /feed/.test(kind) ? 'feeding' : /drain|refill|pump|fill|stop/.test(kind) ? 'water' : 'other';
+      event.title = event.action;
+      event.result = event.outcome === 'Completed' ? 'Recorded completion. Equipment outcomes below refer to a reported command cycle, not measured water flow or feed delivery.'
+        : event.outcome === 'Unknown / Unconfirmed' ? 'Execution is unconfirmed. A saved status alone does not prove completion.'
+        : event.outcome === 'Requested' ? 'A request was recorded; completion has not been confirmed.'
+        : event.outcome === 'Started' ? 'Execution was reported as started; completion has not been confirmed.'
+        : 'See the recorded reason. No successful completion is claimed.';
+      const pump = formatRecordedPumpAction(row, source);
+      if (source === 'tank_automation_logs') {
+        event.reason = text(row.reason);
+        event.result += ['water_status', 'ph_status', 'turbidity_status', 'temperature_status', 'ammonia_status']
+          .filter(key => text(row[key])).map(key => ` ${key.replaceAll('_', ' ')}: ${row[key]}.`).join('');
+      }
+      if (pump) event.reason = ['Completed', 'Unknown / Unconfirmed'].includes(event.outcome)
+        ? pump.message : [pump.message, event.reason].filter(Boolean).join(' ');
+      if (kind === 'threshold_updated') {
+        event.category = 'thresholds'; event.title = 'Threshold Updated'; event.action = 'Saved threshold settings';
+        event.result = metadata.source === 'ai_recommendation' ? 'AI recommendation accepted by user' : 'Updated';
+      }
+      if (/device_(connected|disconnected|online|offline)/.test(kind)) event.category = 'device';
+    } else if (source === 'ammonia_readings') {
+      const alert = scanAlerts.get(String(row.id));
+      const value = [row.ammonia_mg_l, row.ammonia_level, row.ammonia, row.ammonia_ppm, row.ammonia_value].map(finite).find(value => value !== null);
+      event.category = 'ammonia'; event.title = 'Ammonia result recorded';
+      event.reading = value === undefined ? null : `${value} mg/L`;
+      event.reason = text(row.message) || 'A manual test or scan was recorded. This is historical evidence, not a live reading.';
+      event.severity = alert ? recordedSeverity(alert) : 'no-data';
+      event.result = alert?.message || (text(row.ammonia_status || row.status) ? `Recorded classification: ${row.ammonia_status || row.status}` : 'Historical classification was not recorded.');
+    } else if (source === 'alerts') {
+      event.category = /sensor|ammonia/.test(code(row.type)) ? 'sensor' : /device.*(connect|online|offline)/.test(code(row.type || row.title)) ? 'device' : 'other';
+      if (row.command_id || metadata.command_type || code(row.type) === 'control_log') {
+        const recorded = { ...row, ...metadata, command_status: metadata.command_status, action_status: metadata.action_status };
+        const kind = code(recorded.command_type || recorded.action_type);
+        event.category = /feed/.test(kind) ? 'feeding' : /drain|refill|pump|fill|stop/.test(kind) ? 'water' : 'other';
+        event.title = actionFor(recorded);
+        event.action = event.title;
+        event.outcome = getRecordedActionOutcome(recorded, metadata.command_type ? 'device_commands' : 'control_logs');
+        event.result = 'This is a recorded action notification. Execution confirmation was not independently available in this history.';
+      }
+      const recovery = code(row.type) === 'sensor_recovery' || metadata.event_type === 'sensor_recovery';
+      if (recovery) { event.severity = 'normal'; event.result = 'A recovery event was recorded by the backend.'; }
+      // Handled/resolved does not establish physical sensor recovery.
+      if (!recovery && row.status === 'resolved') event.result = 'Alert marked handled; sensor recovery was not independently recorded.';
+    }
+    const savedValue = finite(savedSnapshot.value);
+    if (savedValue !== null && parameter) event.reading = `${savedValue}${units[parameter] ? ` ${units[parameter]}` : ''}`;
+    // Render only explicitly saved, complete safe-limit snapshots. No default
+    // normalization is allowed to fill historical gaps with today's values.
+    const required = { temperature: ['temperatureMin', 'temperatureMax'], ph: ['phMin', 'phMax'],
+      waterLevel: ['waterLevelMin'], turbidity: ['turbidityMax'], ammonia: ['ammoniaMax'] }[parameter];
+    const savedLimits = object(savedSnapshot.thresholds);
+    if (required?.every(key => finite(savedLimits[key]) !== null)) event.threshold = formatSensorSafeRange(parameter, savedLimits);
+    if (['warning', 'critical'].includes(event.severity) && parameter) {
+      event.recommendation = text(metadata.recommendation?.action) || getSensorInspectionAction(parameter, event.severity);
+      event.recommendationLabel = text(metadata.recommendation?.action) ? 'Recorded recommendation' : 'Inspection guidance';
+    }
+    if (event.category === 'device') event.outcome = null;
+    events.set(event.id, event);
+  }
+  return [...events.values()].sort((a, b) => compareTimestamps(b.timestamp, a.timestamp) || a.id.localeCompare(b.id));
+}

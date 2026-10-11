@@ -1,3 +1,5 @@
+import { getServerNowDate } from '../../services/serverTimeService';
+import { formatPhilippineDate, formatPhilippineTime } from '../../utils/philippineTime';
 import { logDiagnostic, getSafeErrorMessage } from "../../utils/securityDiagnostics";
 import {
   useEffect,
@@ -172,58 +174,9 @@ function formatPeso(value) {
   ).format(number);
 }
 
-function formatDate(value) {
-  if (!value) {
-    return "No date";
-  }
+function formatDate(value) { return formatPhilippineDate(value); }
 
-  const date =
-    new Date(value);
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return "No date";
-  }
-
-  return date.toLocaleDateString(
-    "en-PH",
-    {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    }
-  );
-}
-
-function formatShortTime(
-  value
-) {
-  if (!value) {
-    return "";
-  }
-
-  const date =
-    new Date(value);
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return "";
-  }
-
-  return date.toLocaleTimeString(
-    [],
-    {
-      hour: "numeric",
-      minute: "2-digit",
-    }
-  );
-}
+function formatShortTime(value) { return formatPhilippineTime(value); }
 
 function getListingCategory(
   listing
@@ -663,7 +616,7 @@ export default function MarketplacePage() {
       }
 
       setLastUpdated(
-        new Date()
+        getServerNowDate()
       );
     } catch (error) {
       logDiagnostic(

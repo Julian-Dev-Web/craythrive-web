@@ -1,8 +1,9 @@
+import { formatPhilippineDateTime } from '../utils/philippineTime';
 import { useEffect, useRef, useState } from 'react';
 import { Clock, History } from 'lucide-react';
 import { developerService } from '../services/developerService';
 
-const date = value => new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+const date = value => formatPhilippineDateTime(value);
 const size = bytes => bytes < 1048576 ? `${Math.ceil(bytes / 1024)} KB` : `${(bytes / 1048576).toFixed(1)} MB`;
 
 export default function DeveloperBackupHistory({ busy, onDownload, onPreview, onReauthenticationRequired }) {

@@ -1,11 +1,15 @@
-import useThresholdRefresh from "../../hooks/useThresholdRefresh";
+import useTankMonitoring from '../../hooks/useTankMonitoring';
+import MonitoringSyncNotice from '../../components/MonitoringSyncNotice';
+import { applyPhilippineDateFilter, formatPhilippineDateTime, formatPhilippineTime, formatPhilippineCalendarDate, isWithinPhilippineDateRange, compareTimestamps } from '../../utils/philippineTime';
+import { getServerNowDate } from '../../services/serverTimeService';
+import { formatPumpAlert } from "../../../supabase/functions/_shared/pumpActionWording.js";
 import { logDiagnostic } from "../../utils/securityDiagnostics";
 import SafetyBadge from "../../components/SafetyBadge";
+import SensorSafeRange, { SensorReadingValue } from "../../components/SensorSafeRange";
 import { getSafetySeverity, getSafetyStatusLabel, getParameterExplanation } from "../../utils/statusHelpers";
 import { buildMonitoringRecords, buildTankHistoryExportRows, buildTankSnapshotExportRows, getCurrentTankSnapshot, recordMatchesAmmoniaTank, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
-import { loadAmmoniaHistory, loadCurrentTankRows } from "../../services/tankSnapshotService";
-import { loadActiveThresholds } from "../../utils/thresholdEvaluation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { loadAmmoniaHistory, loadSensorHistory } from "../../services/tankSnapshotService";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   Activity,
@@ -152,116 +156,13 @@ function formatNumber(value) {
   ).format(value || 0);
 }
 
-function formatDate(value) {
-  if (!value) {
-    return "No date";
-  }
+function formatDate(value) { return formatPhilippineDateTime(value); }
 
-  const date = new Date(value);
+function formatDateOnly(value) { return formatPhilippineCalendarDate(value); }
 
-  if (Number.isNaN(date.getTime())) {
-    return "No date";
-  }
+function formatShortTime(value) { return formatPhilippineTime(value); }
 
-  return date.toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function formatDateOnly(value) {
-  if (!value) {
-    return "";
-  }
-
-  const date = new Date(
-    `${value}T00:00:00`
-  );
-
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  return date.toLocaleDateString(
-    "en-PH",
-    {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    }
-  );
-}
-
-function formatShortTime(value) {
-  if (!value) {
-    return "";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  return date.toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function isWithinDateRange(
-  value,
-  fromDate,
-  toDate
-) {
-  if (!fromDate && !toDate) {
-    return true;
-  }
-
-  if (!value) {
-    return false;
-  }
-
-  const recordDate = new Date(value);
-
-  if (
-    Number.isNaN(
-      recordDate.getTime()
-    )
-  ) {
-    return false;
-  }
-
-  const recordTime =
-    recordDate.getTime();
-
-  if (fromDate) {
-    const start =
-      new Date(
-        `${fromDate}T00:00:00`
-      ).getTime();
-
-    if (recordTime < start) {
-      return false;
-    }
-  }
-
-  if (toDate) {
-    const end =
-      new Date(
-        `${toDate}T23:59:59.999`
-      ).getTime();
-
-    if (recordTime > end) {
-      return false;
-    }
-  }
-
-  return true;
-}
+function isWithinDateRange(value, fromDate, toDate) { return isWithinPhilippineDateRange(value, fromDate, toDate); }
 
 function getDateRangeLabel(
   fromDate,
@@ -879,20 +780,30 @@ async function getCurrentUserWithRole() {
    DATABASE FETCH
 ========================================================= */
 
+function reportQuery(table, dateRange) {
+  return applyPhilippineDateFilter(supabase.from(table).select('*'), dateRange.fromDate, dateRange.toDate);
+}
+async function readReportQuery(query, limit, dateRange) {
+  if (!dateRange.fromDate && !dateRange.toDate) return query.limit(limit);
+  const rows = [];
+  for (let offset = 0; ; offset += 1000) {
+    const result = await query.range(offset, offset + 999);
+    if (result.error) return result;
+    rows.push(...(result.data || []));
+    if (!result.data || result.data.length < 1000) return { ...result, data: rows };
+  }
+}
+
 async function fetchAdminRows(
   tableNames,
-  limit = 500
+  limit = 500, dateRange = {}
 ) {
   for (
     const tableName
     of tableNames
   ) {
     const ordered =
-      await supabase
-        .from(
-          tableName
-        )
-        .select("*")
+      await readReportQuery(reportQuery(tableName, dateRange)
         .order(
           "created_at",
           {
@@ -900,9 +811,7 @@ async function fetchAdminRows(
               false,
           }
         )
-        .limit(
-          limit
-        );
+        , limit, dateRange);
 
     if (
       !ordered.error &&
@@ -922,14 +831,8 @@ async function fetchAdminRows(
     }
 
     const plain =
-      await supabase
-        .from(
-          tableName
-        )
-        .select("*")
-        .limit(
-          limit
-        );
+      await readReportQuery(reportQuery(tableName, dateRange)
+        , limit, dateRange);
 
     if (
       !plain.error &&
@@ -960,7 +863,7 @@ async function fetchAdminRows(
 async function fetchUserRows(
   tableNames,
   userId,
-  limit = 300
+  limit = 300, dateRange = {}
 ) {
   for (
     const tableName
@@ -977,11 +880,7 @@ async function fetchUserRows(
       of userFilterColumns
     ) {
       const ordered =
-        await supabase
-          .from(
-            tableName
-          )
-          .select("*")
+        await readReportQuery(reportQuery(tableName, dateRange)
           .eq(
             column,
             userId
@@ -993,9 +892,7 @@ async function fetchUserRows(
                 false,
             }
           )
-          .limit(
-            limit
-          );
+          , limit, dateRange);
 
       if (
         !ordered.error &&
@@ -1014,18 +911,12 @@ async function fetchUserRows(
       }
 
       const plain =
-        await supabase
-          .from(
-            tableName
-          )
-          .select("*")
+        await readReportQuery(reportQuery(tableName, dateRange)
           .eq(
             column,
             userId
           )
-          .limit(
-            limit
-          );
+          , limit, dateRange);
 
       if (
         !plain.error &&
@@ -1066,21 +957,21 @@ async function fetchUserRows(
 async function fetchRowsByScope(
   tableNames,
   currentUser,
-  limit = 400
+  limit = 400, dateRange = {}
 ) {
   if (
     currentUser.isAdmin
   ) {
     return fetchAdminRows(
       tableNames,
-      limit
+      limit, dateRange
     );
   }
 
   return fetchUserRows(
     tableNames,
     currentUser.id,
-    limit
+    limit, dateRange
   );
 }
 
@@ -1451,7 +1342,6 @@ function ReportFilterDropdown({
 
 export default function ReportsPage() {
   const [ammoniaHistoryError, setAmmoniaHistoryError] = useState(false);
-  const [currentRows, setCurrentRows] = useState({ sensor: [], ammonia: [] });
   const [monitoringExportMode, setMonitoringExportMode] = useState("history");
   const [
     activeReport,
@@ -1526,18 +1416,21 @@ export default function ReportsPage() {
      LOAD REPORT DATA
   ======================================================= */
 
-  const [thresholds, setThresholds] = useState(null);
-  useThresholdRefresh(() => { loadActiveThresholds().then(setThresholds); });
+  const monitoring = useTankMonitoring(datasets.tanks);
+  const { rows: currentRows, thresholds, refresh: refreshMonitoring } = monitoring;
 
   const [conditionFilter, setConditionFilter] = useState("all");
   const [exportScope, setExportScope] = useState("current");
 
-  const loadReports =
-    async (
+  const reportLoadVersion = useRef(0);
+  const loadReports = useCallback(async (
       showFullLoading =
         false
     ) => {
-      setThresholds(await loadActiveThresholds());
+      refreshMonitoring();
+      const version = ++reportLoadVersion.current;
+      const dateRange = { fromDate, toDate };
+
       if (
         !isSupabaseConfigured ||
         !supabase
@@ -1599,33 +1492,30 @@ export default function ReportsPage() {
               500
             ),
 
-            fetchRowsByScope(
-              tableGroups.readings,
-              currentUser,
-              1000
-            ),
+            loadSensorHistory(currentUser, { ...dateRange, limit: 1000, paginate: !!(fromDate || toDate) }),
 
             fetchRowsByScope(
               tableGroups.alerts,
               currentUser,
-              1000
+              1000, dateRange
             ),
 
             fetchRowsByScope(
               tableGroups.listings,
               currentUser,
-              1000
+              1000, dateRange
             ),
 
             fetchRowsByScope(
               tableGroups.orders,
               currentUser,
-              1000
+              1000, dateRange
             ),
-            loadAmmoniaHistory(currentUser),
+            loadAmmoniaHistory(currentUser, supabase, dateRange),
           ]);
 
-        setCurrentRows(await loadCurrentTankRows(tanks.rows, currentUser, { sensor: readings.rows, ammonia: ammonia.rows }));
+        if (version !== reportLoadVersion.current) return;
+
         setAmmoniaHistoryError(ammonia.error);
         setDatasets({
           tanks:
@@ -1647,7 +1537,7 @@ export default function ReportsPage() {
         });
 
         setLastUpdated(
-          new Date()
+          getServerNowDate()
         );
       } catch (
         error
@@ -1657,6 +1547,7 @@ export default function ReportsPage() {
           error
         );
       } finally {
+        if (version === reportLoadVersion.current) {
         setIsLoading(
           false
         );
@@ -1664,8 +1555,9 @@ export default function ReportsPage() {
         setIsRefreshing(
           false
         );
+        }
       }
-    };
+    }, [fromDate, toDate, refreshMonitoring]);
 
   useEffect(
     () => {
@@ -1673,7 +1565,7 @@ export default function ReportsPage() {
         true
       );
     },
-    []
+    [loadReports]
   );
 
   /* =======================================================
@@ -1865,7 +1757,7 @@ export default function ReportsPage() {
 
   const currentRecords = useMemo(() => buildMonitoringRecords(currentRows.sensor, currentRows.ammonia, datasets.tanks, thresholds), [currentRows, datasets.tanks, thresholds]);
   const snapshots = useMemo(() => (selectedTankId === "all" ? datasets.tanks : selectedTank ? [selectedTank] : [])
-    .map(tank => getCurrentTankSnapshot(currentRecords, tank, thresholds)), [currentRecords, datasets.tanks, selectedTankId, selectedTank, thresholds]);
+    .map(tank => getCurrentTankSnapshot(currentRecords, tank, thresholds, monitoring.availability)), [currentRecords, datasets.tanks, selectedTankId, selectedTank, thresholds, monitoring.availability]);
 
   const tankReadings =
     useMemo(
@@ -1883,10 +1775,7 @@ export default function ReportsPage() {
               (
                 item
               ) =>
-                recordMatchesTank(
-                  item.reading,
-                  selectedTank
-                )
+                item.tankKey === selectedTank.id
             );
         }
 
@@ -1918,7 +1807,7 @@ export default function ReportsPage() {
     (conditionFilter === "all" || item.status === conditionFilter)),
     [enrichedAmmonia, selectedTankId, selectedTank, fromDate, toDate, conditionFilter]);
   const tankRecords = useMemo(() => [...tankReadings, ...tankAmmonia]
-    .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)), [tankReadings, tankAmmonia]);
+    .sort((a, b) => compareTimestamps(b.date || 0, a.date || 0)), [tankReadings, tankAmmonia]);
 
   const tankAlerts =
     useMemo(
@@ -2017,7 +1906,7 @@ export default function ReportsPage() {
       ]
     );
 
-  const snapshot = getCurrentTankSnapshot(currentRecords, selectedTankId === "all" ? null : selectedTank, thresholds);
+  const snapshot = getCurrentTankSnapshot(currentRecords, selectedTankId === "all" ? null : selectedTank, thresholds, monitoring.availability);
   const latestReading = snapshot.waterRecord;
   const latestAmmonia = snapshot.ammoniaRecord;
   const currentSafety = snapshot.safety;
@@ -2465,6 +2354,7 @@ export default function ReportsPage() {
                 "Alert",
 
               title:
+                formatPumpAlert(alert).title ||
                 alert
                   ?.title ||
                 alert
@@ -2540,14 +2430,9 @@ export default function ReportsPage() {
               a,
               b
             ) =>
-              new Date(
-                b.date ||
-                  0
-              ) -
-              new Date(
-                a.date ||
-                  0
-              )
+              compareTimestamps(b.date ||
+                  0, a.date ||
+                  0)
           )
           .slice(
             0,
@@ -2600,14 +2485,9 @@ export default function ReportsPage() {
               a,
               b
             ) =>
-              new Date(
-                b.date ||
-                  0
-              ) -
-              new Date(
-                a.date ||
-                  0
-              )
+              compareTimestamps(b.date ||
+                  0, a.date ||
+                  0)
           )
           .slice(
             0,
@@ -2646,6 +2526,7 @@ export default function ReportsPage() {
                 ),
 
               Name:
+                formatPumpAlert(alert).title ||
                 alert
                   ?.title ||
                 alert
@@ -2676,6 +2557,7 @@ export default function ReportsPage() {
                 ),
 
               Message:
+                formatPumpAlert(alert).message ||
                 alert
                   ?.message ||
                 alert
@@ -2995,6 +2877,7 @@ export default function ReportsPage() {
     }
 
     printReport({
+      generatedAt: getServerNowDate(),
       title,
       subtitle: monitoringExportMode === "current" && (activeReport === "tanks" || exportScope === "combined")
         ? `${selectedTankName} · Latest available tank status${exportScope === "combined" ? ` · Marketplace period: ${dateRangeLabel}` : ""}` : subtitle,
@@ -3537,6 +3420,7 @@ export default function ReportsPage() {
                 />
               </div>
 
+              <MonitoringSyncNotice monitoring={monitoring} reading={latestReading?.reading} />
               <SafetyBadge severity={getSafetySeverity(currentSafety)} />
               <p>Latest available records for {currentTankName}. This current snapshot is independent of the historical date and condition filters.</p>
               <div className="cray-report-metric-grid">
@@ -3548,7 +3432,8 @@ export default function ReportsPage() {
                   ["Latest available ammonia scan", latestAmmonia?.ammoniaLabel || "No Scan", "ammonia", FlaskConical, latestAmmonia?.date],
                 ].map(([label, value, key, Icon, date]) => (
                   <div key={key}>
-                    <Icon size={20} /><strong>{value}</strong><span>{label}</span>
+                    <Icon size={20} /><SensorReadingValue value={value} sensor={key} /><span>{label}</span>
+                    <SensorSafeRange sensor={key} thresholds={currentSafety.activeThresholds} />
                     <SafetyBadge severity={currentSafety.parameters[key].severity} parameter={currentSafety.parameters[key]} emptyLabel={key === "ammonia" ? "No Scan" : "No Data"} />
                     {getParameterExplanation(currentSafety.parameters[key], key === "ammonia" ? "Ammonia" : label) &&
                       <small className="safety-explanation">{getParameterExplanation(currentSafety.parameters[key], key === "ammonia" ? "Ammonia" : label)}</small>}

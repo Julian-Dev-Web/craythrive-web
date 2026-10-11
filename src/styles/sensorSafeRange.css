@@ -1,0 +1,26 @@
+.sensor-safe-range.sensor-safe-range {
+  display: block;
+  max-width: 100%;
+  margin: 4px 0;
+  color: var(--ct-muted, #526876);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.sensor-reading-empty.sensor-reading-empty {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.monitoring-sync-notice {
+  max-width: 100%;
+  margin: 6px 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--ct-muted, #526876);
+  overflow-wrap: anywhere;
+}
+.monitoring-sync-notice p { margin: 0; }
+.monitoring-sync-notice button { min-height: 44px; margin-inline-start: 6px; }

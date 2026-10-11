@@ -1,11 +1,17 @@
-import useThresholdRefresh from "../../hooks/useThresholdRefresh";
+import { loadSensorHistory } from '../../services/tankSnapshotService';
+import useTankMonitoring from '../../hooks/useTankMonitoring';
+import MonitoringSyncNotice from '../../components/MonitoringSyncNotice';
+import { formatPhilippineDateTime, formatPhilippineTime, compareTimestamps } from '../../utils/philippineTime';
+import { getServerNowDate } from '../../services/serverTimeService';
+import { formatPumpAlert } from "../../../supabase/functions/_shared/pumpActionWording.js";
 import { logDiagnostic } from "../../utils/securityDiagnostics";
 import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
+import SensorSafeRange, { SensorReadingValue } from "../../components/SensorSafeRange";
+import SensorRecommendations from "../../components/SensorRecommendations";
 import { getSafetySeverity, getSafetyStatusLabel, getParameterExplanation } from "../../utils/statusHelpers";
-import { buildMonitoringRecords, evaluateCurrentTankSafety, getLatestAmmoniaForTank, getAmmoniaNumericValue, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
+import { buildMonitoringRecords, evaluateCurrentTankSafety, getCurrentTankSnapshot, getLatestAmmoniaForTank, getAmmoniaNumericValue } from "../../utils/monitoringRecords";
 import { evaluateReadingSafety } from "../../utils/thresholdEvaluation";
-import { loadCurrentTankRows } from "../../services/tankSnapshotService";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Activity,
@@ -32,7 +38,6 @@ import {
 } from "../../utils/sensorReadingUtils";
 
 import {
-  loadActiveThresholds,
   resolveTankThresholds,
 } from "../../utils/thresholdEvaluation";
 
@@ -112,41 +117,9 @@ function formatPeso(value) {
   }).format(amount);
 }
 
-function formatDate(value) {
-  if (!value) {
-    return "No date";
-  }
+function formatDate(value) { return formatPhilippineDateTime(value); }
 
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "No date";
-  }
-
-  return date.toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function formatShortTime(value) {
-  if (!value) {
-    return "";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  return date.toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
+function formatShortTime(value) { return formatPhilippineTime(value); }
 
 function normalizeStatusText(value) {
   return lower(value)
@@ -321,6 +294,7 @@ function getOrderTitle(order, index) {
 
 function getAlertTitle(alert, index) {
   return (
+    formatPumpAlert(alert).title ||
     alert?.title ||
     alert?.alert_title ||
     alert?.notification_title ||
@@ -487,7 +461,6 @@ function MiniBar({
 ========================================================= */
 
 export default function DashboardOverview() {
-  const [currentRows, setCurrentRows] = useState({ sensor: [], ammonia: [] });
   const [datasets, setDatasets] = useState({
     tanks: [],
     readings: [],
@@ -497,24 +470,8 @@ export default function DashboardOverview() {
     ammonia: [],
   });
 
-  const [thresholds, setThresholds] =
-    useState(null);
-  useThresholdRefresh(() => { loadActiveThresholds().then(setThresholds); });
-
-
-  useEffect(() => {
-    let isMounted = true;
-
-    loadActiveThresholds().then((loaded) => {
-      if (isMounted) {
-        setThresholds(loaded);
-      }
-    });
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  const monitoring = useTankMonitoring(datasets.tanks);
+  const { rows: currentRows, thresholds, refresh: refreshMonitoring } = monitoring;
 
   const [isLoading, setIsLoading] =
     useState(true);
@@ -526,8 +483,11 @@ export default function DashboardOverview() {
      LOAD DASHBOARD
   ======================================================= */
 
-  const loadDashboard = async () => {
-    setThresholds(await loadActiveThresholds());
+  const pageLoadVersion = useRef(0);
+  const loadDashboard = useCallback(async () => {
+      const version = ++pageLoadVersion.current;
+      refreshMonitoring();
+
     if (
       !isSupabaseConfigured ||
       !supabase
@@ -541,6 +501,7 @@ export default function DashboardOverview() {
 
       const currentUser =
         await getCurrentUser();
+        if (version !== pageLoadVersion.current) return;
 
       if (!currentUser.id) {
         setDatasets({
@@ -569,11 +530,7 @@ export default function DashboardOverview() {
           300
         ),
 
-        fetchUserRows(
-          tableGroups.readings,
-          currentUser.id,
-          300
-        ),
+        loadSensorHistory(currentUser, { limit: 300 }),
 
         fetchUserRows(
           tableGroups.alerts,
@@ -600,7 +557,7 @@ export default function DashboardOverview() {
         ),
       ]);
 
-      setCurrentRows(await loadCurrentTankRows(tanks.rows, currentUser, { sensor: readings.rows, ammonia: ammonia.rows }));
+        if (version !== pageLoadVersion.current) return;
       setDatasets({
         tanks: tanks.rows,
         readings: readings.rows,
@@ -610,20 +567,22 @@ export default function DashboardOverview() {
         ammonia: ammonia.rows,
       });
 
-      setLastUpdated(new Date());
+      setLastUpdated(getServerNowDate());
     } catch (error) {
       logDiagnostic(
         "Dashboard loading error:",
         error
       );
     } finally {
-      setIsLoading(false);
+      if (version === pageLoadVersion.current) setIsLoading(false);
     }
-  };
+  }, [refreshMonitoring]);
 
   useEffect(() => {
     loadDashboard();
-  }, []);
+    const loadState = pageLoadVersion;
+    return () => { loadState.current++; };
+  }, [loadDashboard]);
 
   /* =======================================================
      SENSOR READINGS
@@ -639,13 +598,11 @@ export default function DashboardOverview() {
   const latestAmmoniaRecord = currentRecords.find(item => item.type === "Ammonia Reading" &&
     (!latestReading || item.tankKey === latestReading.tankKey)) || null;
   const latestAmmoniaForReading = latestAmmoniaRecord?.ammoniaValue ?? null;
-  const latestTankSafety = evaluateCurrentTankSafety(latestReading, latestAmmoniaRecord, thresholds);
-  const currentTankSeverities = useMemo(() => datasets.tanks.map(tank => {
-    const records = currentRecords.filter(item => recordMatchesMonitoringTank(item.reading, tank));
-    const water = records.find(item => item.type === "Water Reading");
-    const ammonia = records.find(item => item.type === "Ammonia Reading");
-    return getSafetySeverity(evaluateCurrentTankSafety(water, ammonia, thresholds));
-  }), [datasets.tanks, currentRecords, thresholds]);
+  const latestTankSafety = evaluateCurrentTankSafety(latestReading, latestAmmoniaRecord, thresholds, monitoring.availability);
+  const currentTankSnapshots = useMemo(() => datasets.tanks.map(tank =>
+    getCurrentTankSnapshot(currentRecords, tank, thresholds, monitoring.availability)),
+  [datasets.tanks, currentRecords, thresholds, monitoring.availability]);
+  const currentTankSeverities = useMemo(() => currentTankSnapshots.map(snapshot => getSafetySeverity(snapshot.safety)), [currentTankSnapshots]);
 
   /* =======================================================
      AMMONIA STATUS
@@ -716,11 +673,7 @@ export default function DashboardOverview() {
       );
 
     const sensorIssues =
-      enrichedReadings.filter((item) =>
-        ["warning", "critical"].includes(
-          item.status
-        )
-      ).length;
+      currentTankSeverities.filter(severity => ["warning", "critical"].includes(severity)).length;
 
     return {
       totalTanks: datasets.tanks.length,
@@ -750,7 +703,7 @@ export default function DashboardOverview() {
 
       ammoniaNoScan: ammoniaStats.noScan,
     };
-  }, [datasets, enrichedReadings, ammoniaStats]);
+  }, [datasets, currentTankSeverities, ammoniaStats]);
 
   /* =======================================================
      AVERAGES
@@ -826,20 +779,15 @@ export default function DashboardOverview() {
 
   const recentSensorIssues =
     useMemo(() => {
-      return monitoringRecords
-        .filter((item) =>
-          [
-            "warning",
-            "critical",
-          ].includes(item.status)
-        )
+      return currentTankSnapshots.map(snapshot => ({ ...snapshot.waterRecord,
+        tankName: snapshot.tankName, status: getSafetySeverity(snapshot.safety) }))
+        .filter(item => ["warning", "critical"].includes(item.status))
         .sort(
           (a, b) =>
-            new Date(b.date || 0) -
-            new Date(a.date || 0)
+            compareTimestamps(b.date || 0, a.date || 0)
         )
         .slice(0, 5);
-    }, [monitoringRecords]);
+    }, [currentTankSnapshots]);
 
   /* =======================================================
      MARKETPLACE ACTIVITY
@@ -889,8 +837,7 @@ export default function DashboardOverview() {
       ]
         .sort(
           (a, b) =>
-            new Date(b.date || 0) -
-            new Date(a.date || 0)
+            compareTimestamps(b.date || 0, a.date || 0)
         )
         .slice(0, 6);
     }, [
@@ -939,8 +886,7 @@ export default function DashboardOverview() {
       ]
         .sort(
           (a, b) =>
-            new Date(b.date || 0) -
-            new Date(a.date || 0)
+            compareTimestamps(b.date || 0, a.date || 0)
         )
         .slice(0, 6);
     }, [
@@ -980,7 +926,7 @@ export default function DashboardOverview() {
   const hasWarning = currentTankSeverities.includes("warning");
 
   const simpleHealthSeverity = hasCriticalProblem ? "critical" : hasWarning ? "warning"
-    : currentTankSeverities.includes("normal") ? "normal" : "no-data";
+    : currentTankSeverities.includes("no-data") ? "no-data" : currentTankSeverities.includes("normal") ? "normal" : "no-data";
   const simpleHealthTitle = getSafetyStatusLabel(simpleHealthSeverity);
 
   const simpleHealthText =
@@ -995,7 +941,8 @@ export default function DashboardOverview() {
   ======================================================= */
 
   return (
-    <div className="farmer-overview-page">
+    <div className="farmer-overview-page sensor-recommendations-page">
+      <SensorRecommendations tanks={datasets.tanks} initialTankId={latestReading?.tankKey || latestAmmoniaRecord?.tankKey} />
 
       {/* ===============================================
           SYSTEM STATUS
@@ -1237,6 +1184,7 @@ export default function DashboardOverview() {
             </Link>
           </div>
 
+          <MonitoringSyncNotice monitoring={monitoring} reading={latestReading?.reading} />
           {latestReading || latestAmmoniaRecord ? (
             <>
               <div className="farmer-reading-header">
@@ -1260,13 +1208,14 @@ export default function DashboardOverview() {
                 {[
                   ["Temperature", latestReading?.normalized.temperatureLabel || "No Data", "temperature", Thermometer],
                   ["pH Level", latestReading?.normalized.phNumberLabel || "No Data", "ph", Droplets],
-                  ["Water Clarity", latestReading?.normalized.turbidityStatus || "No Data", "turbidity", Waves],
+                  ["Water Clarity", latestReading?.normalized.turbidityNumberLabel || "No Data", "turbidity", Waves],
                   ["Water Level", latestReading?.normalized.waterLabel || "No Data", "waterLevel", Database],
                   ["Ammonia", latestAmmoniaForReading === null ? "No Scan" : latestAmmoniaForReading.toFixed(2) + " mg/L", "ammonia", FlaskConical],
                 ].map(([label, value, key, Icon]) => (
                   <div className="farmer-water-item" key={key}>
                     <span className="farmer-water-icon"><Icon size={21} /></span>
-                    <div><small>{label}</small><strong>{value}</strong>
+                    <div><small>{label}</small><SensorReadingValue value={value} sensor={key} />
+                      <SensorSafeRange sensor={key} thresholds={latestTankSafety.activeThresholds} />
                       <SafetyBadge severity={latestTankSafety.parameters[key].severity} parameter={latestTankSafety.parameters[key]} emptyLabel={key === "ammonia" ? "No Scan" : "No Data"} />
                       {getParameterExplanation(latestTankSafety.parameters[key], label) &&
                         <span>{getParameterExplanation(latestTankSafety.parameters[key], label)}</span>}
@@ -1329,13 +1278,12 @@ export default function DashboardOverview() {
               />
 
               <strong>
-                Nothing needs attention
+                {simpleHealthSeverity === "normal" ? "Nothing needs attention" : "Current condition unavailable"}
               </strong>
 
               <span>
-                Your latest monitored water
-                conditions are currently
-                stable.
+                {simpleHealthSeverity === "normal" ? "The latest evaluated readings are within the configured limits."
+                  : "Fresh sensor readings are needed to check the current tank condition."}
               </span>
             </div>
           ) : (

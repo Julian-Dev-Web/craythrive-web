@@ -1,3 +1,4 @@
+import { compareTimestamps } from './philippineTime';
 import { getCurrentTankSnapshot } from "./monitoringRecords";
 import { getSafetySeverity, getSafetyStatusLabel } from "./statusHelpers";
 import { evaluateReadingSafety, getLocalThresholds, resolveTankThresholds } from "./thresholdEvaluation";
@@ -8,7 +9,7 @@ export function buildMonitoringAIContext({ records, tank, thresholds = getLocalT
   const anchor = snapshot.waterRecord || snapshot.ammoniaRecord;
   thresholds = resolveTankThresholds(thresholds, tank?.id || anchor?.tankKey);
   const scoped = records.filter(item => anchor && item.tankKey === anchor.tankKey)
-    .sort((a, b) => (new Date(b.date || 0).getTime() || 0) - (new Date(a.date || 0).getTime() || 0));
+    .sort((a, b) => compareTimestamps(b.date || 0, a.date || 0));
   const sensor = item => item ? { timestamp: item.date,
     temperature: item.normalized.temperatureValue, ph: item.normalized.phValue,
     water_clarity: item.normalized.turbidityValue, water_level: item.normalized.waterValue,

@@ -60,11 +60,12 @@ export const COLUMNS = {
   UPDATED_AT: "updated_at",
 };
 
-// sensor_readings columns (confirmed via mobile src/utils/thresholdSettings.js)
+// Monitoring columns verified against the linked remote schema for Fix #7.
+// See docs/SENSOR_READING_SYNC_AUDIT.md; the full Mobile source is not in this workspace.
 export const SENSOR_READING_FIELDS = {
   TEMPERATURE: "temperature_c",
   TEMPERATURE_STATUS: "temperature_status",
-  PH: "ph",
+  PH: "ph_value", // calibrated pH; legacy `ph` is a fallback, never ph_voltage/raw_ph_value
   PH_STATUS: "ph_status",
   TURBIDITY: "turbidity_voltage", // higher voltage = clearer water
   TURBIDITY_STATUS: "turbidity_status",
@@ -72,18 +73,12 @@ export const SENSOR_READING_FIELDS = {
   WATER_STATUS: "water_status",
 };
 
-// Existing frontend ammonia contract: `ammonia` + `ammonia_status`. The live
-// schema, primary key, ownership, RLS and indexes still require inspection.
-// These compatibility aliases describe existing readers; they are not a
-// proposal to create columns. Ammonia history is manual/event-based and must
-// remain in this table, with its own created_at, never in sensor_readings.
-// The documented mobile client writes plain `ammonia` + `ammonia_status`; the
-// web dashboard's older code also probed ammonia_mg_l / ammonia_level /
-// ammonia_ppm / ammonia_value as fallbacks. Kept as fallbacks below since
-// ammonia column naming wasn't as clearly pinned down as sensor_readings.
+// Remote scan schema has ammonia_mg_l and legacy ammonia_level. The older
+// reader aliases remain compatible without proposing/writing new columns.
+// Scans are separate dated events, never live sensor_readings.ammonia.
 export const AMMONIA_READING_FIELDS = {
-  VALUE: "ammonia",
-  VALUE_FALLBACKS: ["ammonia_mg_l", "ammonia_level", "ammonia_ppm", "ammonia_value"],
+  VALUE: "ammonia_mg_l", // remote scan schema; preserve mg/L, do not use sensor_readings.ammonia
+  VALUE_FALLBACKS: ["ammonia_level", "ammonia", "ammonia_ppm", "ammonia_value"],
   STATUS: "ammonia_status",
   STATUS_FALLBACKS: ["status", "result", "level"],
   SOURCE_LABEL: "Smartphone Scan", // LIANKAI test strip + phone camera, not ESP32-CAM

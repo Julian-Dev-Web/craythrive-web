@@ -114,8 +114,10 @@ Files changed/prepared in this audit:
 - `docs/sql/reconcile_confirmed_water_threshold.sql`
 - `docs/THRESHOLD_CONSISTENCY_AUDIT.md`
 
-This release includes the tested Web refresh changes, regression checks and
-guarded data-repair template. Hosting deployment status must be checked after
+The earlier release included the tested Web refresh changes, regression checks
+and guarded data-repair template. The one-time template and its template-specific
+tests have since been removed from the current working tree; that removal does
+not modify production records or the canonical threshold RPC. Hosting deployment status must be checked after
 the GitHub push. No new migration or Edge Function deployment is included. The
 one-time data repair is already visible to the existing production canonical
 reader after refresh. Permanent mobile Apply integration remains pending the

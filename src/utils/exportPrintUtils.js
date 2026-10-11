@@ -1,4 +1,5 @@
-﻿// CSV keeps complete raw field text; print uses its own readable presentation.
+import { formatPhilippineDateTime } from './philippineTime.js';
+// CSV keeps complete raw field text; print uses its own readable presentation.
 function cleanValue(value) {
   return value == null ? "" : String(value).replace(/\s+/g, " ").trim();
 }
@@ -95,8 +96,8 @@ function buildSection(section, index) {
 }
 // Browser pagination uses actual rendered row heights, including long names.
 // CSV fields and evaluated statuses remain unchanged; only print presentation changes.
-export function buildPrintableReport({ title, subtitle, sections }) {
-  const generatedAt = new Date().toLocaleString("en-PH", { dateStyle: "long", timeStyle: "short" });
+export function buildPrintableReport({ title, subtitle, sections, generatedAt: serverTimestamp }) {
+  const generatedAt = formatPhilippineDateTime(serverTimestamp, {}, 'Server time unavailable');
   return `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <title>${escapeHtml(subtitle ? `${title} - ${subtitle}` : title)}</title>
     <style>

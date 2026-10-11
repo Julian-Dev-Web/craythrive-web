@@ -1,12 +1,15 @@
-import useThresholdRefresh from "../../hooks/useThresholdRefresh";
+import useTankMonitoring from '../../hooks/useTankMonitoring';
+import MonitoringSyncNotice from '../../components/MonitoringSyncNotice';
+import { compareSensorRowsNewestFirst, currentSensorSafety } from '../../../supabase/functions/_shared/sensorReadingContract.js';
 import { logDiagnostic } from "../../utils/securityDiagnostics";
 import { getAmmoniaLabel, getAmmoniaNumericValue, getAmmoniaScanDate, getLatestAmmoniaForTank, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
-import { loadCurrentTankRows } from "../../services/tankSnapshotService";
 import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
+import SensorSafeRange, { SensorReadingValue } from "../../components/SensorSafeRange";
 import { getTankPairingState } from "../../utils/tankPairing";
 import { getTankPopulationLabel } from "../../utils/tankCreationRules";
 import { getSafetySeverity, getParameterExplanation, getSafetyStatusLabel } from "../../utils/statusHelpers";
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -43,7 +46,6 @@ import {
 
 import {
   evaluateReadingSafety,
-  loadActiveThresholds,
   resolveTankThresholds,
 } from "../../utils/thresholdEvaluation";
 
@@ -58,16 +60,6 @@ import {
 
 const tankTables = [
   "tanks",
-];
-
-const readingTables = [
-  "sensor_readings",
-  "tank_readings",
-  "readings",
-];
-
-const ammoniaTables = [
-  "ammonia_readings",
 ];
 
 const userFilterColumns = [
@@ -115,7 +107,7 @@ function getPhNumericLabel(reading) {
   const numberValue = normalizeSensorReading(reading).phValue;
 
   return numberValue !== null
-    ? numberValue.toFixed(1)
+    ? numberValue.toFixed(2)
     : null;
 }
 
@@ -192,16 +184,6 @@ function getProfileName(profile) {
 ========================================================= */
 
 
-function getReadingDate(reading) {
-  return (
-    reading?.created_at ||
-    reading?.timestamp ||
-    reading?.date ||
-    reading?.updated_at ||
-    ""
-  );
-}
-
 /* =========================================================
    LATEST READING ORDER
 ========================================================= */
@@ -212,12 +194,7 @@ function sortReadingsNewestFirst(
 ) {
   return [...readings].sort(
     (a, b) =>
-      new Date(
-        getReadingDate(b)
-      ) -
-      new Date(
-        getReadingDate(a)
-      )
+      compareSensorRowsNewestFirst(a, b)
   );
 }
 
@@ -651,13 +628,14 @@ function SummaryCard({
   );
 }
 
-function SensorMiniCard({ icon: Icon, label, value, parameter, scanDate, manualScan = false }) {
+function SensorMiniCard({ icon: Icon, label, value, parameter, sensor, thresholds, scanDate, manualScan = false }) {
   const explanation = getParameterExplanation(parameter, label);
   return (
     <div className="modern-tank-sensor-card">
       <Icon size={19} />
       <span>{label}</span>
-      <strong>{value ?? "No Data"}</strong>
+      <SensorReadingValue value={value} sensor={sensor} />
+      <SensorSafeRange sensor={sensor} thresholds={thresholds} />
       <SafetyBadge className="modern-tank-status" severity={parameter?.severity} parameter={parameter} emptyLabel={manualScan ? "No Scan" : "No Data"} />
       {explanation && <small className="safety-explanation">{explanation}</small>}
       {manualScan && <small>Latest available ammonia scan</small>}
@@ -889,7 +867,6 @@ export default function TanksPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const createdTank = location.state?.tankCreated;
-  const [currentRows, setCurrentRows] = useState({ sensor: [], ammonia: [] });
   const [
     tanks,
     setTanks,
@@ -926,44 +903,19 @@ export default function TanksPage() {
   ] =
     useState(true);
 
-  const [
-    thresholds,
-    setThresholds,
-  ] =
-    useState(null);
-  useThresholdRefresh(() => { loadActiveThresholds().then(setThresholds); });
-
-
-  useEffect(() => {
-    let isMounted =
-      true;
-
-    loadActiveThresholds()
-      .then(
-        (loaded) => {
-          if (
-            isMounted
-          ) {
-            setThresholds(
-              loaded
-            );
-          }
-        }
-      );
-
-    return () => {
-      isMounted =
-        false;
-    };
-  }, []);
+  const monitoring = useTankMonitoring(tanks);
+  const { rows: currentRows, thresholds, refresh: refreshMonitoring } = monitoring;
 
   /* =======================================================
      LOAD
   ======================================================= */
 
-  const loadTanks =
+  const pageLoadVersion = useRef(0);
+  const loadTanks = useCallback(
     async () => {
-      setThresholds(await loadActiveThresholds());
+      const version = ++pageLoadVersion.current;
+      refreshMonitoring();
+
       if (
         !isSupabaseConfigured ||
         !supabase
@@ -982,6 +934,7 @@ export default function TanksPage() {
 
         const currentUser =
           await getCurrentUserWithRole();
+        if (version !== pageLoadVersion.current) return;
 
         if (
           !currentUser.id
@@ -999,8 +952,6 @@ export default function TanksPage() {
 
         const [
           tankResult,
-          readingResult,
-          ammoniaResult,
           profileResult,
         ] =
           await Promise.all([
@@ -1010,24 +961,12 @@ export default function TanksPage() {
               300
             ),
 
-            fetchRowsByScope(
-              readingTables,
-              currentUser,
-              300
-            ),
-
-            fetchRowsByScope(
-              ammoniaTables,
-              currentUser,
-              300
-            ),
-
             fetchProfiles(
               currentUser
             ),
           ]);
 
-        setCurrentRows(await loadCurrentTankRows(tankResult.rows, currentUser, { sensor: readingResult.rows, ammonia: ammoniaResult.rows }));
+        if (version !== pageLoadVersion.current) return;
         setTanks(
           tankResult.rows
         );
@@ -1043,15 +982,15 @@ export default function TanksPage() {
           error
         );
       } finally {
-        setIsLoading(
-          false
-        );
+      if (version === pageLoadVersion.current) setIsLoading(false);
       }
-    };
+    }, [refreshMonitoring]);
 
   useEffect(() => {
     loadTanks();
-  }, []);
+    const loadState = pageLoadVersion;
+    return () => { loadState.current++; };
+  }, [loadTanks]);
 
   /* =======================================================
      PROFILE LOOKUP
@@ -1143,30 +1082,12 @@ export default function TanksPage() {
                 )
               : null;
 
-          const safety =
-            thresholds
-              ? evaluateReadingSafety(
-                  {
-                    temperature: normalized.temperatureValue,
-                    ph: normalized.phValue,
-
-                    turbidityVoltage:
-                      normalized.turbidityValue,
-
-                    waterDepth: normalized.waterValue,
-                    waterStatus: normalized.raw?.water_status,
-                    waterMetadata: normalized.raw?.raw_payload,
-                    temperatureStatus: normalized.raw?.temperature_status,
-                    phStatus: normalized.raw?.ph_status,
-                    turbidityStatus: normalized.raw?.turbidity_status,
-
-                    ammonia:
-                      latestAmmoniaValue,
-                  },
-
-                  effectiveThresholds
-                )
-              : null;
+          const evaluated = evaluateReadingSafety({ temperature: normalized.temperatureValue, ph: normalized.phValue,
+            turbidityVoltage: normalized.turbidityValue, waterDepth: normalized.waterValue,
+            waterStatus: latestReading?.water_status, waterMetadata: latestReading?.raw_payload,
+            temperatureStatus: latestReading?.temperature_status, phStatus: latestReading?.ph_status,
+            turbidityStatus: latestReading?.turbidity_status, ammonia: latestAmmoniaValue }, effectiveThresholds);
+          const safety = currentSensorSafety(evaluated, latestReading, monitoring.nowMs, monitoring.availability.verified);
 
           const ownerId =
             getTankOwnerId(
@@ -1232,12 +1153,7 @@ export default function TanksPage() {
 
             safety,
 
-            lastSync:
-              normalized.createdAt ||
-              latestReading?.created_at ||
-              tank?.updated_at ||
-              tank?.created_at ||
-              null,
+            lastSync: latestReading?.created_at || null,
           };
         }
       );
@@ -1245,7 +1161,7 @@ export default function TanksPage() {
       tanks,
       currentRows,
       thresholds,
-      profileMap,
+      profileMap, monitoring.nowMs, monitoring.availability.verified,
     ]);
 
   /* =======================================================
@@ -1720,6 +1636,7 @@ export default function TanksPage() {
                   </div>
 
                   <SafetyBadge className="modern-tank-status" severity={item.status} />
+                  <MonitoringSyncNotice monitoring={monitoring} reading={item.latestReading} />
                 </div>
 
                 {/* LAST UPDATE */}
@@ -1760,7 +1677,8 @@ export default function TanksPage() {
                       item.normalized
                         .temperatureLabel
                     }
-                    parameter={item.normalized.safety?.parameters.temperature}
+                    parameter={item.safety?.parameters.temperature}
+                    sensor="temperature" thresholds={item.safety?.activeThresholds}
                   />
 
                   <SensorMiniCard
@@ -1775,7 +1693,8 @@ export default function TanksPage() {
                       item.normalized
                         .phNumberLabel
                     }
-                    parameter={item.normalized.safety?.parameters.ph}
+                    parameter={item.safety?.parameters.ph}
+                    sensor="ph" thresholds={item.safety?.activeThresholds}
                   />
 
                   <SensorMiniCard
@@ -1785,9 +1704,10 @@ export default function TanksPage() {
                     label="Water Clarity"
                     value={
                       item.normalized
-                        .turbidityStatus
+                        .turbidityNumberLabel
                     }
-                    parameter={item.normalized.safety?.parameters.turbidity}
+                    parameter={item.safety?.parameters.turbidity}
+                    sensor="turbidity" thresholds={item.safety?.activeThresholds}
                   />
 
                   <SensorMiniCard
@@ -1799,11 +1719,13 @@ export default function TanksPage() {
                       item.normalized
                         .waterLabel
                     }
-                    parameter={item.normalized.safety?.parameters.waterLevel}
+                    parameter={item.safety?.parameters.waterLevel}
+                    sensor="waterLevel" thresholds={item.safety?.activeThresholds}
                   />
                   <SensorMiniCard icon={FlaskConical} label="Ammonia"
                     value={getAmmoniaLabel(item.latestAmmoniaValue)}
                     parameter={item.safety?.parameters.ammonia} manualScan
+                    sensor="ammonia" thresholds={item.safety?.activeThresholds}
                     scanDate={getAmmoniaScanDate(item.latestAmmoniaRow)} />
                 </div>
 
