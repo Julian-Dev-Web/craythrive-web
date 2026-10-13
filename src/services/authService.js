@@ -1,6 +1,7 @@
 import { logDiagnostic, getSafeErrorMessage } from "../utils/securityDiagnostics";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import { hasDashboardAccess } from "../utils/dashboardAccess.js";
+import { readDashboardProfile, readDashboardSession, signOutLocalSession } from './dashboardSession.js';
 export { hasDashboardAccess } from "../utils/dashboardAccess.js";
 
 /*
@@ -59,57 +60,7 @@ async function fetchProfile(userId) {
     };
   }
 
-  // First try profiles.id
-  const {
-    data: profileById,
-    error: profileByIdError,
-  } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", userId)
-    .maybeSingle();
-
-  if (!profileByIdError && profileById) {
-    return {
-      profile: profileById,
-      error: null,
-    };
-  }
-
-  // Fallback for projects using profiles.user_id
-  const {
-    data: profileByUserId,
-    error: profileByUserIdError,
-  } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (!profileByUserIdError && profileByUserId) {
-    return {
-      profile: profileByUserId,
-      error: null,
-    };
-  }
-
-  /*
-   * Return the useful Supabase error only if both attempts failed.
-   * If neither query produced an error but there was simply no row,
-   * return our own message.
-   */
-  if (profileByIdError && profileByUserIdError) {
-    logDiagnostic("Could not load user profile:", {
-      profileByIdError,
-      profileByUserIdError,
-    });
-  }
-
-  return {
-    profile: null,
-    error:
-      "Your CrayThrive account does not have a profile record yet.",
-  };
+  return readDashboardProfile(supabase, userId);
 }
 
 /*
@@ -191,12 +142,12 @@ export async function signInWithDashboardAccess(email, password) {
     const {
       profile,
       error: profileError,
+      status: profileStatus,
     } = await fetchProfile(user.id);
 
     if (profileError || !profile) {
-      // Do not leave an authenticated session hanging
-      // when dashboard access cannot be verified.
-      await supabase.auth.signOut();
+      // A network/profile outage must not revoke this or any other device session.
+      if (profileStatus === 'missing') await signOutLocalSession(supabase);
 
       return {
         user: null,
@@ -213,7 +164,7 @@ export async function signInWithDashboardAccess(email, password) {
      * Check dashboard role.
      */
     if (!hasDashboardAccess(profile)) {
-      await supabase.auth.signOut();
+      await signOutLocalSession(supabase);
 
       return {
         user: null,
@@ -322,25 +273,10 @@ export async function getCurrentProfile() {
  * Used by protected dashboard routes.
  */
 export async function checkDashboardAccess() {
-  if (!isSupabaseConfigured || !supabase) {
-    return "not-configured";
-  }
-
-  const user = await getCurrentUser();
-
-  if (!user) {
-    return "unauthenticated";
-  }
-
-  const { profile } = await fetchProfile(user.id);
-
-  if (!hasDashboardAccess(profile)) {
-    await signOut();
-    return "unauthenticated";
-  }
-
-  return "authorized";
+  return (await verifyDashboardSession()).status;
 }
+
+export const verifyDashboardSession = () => readDashboardSession(supabase, hasDashboardAccess);
 
 /*
  * Logout
@@ -353,7 +289,7 @@ export async function signOut() {
   }
 
   try {
-    const { error } = await supabase.auth.signOut();
+    const { error } = await signOutLocalSession(supabase);
 
     if (error) {
       logDiagnostic("Sign out error:", error);

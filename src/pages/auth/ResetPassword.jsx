@@ -150,7 +150,7 @@ export default function ResetPassword() {
       }
 
       setSuccessMessage("Password updated successfully. Redirecting to login...");
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: 'local' });
 
       setTimeout(() => {
         navigate("/login", { replace: true });

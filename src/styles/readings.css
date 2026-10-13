@@ -1321,3 +1321,67 @@
     flex-wrap: wrap;
   }
 }
+
+/* Reading cards size to the content area beside the dashboard sidebar. */
+.modern-readings-page .modern-readings-grid { grid-template-columns: minmax(0, 1fr); align-items: start; }
+.readings-water-panel { container: readings / inline-size; }
+.modern-readings-page .modern-reading-metric-grid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+@container readings (min-width: 560px) {
+  .modern-readings-page .modern-reading-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container readings (min-width: 880px) {
+  .modern-readings-page .modern-reading-metric-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.modern-readings-page .modern-reading-metric {
+  display: flex; flex-direction: column; align-items: stretch; justify-content: start;
+  gap: 14px; min-height: 0; padding: 18px; border-radius: 16px;
+}
+.reading-metric-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.modern-readings-page .modern-reading-metric small { font-size: 0.78rem; font-weight: 500; line-height: 1.5; overflow-wrap: anywhere; }
+.modern-readings-page .reading-metric-heading > small { font-size: 0.85rem; font-weight: 700; color: var(--ct-text); }
+.modern-readings-page .modern-reading-metric-icon { width: 34px; height: 34px; border-radius: 10px; }
+.reading-metric-content { display: grid; align-content: start; gap: 8px; }
+.modern-readings-page .reading-metric-content > strong {
+  margin: 0; font-size: clamp(1.7rem, 2.3vw, 2.15rem); font-weight: 750;
+  line-height: 1.2; letter-spacing: -0.04em; white-space: normal; overflow-wrap: anywhere; overflow: visible;
+}
+.modern-readings-page .reading-metric-content > .sensor-reading-empty { font-size: 1.25rem; letter-spacing: normal; }
+.modern-readings-page .sensor-safe-range { margin: 0; }
+.reading-metric-state { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 10px; }
+.modern-readings-page .reading-metric-state .safety-status { margin: 0; }
+.reading-metric-updated { padding-top: 2px; }
+.reading-metric-details { border-top: 1px solid var(--ct-border); padding-top: 8px; font-size: 0.8rem; line-height: 1.5; color: var(--ct-muted); }
+.reading-metric-details summary { cursor: pointer; min-height: 32px; display: list-item; align-content: center; }
+.reading-metric-details p { margin: 8px 0 0; overflow-wrap: anywhere; }
+.readings-secondary-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.modern-readings-page .readings-ammonia-panel { padding: 0; overflow: hidden; }
+.modern-readings-page .readings-ammonia-panel .modern-reading-metric { border: 0; background: transparent; padding: 21px; }
+.reading-manual-note { margin: 0; color: var(--ct-muted); font-size: 0.8rem; line-height: 1.6; max-width: 65ch; }
+.modern-readings-page .modern-latest-reading { min-height: 0; padding: 14px; gap: 10px; }
+.modern-readings-page .modern-latest-reading-icon { grid-row: auto; }
+.modern-readings-page .modern-latest-reading .safety-status { grid-column: 2; }
+.modern-readings-page .modern-reading-table-header,
+.modern-readings-page .modern-reading-table-row {
+  grid-template-columns: 112px minmax(150px, 1.2fr) repeat(4, minmax(125px, 1fr)) 125px 100px 175px;
+  gap: 16px; min-width: 1275px;
+}
+.modern-readings-page .modern-reading-table-header { font-size: 0.72rem; letter-spacing: 0.04em; }
+.modern-readings-page .modern-reading-table-row { padding-block: 16px; align-items: start; }
+.modern-readings-page .modern-reading-table-body { overflow: visible; }
+.modern-readings-page .modern-reading-table-row > span { font-size: 0.8rem; font-weight: 500; line-height: 1.5; }
+.modern-readings-page .modern-reading-table-row > span[data-label="Date"] { font-variant-numeric: tabular-nums; }
+.modern-readings-page .reading-condition-value > strong { font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+@media (max-width: 900px) {
+  .modern-readings-page .modern-reading-table-row { grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 12px; }
+  .modern-readings-page .modern-reading-table-row > span { display: grid; grid-template-columns: minmax(85px, 0.7fr) minmax(0, 1.3fr); gap: 12px; align-items: start; }
+  .modern-readings-page .modern-reading-table-row > span::before { font-size: 0.75rem; max-width: none; }
+  .modern-readings-page .modern-reading-table-row .reading-condition-cell,
+  .modern-readings-page .modern-reading-table-row .reading-condition-value { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 4px 7px; }
+  .modern-readings-page .modern-reading-table-row .reading-condition-cell { flex-direction: column; align-items: flex-start; }
+  .modern-readings-page .modern-reading-table-row span small { margin: 0; text-align: left; }
+  .modern-readings-page .modern-reading-table-row span > strong { white-space: normal; text-align: left; overflow-wrap: anywhere; }
+}
+@media (max-width: 680px) {
+  .readings-secondary-grid { grid-template-columns: minmax(0, 1fr); }
+  .modern-readings-page .reading-metric-details summary { min-height: 44px; }
+}

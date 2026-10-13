@@ -98,7 +98,11 @@ export const test = base.extend({
       }
       if (url.pathname.startsWith('/auth/v1/')) {
         state.authRequests.push(url.pathname);
-        if (url.pathname.endsWith('/user')) return state.authenticated && !state.expired ? reply({ ...user, factors: state.developerFactors }) : reply({ message: 'Invalid JWT', code: 'bad_jwt' }, 401);
+        if (url.pathname.endsWith('/user')) {
+          if (state.authUserDelay) await new Promise(resolve => setTimeout(resolve, state.authUserDelay));
+          if (state.authUserFailure) return reply({ code: 'unexpected_failure', message: 'Auth temporarily unavailable' }, 503);
+          return state.authenticated && !state.expired ? reply({ ...(state.authUser || user), factors: state.developerFactors }) : reply({ message: 'Invalid JWT', code: 'bad_jwt' }, 401);
+        }
         if (url.pathname.endsWith('/factors') && request.method() === 'POST') {
           const factor = { id: '44444444-4444-4444-8444-444444444444', factor_type: 'totp', status: 'unverified', friendly_name: 'CrayThrive Developer' };
           state.developerFactors.push(factor);
@@ -112,11 +116,19 @@ export const test = base.extend({
           return reply({ ...session, user: { ...user, factors: state.developerFactors } });
         }
         if (url.pathname.endsWith('/token')) {
+          if (url.searchParams.get('grant_type') === 'refresh_token') {
+            state.authRefreshCount = (state.authRefreshCount || 0) + 1;
+            if (state.refreshFailure) return reply({ code: 'unexpected_failure', message: 'Refresh temporarily unavailable' }, 503);
+          }
           if (state.authDelay) await new Promise(resolve => setTimeout(resolve, state.authDelay));
           if (state.invalidLogin || state.expired) return reply({ message: 'Invalid login credentials', code: 'invalid_credentials' }, 400);
           state.authenticated = true; return reply(session);
         }
-        if (url.pathname.endsWith('/logout')) state.authenticated = false;
+        if (url.pathname.endsWith('/logout')) {
+          (state.authLogoutScopes ||= []).push(url.searchParams.get('scope'));
+          if (state.logoutFailure) return reply({ code: 'unexpected_failure', message: 'Logout temporarily unavailable' }, 503);
+          state.authenticated = false;
+        }
         return reply({});
       }
       if (url.pathname.startsWith('/rest/v1/')) {
@@ -143,8 +155,8 @@ export const test = base.extend({
           state.reads.push({ table: 'get_tank_threshold_settings', filters: {} });
           if (state.thresholdReadFailure) return reply({ code: '42501', message: 'Threshold settings unavailable' }, 503);
           return reply([
-            ...state.data.threshold_settings.filter(row => row.user_id === user.id).map(row => ({ ...row, tank_id: null })),
-            ...state.data.tank_threshold_settings.filter(row => row.user_id === user.id),
+            ...state.data.threshold_settings.filter(row => row.user_id === (state.authUser || user).id).map(row => ({ ...row, tank_id: null })),
+            ...state.data.tank_threshold_settings.filter(row => row.user_id === (state.authUser || user).id),
           ]);
         }
         if (url.pathname === '/rest/v1/rpc/apply_tank_thresholds') {
@@ -191,6 +203,7 @@ export const test = base.extend({
           return reply({ affected: targets.length, changed, rows: saved });
         }
         if (request.method() === 'GET') state.reads.push({ table, filters: Object.fromEntries(url.searchParams), query: [...url.searchParams] });
+        if (request.method() === 'GET' && table === 'profiles' && state.profileFailure) return reply({ code: '503', message: 'Profile temporarily unavailable' }, 503);
         if (request.method() === 'GET' && state.activityReadDelay && table === 'control_logs') await new Promise(resolve => setTimeout(resolve, state.activityReadDelay));
         if (request.method() === 'GET' && state.activityReadFailure && ['control_logs', 'device_commands', 'alerts', 'ammonia_readings'].includes(table)) return reply({ code: '42501', message: 'History unavailable' }, 403);
         let rows = structuredClone(state.data[table] || []);
@@ -283,8 +296,9 @@ export const test = base.extend({
     };
     page.on('pageerror', error => state.errors.push(error.message));
     page.on('console', message => {
-      const expectedAuthFailure = (state.expired || state.invalidLogin || !state.authenticated) &&
-        /^Failed to load resource:.*status of (400|401)/.test(message.text());
+      const expectedAuthFailure = ((state.expired || state.invalidLogin || !state.authenticated) &&
+        /^Failed to load resource:.*status of (400|401)/.test(message.text()))
+        || ((state.authUserFailure || state.profileFailure || state.logoutFailure || state.refreshFailure) && /^Failed to load resource:.*status of 503/.test(message.text()));
       const expectedTankFailure = state.tankWriteFailure && /^Failed to load resource:.*status of 403/.test(message.text());
       const expectedRecommendationFailure = (state.aiGuideStatus && new RegExp(`^Failed to load resource:.*status of ${state.aiGuideStatus}`).test(message.text()))
         || (state.thresholdReadFailure && /^Failed to load resource:.*status of 503/.test(message.text()));

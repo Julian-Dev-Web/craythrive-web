@@ -574,21 +574,30 @@ function SummaryCard({
   );
 }
 
-function MetricCard({ icon: Icon, label, value, parameter, sensor, thresholds, scanDate }) {
+function MetricCard({ icon: Icon, label, value, parameter, sensor, thresholds, readingDate, observationHealth }) {
   const explanation = getParameterExplanation(parameter, label.replace(/^Latest /, ""));
+  const manual = sensor === 'ammonia';
+  const health = parameter?.availability || (!parameter?.hasValue ? 'missing' : observationHealth);
+  const freshness = manual ? 'Manual / camera scan' : health === 'fresh' ? 'Fresh reading'
+    : health === 'stale' ? 'Last known reading · stale' : health === 'missing' ? 'No reading' : 'Current reading unverified';
   return (
-    <div className="modern-reading-metric">
-      <span className="modern-reading-metric-icon"><Icon size={20} /></span>
-      <div>
-        <small>{label}</small>
+    <article className="modern-reading-metric" aria-label={label}>
+      <header className="reading-metric-heading">
+        <small>{label}</small><span className="modern-reading-metric-icon"><Icon size={20} aria-hidden="true" /></span>
+      </header>
+      <div className="reading-metric-content">
         <SensorReadingValue value={value} sensor={sensor} />
         <SensorSafeRange sensor={sensor} thresholds={thresholds} />
-        <SafetyBadge className="modern-reading-status" severity={parameter?.severity} parameter={parameter} emptyLabel={label === "Ammonia" ? "No Scan" : "No Data"} />
-        {explanation && <small className="safety-explanation">{explanation}</small>}
-        {label === "Ammonia" && <small>Latest available ammonia scan</small>}
-        {label === "Ammonia" && value !== "No Scan" && <small>Scanned: {scanDate ? formatReadingTime(scanDate) : "Scan time unavailable"}</small>}
+        <div className="reading-metric-state">
+          <SafetyBadge className="modern-reading-status" severity={parameter?.severity} parameter={parameter} emptyLabel={manual ? "No Scan" : "No Data"} />
+          <small className="reading-freshness">{freshness}</small>
+        </div>
+        <small className="reading-metric-updated">{manual ? 'Scanned' : 'Recorded'}: {readingDate
+          ? <time dateTime={readingDate}>{formatReadingTime(readingDate)} (Asia/Manila)</time> : 'No observation yet'}</small>
+        {manual && <p className="reading-manual-note">Latest available ammonia scan. This is a dated result, not a continuous IoT reading. Take a new scan to check the current condition.</p>}
+        {explanation && <details className="reading-metric-details"><summary>Reading details</summary><p>{explanation}</p></details>}
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -1514,7 +1523,7 @@ export default function SensorReadingsPage() {
       </section>
 
       <section className="modern-readings-grid">
-        <article className="modern-readings-panel">
+        <article className="modern-readings-panel readings-water-panel">
           <div className="modern-panel-heading">
             <div>
               <p className="dashboard-eyebrow">
@@ -1548,6 +1557,7 @@ export default function SensorReadingsPage() {
               }
               parameter={latestSafety.parameters.temperature}
               sensor="temperature" thresholds={latestSafety.activeThresholds}
+              readingDate={latestReading?.date} observationHealth={latestSafety.observationHealth}
             />
 
             <MetricCard
@@ -1573,6 +1583,7 @@ export default function SensorReadingsPage() {
               }
               parameter={latestSafety.parameters.ph}
               sensor="ph" thresholds={latestSafety.activeThresholds}
+              readingDate={latestReading?.date} observationHealth={latestSafety.observationHealth}
             />
 
             <MetricCard
@@ -1588,6 +1599,7 @@ export default function SensorReadingsPage() {
               }
               parameter={latestSafety.parameters.turbidity}
               sensor="turbidity" thresholds={latestSafety.activeThresholds}
+              readingDate={latestReading?.date} observationHealth={latestSafety.observationHealth}
             />
 
             <MetricCard
@@ -1598,15 +1610,19 @@ export default function SensorReadingsPage() {
               value={latestReading?.normalized?.waterLabel || "No Data"}
               parameter={latestSafety.parameters.waterLevel}
               sensor="waterLevel" thresholds={latestSafety.activeThresholds}
+              readingDate={latestReading?.date} observationHealth={latestSafety.observationHealth}
             />
-            <MetricCard icon={FlaskConical} label="Ammonia"
-              sensor="ammonia" thresholds={latestSafety.activeThresholds}
-              value={latestAmmonia?.ammoniaLabel || "No Scan"}
-              parameter={latestSafety.parameters.ammonia} scanDate={latestAmmonia?.date} />
           </div>
         </article>
 
-        <article className="modern-readings-panel">
+        <div className="readings-secondary-grid">
+          <section className="modern-readings-panel readings-ammonia-panel" aria-label="Manual ammonia result">
+            <MetricCard icon={FlaskConical} label="Ammonia"
+              sensor="ammonia" thresholds={latestSafety.activeThresholds}
+              value={latestAmmonia?.ammoniaLabel || "No Scan"}
+              parameter={latestSafety.parameters.ammonia} readingDate={latestAmmonia?.date} />
+          </section>
+        <article className="modern-readings-panel readings-update-panel">
           <div className="modern-panel-heading">
             <div>
               <p className="dashboard-eyebrow">
@@ -1614,7 +1630,7 @@ export default function SensorReadingsPage() {
               </p>
 
               <h3>
-                Most recent tank
+                Observation summary
               </h3>
             </div>
 
@@ -1640,8 +1656,8 @@ export default function SensorReadingsPage() {
 
                 <span>
                   {formatReadingTime(
-                    latestReading?.date
-                  )}
+                    latestReading?.date || latestAmmonia?.date
+                  )} (Asia/Manila)
                 </span>
               </div>
 
@@ -1659,6 +1675,7 @@ export default function SensorReadingsPage() {
             </div>
           )}
         </article>
+        </div>
       </section>
 
       <section

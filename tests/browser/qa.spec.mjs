@@ -216,7 +216,8 @@ test('readings sensor/severity/tank filters and refresh preserve independent amm
   await choose(page, 'Filter readings by tank', 'Tank A');
   await expect(rows).toHaveCount(1);
   await expect(rows).toContainText('0.10 mg/L');
-  await expect(page.locator('.modern-reading-metric').filter({ hasText: 'Ammonia' })).toContainText('Normal');
+  await expect(rows).toContainText('Normal');
+  await expect(page.locator('.modern-reading-metric').filter({ hasText: 'Ammonia' }).locator('.safety-status')).toHaveText('Manual Scan');
   qa.data.ammonia_readings = [];
   await page.getByRole('button', { name: /refresh/i }).first().click();
   await expect(page.locator('.modern-reading-metric').filter({ hasText: 'Ammonia' })).toContainText('No Scan');

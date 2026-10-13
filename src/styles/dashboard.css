@@ -2743,8 +2743,8 @@ html[data-theme="dark"] .modern-admin-topbar {
 ========================================================= */
 
 @media (max-width: 1180px) {
-  .admin-dashboard-shell,
-  .admin-dashboard-shell.is-sidebar-collapsed {
+  .admin-dashboard-shell:not(.modern-admin-shell),
+  .admin-dashboard-shell.is-sidebar-collapsed:not(.modern-admin-shell) {
     grid-template-columns: 1fr;
   }
 

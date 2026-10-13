@@ -1722,3 +1722,5 @@
     font-size: 2rem;
   }
 }
+/* Recoverable session errors stay visible without covering dashboard controls. */
+.session-error-notice { padding: 12px 20px; color: var(--ct-text, #eefcff); background: var(--ct-surface, #082a33); border-bottom: 1px solid var(--ct-border); font-size: 0.875rem; }

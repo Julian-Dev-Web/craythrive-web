@@ -1,6 +1,6 @@
 import useServerTime from '../hooks/useServerTime';
 import { formatPhilippineDate, formatPhilippineTime } from '../utils/philippineTime';
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
@@ -54,6 +54,8 @@ export default function AdminLayout() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [themeMode, setThemeMode] = useState(getInitialTheme);
   const [profile, setProfile] = useState(null);
+  const [signOutError, setSignOutError] = useState('');
+  const signingOut = useRef(false);
   const clock = useServerTime();
 
   const pageTitle = useMemo(() => getPageTitle(location.pathname), [location.pathname]);
@@ -95,12 +97,17 @@ export default function AdminLayout() {
   }, [location.pathname]);
 
   const handleSignOut = async () => {
-    await signOut();
+    if (signingOut.current) return;
+    signingOut.current = true;
+    const { error } = await signOut();
+    signingOut.current = false;
+    if (error) { setSignOutError(error); return; }
     navigate("/login", { replace: true });
   };
 
   return (
     <DashboardTourProvider>
+    {signOutError && <div className="session-error-notice" role="alert">{signOutError}</div>}
     <div className={`modern-admin-shell admin-dashboard-shell ${isCollapsed ? "sidebar-collapsed" : ""}`}>
       <Sidebar
         navItems={navItems}
