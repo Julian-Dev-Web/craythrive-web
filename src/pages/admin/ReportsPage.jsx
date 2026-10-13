@@ -2,7 +2,7 @@ import useTankMonitoring from '../../hooks/useTankMonitoring';
 import MonitoringSyncNotice from '../../components/MonitoringSyncNotice';
 import { applyPhilippineDateFilter, formatPhilippineDateTime, formatPhilippineTime, formatPhilippineCalendarDate, isWithinPhilippineDateRange, compareTimestamps } from '../../utils/philippineTime';
 import { getServerNowDate } from '../../services/serverTimeService';
-import { formatPumpAlert } from "../../../supabase/functions/_shared/pumpActionWording.js";
+import { formatMonitoringAlert } from "../../../supabase/functions/_shared/monitoringAlertPresentation.js";
 import { logDiagnostic } from "../../utils/securityDiagnostics";
 import SafetyBadge from "../../components/SafetyBadge";
 import SensorSafeRange, { SensorReadingValue } from "../../components/SensorSafeRange";
@@ -2354,7 +2354,7 @@ export default function ReportsPage() {
                 "Alert",
 
               title:
-                formatPumpAlert(alert).title ||
+                formatMonitoringAlert(alert).title ||
                 alert
                   ?.title ||
                 alert
@@ -2526,7 +2526,7 @@ export default function ReportsPage() {
                 ),
 
               Name:
-                formatPumpAlert(alert).title ||
+                formatMonitoringAlert(alert).title ||
                 alert
                   ?.title ||
                 alert
@@ -2557,7 +2557,7 @@ export default function ReportsPage() {
                 ),
 
               Message:
-                formatPumpAlert(alert).message ||
+                formatMonitoringAlert(alert).message ||
                 alert
                   ?.message ||
                 alert

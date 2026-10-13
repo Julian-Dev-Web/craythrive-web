@@ -82,6 +82,11 @@
 .sensor-recommendation-value { display: block; margin-top: 8px; font-size: 1rem; }
 .sensor-recommendations-ai { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--ct-border); }
 .sensor-recommendations-ai-answer p { white-space: pre-wrap; }
+.sensor-recommendations-outdated { padding: 8px 10px; border: 1px solid var(--ct-border); border-inline-start: 3px solid #d99b17; border-radius: 6px; }
+.sensor-recommendations-ai-history { margin-top: 12px; }
+.sensor-recommendations-ai-history summary { cursor: pointer; min-height: 44px; align-content: center; }
+.sensor-recommendations-ai-history article { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--ct-border); }
+.sensor-recommendations-ai-history small { color: var(--ct-muted); }
 .sensor-recommendations-spin { animation: recommendations-spin 1s linear infinite; }
 @keyframes recommendations-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .sensor-recommendations-spin { animation: none; } }

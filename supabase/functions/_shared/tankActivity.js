@@ -2,6 +2,8 @@ import { compareTimestamps, formatPhilippineDateTime, timestampMs } from './phil
 import { getSensorInspectionAction } from './sensorRecommendations.js';
 import { formatSensorSafeRange } from './sensorSafeRanges.js';
 import { formatPumpAction } from './pumpActionWording.js';
+import { formatWaterDepth, formatWaterDepthAlert, recordedWaterDepth } from './waterDepthDisplay.js';
+import { formatMonitoringAlert } from './monitoringAlertPresentation.js';
 
 const text = value => typeof value === 'string' ? value.trim() : '';
 const code = value => text(value).toLowerCase().replace(/[\s-]+/g, '_');
@@ -15,6 +17,7 @@ export const ACTIVITY_CATEGORIES = { sensor: 'Sensor conditions', feeding: 'Feed
 function parameterFor(row) {
   const metadata = object(row.metadata);
   const explicit = metadata.parameter || metadata.sensor_snapshot?.parameter;
+  if (['water_level', 'water_depth', 'water_depth_cm'].includes(explicit)) return 'waterLevel';
   if (Object.hasOwn(names, explicit)) return explicit;
   const value = code(`${row.type || ''} ${row.title || ''} ${row.action_type || ''}`);
   if (/ammonia/.test(value)) return 'ammonia';
@@ -137,6 +140,9 @@ export function buildTankActivity({ tank, userId, sources = {} }) {
       event.severity = alert ? recordedSeverity(alert) : 'no-data';
       event.result = alert?.message || (text(row.ammonia_status || row.status) ? `Recorded classification: ${row.ammonia_status || row.status}` : 'Historical classification was not recorded.');
     } else if (source === 'alerts') {
+      const presentation = formatMonitoringAlert(row);
+      event.title = presentation.title || event.title;
+      event.reason = presentation.message || event.reason;
       event.category = /sensor|ammonia/.test(code(row.type)) ? 'sensor' : /device.*(connect|online|offline)/.test(code(row.type || row.title)) ? 'device' : 'other';
       if (row.command_id || metadata.command_type || code(row.type) === 'control_log') {
         const recorded = { ...row, ...metadata, command_status: metadata.command_status, action_status: metadata.action_status };
@@ -152,8 +158,12 @@ export function buildTankActivity({ tank, userId, sources = {} }) {
       // Handled/resolved does not establish physical sensor recovery.
       if (!recovery && row.status === 'resolved') event.result = 'Alert marked handled; sensor recovery was not independently recorded.';
     }
-    const savedValue = finite(savedSnapshot.value);
-    if (savedValue !== null && parameter) event.reading = `${savedValue}${units[parameter] ? ` ${units[parameter]}` : ''}`;
+    const savedValue = parameter === 'waterLevel' ? recordedWaterDepth(row) : finite(savedSnapshot.value);
+    if (savedValue !== null && parameter) event.reading = parameter === 'waterLevel'
+      ? formatWaterDepth(savedValue, null) : `${savedValue}${units[parameter] ? ` ${units[parameter]}` : ''}`;
+    if (parameter === 'waterLevel' && source !== 'alerts' && event.category !== 'thresholds') {
+      event.reason = formatWaterDepthAlert({ ...row, title: event.title, message: event.reason }).message;
+    }
     // Render only explicitly saved, complete safe-limit snapshots. No default
     // normalization is allowed to fill historical gaps with today's values.
     const required = { temperature: ['temperatureMin', 'temperatureMax'], ph: ['phMin', 'phMax'],

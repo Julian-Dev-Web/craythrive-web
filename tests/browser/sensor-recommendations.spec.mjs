@@ -53,7 +53,7 @@ test('switching tanks cannot reuse another tank reading or threshold', async ({ 
   const panel = await open(page);
   await panel.getByLabel('Tank', { exact: true }).selectOption('tank-b');
   await expect(card(panel, 'waterLevel')).toContainText('Safe Limit: ≥ 3 cm');
-  await expect(card(panel, 'waterLevel')).toContainText('5.0 cm');
+  await expect(card(panel, 'waterLevel')).toContainText('5.00 cm');
   await expect(card(panel, 'waterLevel').locator('.safety-status')).toHaveText('Normal');
   for (const item of await panel.locator('.sensor-recommendation-tank').all()) await expect(item).toHaveText('Tank B');
   await expect(panel.getByRole('status')).toContainText('No verified current Warning or Critical readings');
@@ -119,7 +119,7 @@ test('failed threshold verification clears recommendations and supports a safe r
   await panel.getByRole('button', { name: 'Refresh recommendations', exact: true }).click();
   await expect(panel.getByRole('alert')).toContainText('Readings or thresholds could not be verified');
   await expect(panel.locator('.sensor-recommendation')).toHaveCount(0);
-  await expect(panel.getByRole('button', { name: 'Explain with AI Guide' })).toHaveCount(0);
+  await expect(panel.getByRole('button', { name: 'Explain with AI Guide' })).toBeDisabled();
   qa.thresholdReadFailure = false;
   await panel.getByRole('button', { name: 'Retry recommendations' }).click();
   await expect(panel.locator('.sensor-recommendation')).toHaveCount(5);

@@ -39,7 +39,7 @@ An explicitly bound upload remains a historical observation of that tank even if
 | Temperature | `temperature_c` → `temperature` | 1 decimal, °C |
 | pH | `ph_value` → `ph` | 2 decimals, no voltage unit |
 | Water clarity | `turbidity_voltage` → legacy calibrated `turbidity` | 2 decimals, V; higher means clearer |
-| Water depth | `water_depth_cm` → `water_level` → normalized `waterValue` | 1 decimal, cm |
+| Water depth | `water_depth_cm` → `water_level` → normalized `waterValue` | 2 decimals, cm (2026-10-13 precision fix; raw numeric comparison) |
 | Ammonia scan | separate table: `ammonia_mg_l` → `ammonia_level`; older reader aliases retained | 2 decimals, existing mg/L unit |
 
 ADC diagnostics (`raw_ph_value`, `raw_turbidity_value`), `ph_voltage`, ultrasonic distance, inches and raw payload diagnostics are never substituted for calibrated values. `sensor_readings.ammonia` is not substituted for a manual scan. Missing/invalid values stay null; real zero remains zero. Invalid pH outside 0–14 and negative clarity/depth/ammonia are unavailable, without changing stored measurements.

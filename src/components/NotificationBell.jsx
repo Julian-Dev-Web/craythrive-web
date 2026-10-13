@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { AlertTriangle, Bell, Loader2 } from "lucide-react";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import { TABLES } from "../constants/schema";
-import { formatPumpAlert } from "../../supabase/functions/_shared/pumpActionWording.js";
+import { formatMonitoringAlert } from "../../supabase/functions/_shared/monitoringAlertPresentation.js";
 
 const RECENT_ALERTS_LIMIT = 6;
 
@@ -68,7 +68,7 @@ export default function NotificationBell() {
 
       if (error) throw error;
 
-      setAlerts((data || []).map(alert => ({ ...alert, ...formatPumpAlert(alert) })));
+      setAlerts((data || []).map(alert => ({ ...alert, ...formatMonitoringAlert(alert) })));
     } catch (error) {
       setErrorMessage(getSafeErrorMessage(error, "Could not load notifications."));
     } finally {

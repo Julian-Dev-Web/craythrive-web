@@ -3,6 +3,7 @@ import { Link, Navigate, Outlet } from 'react-router-dom';
 import { Loader2, ShieldAlert } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { verifyDashboardSession } from '../services/authService';
+import { recommendationHistory } from '../services/recommendationHistory';
 
 export default function ProtectedAdminRoute() {
   const [access, setAccess] = useState({ status: 'checking', userId: null });
@@ -30,12 +31,14 @@ export default function ProtectedAdminRoute() {
     const subscription = supabase?.auth.onAuthStateChange((event, session) => {
       if (!active) return;
       if (event === 'SIGNED_OUT') {
+        recommendationHistory.clear(acceptedId || observedId);
         ++version; clearTimeout(timer); acceptedId = null; observedId = null;
         update({ status: 'unauthenticated', userId: null });
         return;
       }
       const id = session?.user?.id || null;
       if (id !== observedId) {
+        recommendationHistory.clear(acceptedId || observedId);
         observedId = id; acceptedId = null;
         // Unmount protected account state before checking a different user.
         update({ status: 'checking', userId: null });

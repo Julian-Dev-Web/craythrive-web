@@ -72,7 +72,7 @@ for (const [width, height] of sizes) {
           }
           await choose(page, 'Choose which tank to include in the report', longTank);
           expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth), 'selected long tank overflow').toBeLessThanOrEqual(1);
-          await expect(page.locator('.cray-report-metric-grid')).toContainText('0.6 cm');
+          await expect(page.locator('.cray-report-metric-grid')).toContainText('0.60 cm');
           await expect(page.locator('.monitoring-ammonia-history')).toContainText('0.10 mg/L');
           if ([390, 768, 1440].includes(width)) {
             await page.screenshot({ path: `.security-mobile-reports-${width}-${theme}.png`, fullPage: true });
@@ -100,7 +100,7 @@ test.describe('phone exports', () => {
     expect(await page.evaluate(() => window.__qaCsvMime)).toBe('text/csv;charset=utf-8;');
     expect(csv.text).toContain('"Tank, ""A""\nSecond line"');
     expect(csv.text).toContain('Water Level Condition');
-    expect(csv.text).toContain('0.6 cm,Critical');
+    expect(csv.text).toContain('0.60 cm,Warning');
     expect(csv.text).toContain('Ammonia Reading');
     expect(csv.text).not.toMatch(/Safe Ideal|Needs Checking|Urgent/);
     const records = parseCsv(csv.text);
@@ -108,7 +108,7 @@ test.describe('phone exports', () => {
     const water = records.find(row => row.Type === 'Water Reading' && row.Tank.startsWith('Tank,'));
     const scan = records.find(row => row.Type === 'Ammonia Reading' && row.Tank.startsWith('Tank,'));
     expect(water.Ammonia).toBe('');
-    expect(water['Water Level Condition']).toBe('Critical');
+    expect(water['Water Level Condition']).toBe('Warning');
     expect(scan.Temperature).toBe('');
     expect(scan.Ammonia).toBe('0.10 mg/L');
     expect(scan.Date).not.toBe(water.Date);

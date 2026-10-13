@@ -25,7 +25,7 @@ for (const [status, label] of [
     for (const [route, selector, overall] of pages) {
       await page.goto(route);
       const water = page.locator(selector).filter({ hasText: 'Water Level' });
-      await expect(water).toContainText(status === 'SAFE_IDEAL' ? '4.6 cm' : '4.0 cm');
+      await expect(water).toContainText(status === 'SAFE_IDEAL' ? '4.60 cm' : '4.00 cm');
       await expect(water.locator('.safety-status')).toHaveText(label);
       await expect(water.locator('.safety-status')).toHaveClass(new RegExp(`\\b${label.toLowerCase()}\\b`));
       await expect(water.locator('.safety-status svg')).toBeVisible();
@@ -41,15 +41,14 @@ for (const [status, label] of [
   });
 }
 
-test('rounding and saved minimum refresh agree without a new sensor upload', async ({ page, qa }) => {
+test('raw comparisons and saved minimum refresh agree without a new sensor upload', async ({ page, qa }) => {
   prepare(qa, { water_depth_cm: 3.99 });
   qa.data.threshold_settings[0].thresholds.waterLevelMin = 4;
   for (const [route, selector] of pages) {
     await page.goto(route);
     const water = page.locator(selector).filter({ hasText: 'Water Level' });
-    await expect(water).toContainText('4.0 cm');
-    await expect(water.locator('.safety-status')).toHaveText('Normal');
-    await expect(page.locator('.modern-admin-content')).not.toContainText('below the active tank minimum');
+    await expect(water).toContainText('3.99 cm');
+    await expect(water.locator('.safety-status')).toHaveText('Warning');
   }
   qa.data.threshold_settings[0].thresholds.waterLevelMin = 4.5;
   for (const [route, selector] of pages) {
@@ -57,7 +56,7 @@ test('rounding and saved minimum refresh agree without a new sensor upload', asy
     const water = page.locator(selector).filter({ hasText: 'Water Level' });
     await expect(water.locator('.safety-status')).toHaveText('Warning');
     if (route === '/admin/readings' || route === '/admin/tanks/tank-a') {
-      await expect(page.locator('.modern-admin-content')).toContainText('4.0 cm is below the active tank minimum (4.5 cm)');
+      await expect(page.locator('.modern-admin-content')).toContainText('3.99 cm is below the active tank minimum (4.50 cm)');
     }
   }
   expect(qa.data.sensor_readings[0].water_depth_cm).toBe(3.99);

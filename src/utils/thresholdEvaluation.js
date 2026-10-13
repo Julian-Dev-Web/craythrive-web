@@ -3,6 +3,7 @@ export { DEFAULT_THRESHOLDS, normalizeThresholds, resolveTankThresholds };
 import { cacheThresholdBundle, fetchThresholdRows, readThresholdCache, thresholdBundle } from "../services/tankThresholdService";
 import { logDiagnostic } from "./securityDiagnostics";
 import { getWaterReadingHealth } from "./waterReadingHealth";
+import { formatWaterDepth, waterDepthMinimumMessage } from '../../supabase/functions/_shared/waterDepthDisplay.js';
 // src/utils/thresholdEvaluation.js
 //
 // CrayThrive threshold evaluation + reference guidance.
@@ -735,9 +736,7 @@ export function evaluateReadingSafety(
     CRITICAL_LOW: { severity: "critical", label: "Critical Low Water Level", explanation: "The monitoring device reports a critically low water level" },
     CRITICAL_HIGH: { severity: "critical", label: "Critical High Water Level", explanation: "The monitoring device reports a critically high water level" },
   };
-  // Match the displayed 0.1 cm precision, while leaving stored/raw values intact.
-  const displayedWater = hasWaterValue ? Number(waterValue.toFixed(1)) : null;
-  const displayedMinimum = Number(active.waterLevelMin.toFixed(1));
+  // Compare original measurements and thresholds; rounding belongs to display only.
   if (waterHealth.health === "error") {
     parameters.waterLevel = { severity: "warning", label: "Sensor Error", hasValue: false, source: "health",
       explanation: "Water-level sensor failure confirmed. Waiting for a fresh valid measurement." };
@@ -751,7 +750,7 @@ export function evaluateReadingSafety(
         : "Waiting for fresh reading. No last-good water level is available." };
   } else if (!hasWaterValue) {
     parameters.waterLevel = { severity: "no-data", label: "No Reading", hasValue: false };
-  } else if (waterCode === "SAFE_IDEAL" && displayedWater < displayedMinimum) {
+  } else if (waterCode === "SAFE_IDEAL" && waterValue < active.waterLevelMin) {
     // A firmware-safe value can still be below this tank's saved minimum.
     // No separate critical-low boundary is stored, so this is a warning.
     parameters.waterLevel = { severity: "warning", label: "Low Water Level", hasValue: true, source: "threshold",
@@ -760,7 +759,7 @@ export function evaluateReadingSafety(
     // Firmware is the available source for low/high warning and critical bands.
     // Do not claim it used the Web minimum: the configurations can differ.
     parameters.waterLevel = { ...waterFirmware[waterCode], hasValue: true, source: "firmware" };
-  } else if (displayedWater < displayedMinimum) {
+  } else if (waterValue < active.waterLevelMin) {
     parameters.waterLevel = {
       severity: "warning", label: "Low Water Level", hasValue: true, source: "threshold",
       explanation: "Water level is below the configured minimum",
@@ -777,8 +776,8 @@ export function evaluateReadingSafety(
       message: parameters.waterLevel.source === "health"
         ? parameters.waterLevel.explanation
         : parameters.waterLevel.source === "firmware"
-        ? `${parameters.waterLevel.explanation} (${displayedWater.toFixed(1)} cm)`
-        : `${displayedWater.toFixed(1)} cm is below the active tank minimum (${displayedMinimum.toFixed(1)} cm)` });
+        ? `${parameters.waterLevel.explanation} (${formatWaterDepth(waterValue)})`
+        : waterDepthMinimumMessage(waterValue, active.waterLevelMin) });
   }
 
   /*

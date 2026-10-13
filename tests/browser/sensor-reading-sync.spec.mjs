@@ -26,7 +26,7 @@ test('all Web monitoring pages select the same canonical row with stable ties, u
   qa.data.sensor_readings.unshift({ ...qa.data.sensor_readings[0], id: 'a', temperature_c: 99, ph_value: 1 });
   for (const route of routes) {
     await open(page, qa, route);
-    for (const [name, value] of [['Temperature', '26.4'], ['pH Level', '7.35'], ['Water Clarity', '2.85 V'], ['Water Level', '5.0 cm']]) {
+    for (const [name, value] of [['Temperature', '26.4'], ['pH Level', '7.35'], ['Water Clarity', '2.85 V'], ['Water Level', '5.00 cm']]) {
       await expect(metric(page, name)).toContainText(value);
       await expect(metric(page, name).locator('.safety-status')).toHaveText('Normal');
     }

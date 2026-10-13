@@ -4,7 +4,7 @@ import { mergeSensorHistoryRows, currentSensorSafety } from '../../../supabase/f
 import { philippineDayBounds, philippineDateKey, timestampMs, formatPhilippineDateTime, compareTimestamps } from '../../utils/philippineTime';
 import useServerTime from '../../hooks/useServerTime';
 import { fetchServerTimestamp } from '../../services/serverTimeService';
-import { formatPumpAlert } from "../../../supabase/functions/_shared/pumpActionWording.js";
+import { formatMonitoringAlert } from "../../../supabase/functions/_shared/monitoringAlertPresentation.js";
 import { formatRecordedPumpAction, getRecordedActionOutcome } from "../../../supabase/functions/_shared/tankActivity.js";
 import { logDiagnostic, getSafeErrorMessage } from "../../utils/securityDiagnostics";
 import { getAmmoniaLabel, getAmmoniaNumericValue, getAmmoniaScanDate, getLatestAmmoniaForTank, recordMatchesAmmoniaTank, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
@@ -775,7 +775,7 @@ function getWaterStabilityState(
 ========================================================= */
 
 function getSimpleAlertTitle(item) {
-  const pump = formatPumpAlert(item);
+  const pump = formatMonitoringAlert(item);
   if (pump.title) return pump.title;
   return getValue(
     item,
@@ -791,7 +791,7 @@ function getSimpleAlertTitle(item) {
 
 function getSimpleAlertMessage(item) {
   const message =
-    formatPumpAlert(item).message ||
+    formatMonitoringAlert(item).message ||
     getValue(
       item,
       [
@@ -1643,6 +1643,7 @@ export default function TankDetailsPage() {
   const pageLoadVersion = useRef(0);
   const controlRefreshVersion = useRef(0);
   const controlCommitVersion = useRef(0);
+  const pendingControlRefresh = useRef(null);
   const loadTankDetails = useCallback(
     async (
       silent = false
@@ -1931,6 +1932,9 @@ export default function TankDetailsPage() {
 
   const refreshTankControls = useCallback(async () => {
     if (!tank || tank.id !== tankId || !currentUser?.id) return;
+    if (pendingControlRefresh.current?.tankId === tankId) return;
+    const pending = { tankId };
+    pendingControlRefresh.current = pending;
     const version = ++controlRefreshVersion.current;
     try {
       const device = await fetchActuatorDeviceForTank(tank, tankId);
@@ -1949,6 +1953,7 @@ export default function TankDetailsPage() {
         ...previous.filter(row => row.action_type === 'threshold_updated'), ...(commandHistory.data || []),
       ]);
     } catch (error) { logDiagnostic('Tank control refresh unavailable', error); }
+    finally { if (pendingControlRefresh.current === pending) pendingControlRefresh.current = null; }
   }, [tank, tankId, currentUser]);
 
   useEffect(() => {
@@ -2804,7 +2809,7 @@ export default function TankDetailsPage() {
 
   return (
     <div className="modern-tank-detail-page sensor-recommendations-page">
-      <SensorRecommendations key={tankId} tanks={tank ? [tank] : []} initialTankId={tankId} />
+      <SensorRecommendations key={tankId} tanks={tank ? [tank] : []} initialTankId={tankId} monitoring={monitoring} />
 
       {/* ===============================================
           HERO

@@ -78,7 +78,7 @@ test('tank safety uses current thresholds and changes after refresh', async ({ p
   await page.goto('/admin/tanks');
   await expect(page.getByText('Tank A', { exact: true }).first()).toBeVisible();
   const card = page.locator('.modern-tank-card').filter({ hasText: 'Tank A' });
-  await expect(card).toContainText('0.6 cm');
+  await expect(card).toContainText('0.60 cm');
   await expect(card).toContainText('Critical');
   qa.data.threshold_settings[0].thresholds.waterLevelMin = 0.5;
   qa.data.threshold_settings[0].thresholds.phMin = 4.5;
@@ -181,7 +181,7 @@ test('forgot password validates empty input and submits generic recovery respons
 
 test('Tank Details agrees with Tanks for water, pH, temperature and ammonia', async ({ page, qa }) => {
   await open(page, '/admin/tanks/tank-a');
-  for (const [name, value, severity] of [['Water Level', '0.6 cm', 'Warning'], ['pH Level', '4.8', 'Critical'], ['Temperature', '26.3', 'Normal'], ['Ammonia', '0.1 mg/L', 'Normal']]) {
+  for (const [name, value, severity] of [['Water Level', '0.60 cm', 'Warning'], ['pH Level', '4.8', 'Critical'], ['Temperature', '26.3', 'Normal'], ['Ammonia', '0.1 mg/L', 'Normal']]) {
     const metric = page.locator('.modern-tank-detail-metric').filter({ hasText: name });
     await expect(metric).toContainText(value);
     await expect(metric.locator('.safety-status')).toHaveText(severity);
@@ -252,7 +252,7 @@ test('tank and marketplace report CSV downloads and print preparation', async ({
   expect(csv).toContain('Temperature Condition');
   expect(csv).toContain('Ammonia Condition');
   expect(csv).toContain('Water Reading'); expect(csv).toContain('Ammonia Reading');
-  expect(csv).toContain('0.6 cm,Warning');
+  expect(csv).toContain('0.60 cm,Warning');
   const allTanks = await print();
   await expect(allTanks.locator('body')).toContainText('Ammonia Scans');
   await expect(allTanks.locator('body')).toContainText('0.60 mg/L');

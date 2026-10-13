@@ -13,6 +13,8 @@ async function open(page, route = '/admin/tanks/tank-a') {
 function setup(qa) {
   qa.serverTime = date;
   qa.data.sensor_readings.forEach(reading => { reading.created_at = date; });
+  // Chronology fixtures must not drift as the wall-clock test date advances.
+  qa.data.ammonia_readings.forEach(reading => { reading.created_at = '2026-10-11T01:00:00Z'; });
   qa.data.device_commands = [row('request', { command_type: 'FEED_ONCE', command_status: 'pending', result_message: 'Queued for checking' }),
     row('refill', { command_type: 'REFILL_FOR', command_status: 'done', executed_at: date, result_message: 'REFILL_FOR completed for 2000 ms. Safety check passed.' }),
     row('no-ack', { command_type: 'FEED_ONCE', command_status: 'done' })];

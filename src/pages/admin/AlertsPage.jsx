@@ -2,7 +2,7 @@ import { formatPhilippineDateTime, formatPhilippineTime, compareTimestamps } fro
 import { getServerNowDate } from '../../services/serverTimeService';
 import { logDiagnostic } from "../../utils/securityDiagnostics";
 import SafetyBadge from "../../components/SafetyBadge";
-import { formatPumpAlert } from "../../../supabase/functions/_shared/pumpActionWording.js";
+import { formatMonitoringAlert } from "../../../supabase/functions/_shared/monitoringAlertPresentation.js";
 import {
   useEffect,
   useMemo,
@@ -202,7 +202,7 @@ function getAlertTitle(
   index
 ) {
   return (
-    formatPumpAlert(row).title ||
+    formatMonitoringAlert(row).title ||
     row?.title ||
     row?.alert_title ||
     row?.notification_title ||
@@ -214,7 +214,7 @@ function getAlertTitle(
 
 function getAlertMessage(row) {
   return (
-    formatPumpAlert(row).message ||
+    formatMonitoringAlert(row).message ||
     row?.message ||
     row?.description ||
     row?.body ||

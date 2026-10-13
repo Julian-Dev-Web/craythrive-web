@@ -1,5 +1,10 @@
 # Web water-level severity audit — 2026-10-09
 
+Update 2026-10-13: the one-decimal display/comparison approach described in this
+historical audit has been superseded. Water readings now display two decimals,
+and evaluation compares original numeric values without rounding. The existing
+firmware severity mapping remains. See `WATER_DEPTH_DISPLAY_PRECISION.md`.
+
 The faulty evaluator was `src/utils/thresholdEvaluation.js`, inside
 `evaluateReadingSafety()`. It compared raw `waterDepth < active.waterLevelMin`
 and unconditionally assigned `severity: "critical"`. Its alert text then rounded

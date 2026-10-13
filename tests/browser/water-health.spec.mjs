@@ -21,13 +21,12 @@ for (const metadataOnly of [false, true]) {
     for (const [route, selector] of pages) {
       await page.goto(route);
       const metric = page.locator(selector).filter({ hasText: 'Water Level' });
-      await expect(metric).toContainText('Latest available: 4.0 cm');
-      await expect(metric).toContainText('Waiting for fresh reading');
-      await expect(metric.locator('.safety-status')).toHaveText('Warning');
-      await expect(metric.locator('.safety-status')).toHaveClass(/\bwarning\b/);
+      await expect(metric).toContainText('Latest available: 4.02 cm');
+      await expect(metric.locator('.safety-status')).toHaveText('Stale');
+      await expect(metric.locator('.safety-status')).toHaveClass(/\bno-data\b/);
       await expect(metric).not.toContainText('Critical');
       if (route === '/admin/tanks/tank-a') {
-        await expect(page.locator('.modern-tank-safety-banner')).toContainText('Waiting for fresh reading');
+        await expect(page.locator('.modern-tank-safety-banner')).toContainText('No Data');
       }
     }
     expect(qa.writes).toEqual([]);
@@ -42,7 +41,7 @@ test('confirmed failure shows Sensor Error and refresh restores the real water s
     await page.goto(route);
     const metric = page.locator(selector).filter({ hasText: 'Water Level' });
     await expect(metric.locator('.safety-status')).toHaveText('Sensor Error');
-    await expect(metric).not.toContainText('0.0 cm');
+    await expect(metric).not.toContainText('0.00 cm');
     await expect(metric).not.toContainText('Normal');
   }
   Object.assign(qa.data.sensor_readings[0], { water_status: 'SAFE_IDEAL', water_depth_cm: 4.02,
@@ -50,7 +49,7 @@ test('confirmed failure shows Sensor Error and refresh restores the real water s
   for (const [route, selector] of pages) {
     await page.goto(route);
     const metric = page.locator(selector).filter({ hasText: 'Water Level' });
-    await expect(metric).toContainText('4.0 cm');
+    await expect(metric).toContainText('4.02 cm');
     // Fresh recovery is still below this tank's active 4.5 cm minimum.
     await expect(metric.locator('.safety-status')).toHaveText('Warning');
     await expect(metric).not.toContainText('Latest available');
@@ -64,18 +63,18 @@ test('startup waits without fabricating depth; CSV and print identify carried me
   await page.goto('/admin/readings');
   const metric = page.locator('.modern-reading-metric').filter({ hasText: 'Water Level' });
   await expect(metric.locator('.safety-status')).toHaveText('Waiting');
-  await expect(metric).not.toContainText('0.0 cm');
+  await expect(metric).not.toContainText('0.00 cm');
   await expect(metric).not.toContainText('Sensor Error');
   setup(qa, { water_status: 'SENSOR_STALE', raw_payload: { water_value_source: 'last_good', water_measurement_fresh: false, water_last_good_age_ms: 10000 } });
   await page.goto('/admin/reports');
   const pending = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export CSV', exact: true }).click();
   const csv = await fs.readFile(await (await pending).path(), 'utf8');
-  for (const value of ['Water Value Source', 'Water Measurement Fresh', 'Water Last Good Age (ms)', 'Latest available: 4.0 cm', 'last_good', 'false', '10000']) expect(csv).toContain(value);
+  for (const value of ['Water Value Source', 'Water Measurement Fresh', 'Water Last Good Age (ms)', 'Latest available: 4.02 cm', 'last_good', 'false', '10000']) expect(csv).toContain(value);
   const popupPending = page.waitForEvent('popup');
   await page.getByRole('button', { name: 'Print Report', exact: true }).click();
   const popup = await popupPending;
-  await expect(popup.locator('body')).toContainText('Latest available: 4.0 cm');
+  await expect(popup.locator('body')).toContainText('Latest available: 4.02 cm');
   expect(qa.writes).toEqual([]);
 });
 
@@ -87,7 +86,7 @@ for (const state of ['SENSOR_STALE', 'SENSOR_ERROR']) {
     for (const [route, selector] of pages) {
       await page.goto(route);
       const metric = page.locator(selector).filter({ hasText: 'Water Level' });
-      await expect(metric.locator('.safety-status')).toHaveText(state === 'SENSOR_STALE' ? 'Warning' : 'Sensor Error');
+      await expect(metric.locator('.safety-status')).toHaveText(state === 'SENSOR_STALE' ? 'Stale' : 'Sensor Error');
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
     }
     expect(qa.writes).toEqual([]);

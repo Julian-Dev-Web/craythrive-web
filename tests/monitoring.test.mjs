@@ -195,21 +195,21 @@ test('only valid firmware water codes provide the missing warning/critical tiers
   }
 });
 
-test('water comparison and alert text use the same 0.1 cm precision as the card', () => {
+test('water display uses two decimals while comparison retains the original number', () => {
   const thresholds = { ...DEFAULT_THRESHOLDS, waterLevelMin: 4 };
   for (const rawValue of [3.96, 3.99, 4, 4.04]) {
     const reading = normalizeSensorReading({ water_depth_cm: rawValue }, thresholds);
     assert.equal(reading.waterValue, rawValue);
-    assert.equal(reading.waterLabel, '4.0 cm');
-    assert.equal(reading.safety.parameters.waterLevel.severity, 'normal');
-    assert.equal(reading.safety.issues.length, 0);
+    assert.equal(reading.waterLabel, `${rawValue.toFixed(2)} cm`);
+    assert.equal(reading.safety.parameters.waterLevel.severity, rawValue < 4 ? 'warning' : 'normal');
+    assert.equal(reading.safety.issues.length, rawValue < 4 ? 1 : 0);
   }
   const low = normalizeSensorReading({ water_depth_cm: 3.94 }, thresholds);
-  assert.equal(low.waterLabel, '3.9 cm');
+  assert.equal(low.waterLabel, '3.94 cm');
   assert.equal(low.safety.parameters.waterLevel.severity, 'warning');
-  assert.equal(low.safety.issues[0].message, '3.9 cm is below the active tank minimum (4.0 cm)');
+  assert.equal(low.safety.issues[0].message, '3.94 cm is below the active tank minimum (4.00 cm).');
   const firmware = normalizeSensorReading({ water_depth_cm: 3.99, water_status: 'LOW_WARNING' }, thresholds);
-  assert.equal(firmware.waterLabel, '4.0 cm');
+  assert.equal(firmware.waterLabel, '3.99 cm');
   assert.equal(firmware.safety.parameters.waterLevel.severity, 'warning');
   assert.doesNotMatch(firmware.safety.issues[0].message, /below.*minimum/);
   assert.match(getParameterExplanation(firmware.safety.parameters.waterLevel, 'Water Level'), /device reports a low water level/);
@@ -418,7 +418,7 @@ test('confirmed water error, startup waiting, and fresh recovery have distinct h
   const fresh = normalizeSensorReading({ water_status: 'SAFE_IDEAL', water_depth_cm: 4.02,
     raw_payload: { water_value_source: 'fresh', water_measurement_fresh: true, water_last_good_age_ms: 0 } });
   assert.equal(fresh.waterValue, 4.02);
-  assert.equal(fresh.waterLabel, '4.0 cm');
+  assert.equal(fresh.waterLabel, '4.02 cm');
   assert.equal(fresh.safety.parameters.waterLevel.health, 'fresh');
   assert.equal(fresh.safety.parameters.waterLevel.measurementFresh, true);
   // Freshness recovery does not override the active tank minimum (4.5 cm).

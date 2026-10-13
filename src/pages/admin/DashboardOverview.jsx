@@ -3,7 +3,8 @@ import useTankMonitoring from '../../hooks/useTankMonitoring';
 import MonitoringSyncNotice from '../../components/MonitoringSyncNotice';
 import { formatPhilippineDateTime, formatPhilippineTime, compareTimestamps } from '../../utils/philippineTime';
 import { getServerNowDate } from '../../services/serverTimeService';
-import { formatPumpAlert } from "../../../supabase/functions/_shared/pumpActionWording.js";
+import { formatMonitoringAlert } from "../../../supabase/functions/_shared/monitoringAlertPresentation.js";
+import { formatWaterDepth } from '../../../supabase/functions/_shared/waterDepthDisplay.js';
 import { logDiagnostic } from "../../utils/securityDiagnostics";
 import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
 import SensorSafeRange, { SensorReadingValue } from "../../components/SensorSafeRange";
@@ -294,7 +295,7 @@ function getOrderTitle(order, index) {
 
 function getAlertTitle(alert, index) {
   return (
-    formatPumpAlert(alert).title ||
+    formatMonitoringAlert(alert).title ||
     alert?.title ||
     alert?.alert_title ||
     alert?.notification_title ||
@@ -942,7 +943,7 @@ export default function DashboardOverview() {
 
   return (
     <div className="farmer-overview-page sensor-recommendations-page">
-      <SensorRecommendations tanks={datasets.tanks} initialTankId={latestReading?.tankKey || latestAmmoniaRecord?.tankKey} />
+      <SensorRecommendations tanks={datasets.tanks} initialTankId={latestReading?.tankKey || latestAmmoniaRecord?.tankKey} monitoring={monitoring} />
 
       {/* ===============================================
           SYSTEM STATUS
@@ -1489,7 +1490,7 @@ export default function DashboardOverview() {
                   {avgWaterDepth ===
                   "N/A"
                     ? "No data"
-                    : `${avgWaterDepth} cm`}
+                    : formatWaterDepth(avgWaterDepth, 'N/A')}
                 </strong>
               </div>
 

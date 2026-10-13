@@ -1,12 +1,13 @@
 import { formatSensorSafeRange } from './sensorSafeRanges.js';
 import { formatPhilippineDateTime, timestampMs } from './philippineTime.js';
 import { LIVE_SENSOR_MAX_AGE_MS } from './sensorReadingContract.js';
+import { formatWaterDepth, waterDepthMinimumMessage } from './waterDepthDisplay.js';
 
 // Same age policy as the existing Web manual-control guard. This only gates
 // recommendation evidence; it does not change classification or actuator rules.
 export const LIVE_RECOMMENDATION_MAX_AGE_MS = LIVE_SENSOR_MAX_AGE_MS;
 const sensors = [
-  ['temperature', 'Water Temperature', '°C', 1], ['waterLevel', 'Water Level', 'cm', 1],
+  ['temperature', 'Water Temperature', '°C', 1], ['waterLevel', 'Water Level', 'cm', 2],
   ['ph', 'pH Level', '', 2], ['turbidity', 'Water Clarity', 'V', 2], ['ammonia', 'Ammonia', 'mg/L', 2],
 ];
 const rank = { critical: 0, warning: 1, 'no-data': 2, normal: 3 };
@@ -44,10 +45,8 @@ function thresholdReason(key, value, parameter, active, range) {
     waterLevel: [active.waterLevelMin, null], turbidity: [active.turbidityMax, null], ammonia: [null, active.ammoniaMax],
   };
   const [min, max] = bounds[key];
-  // Match the existing water evaluator's comparison precision.
-  const comparedValue = key === 'waterLevel' ? Number(value.toFixed(1)) : value;
-  const comparedMin = key === 'waterLevel' ? Number(min.toFixed(1)) : min;
-  if (min !== null && comparedValue < comparedMin) return `The reading is below the configured minimum (${min}${key === 'ph' ? '' : key === 'temperature' ? ' °C' : key === 'turbidity' ? ' V' : ' cm'}).`;
+  if (key === 'waterLevel' && value < min) return waterDepthMinimumMessage(value, min);
+  if (min !== null && value < min) return `The reading is below the configured minimum (${min}${key === 'ph' ? '' : key === 'temperature' ? ' °C' : key === 'turbidity' ? ' V' : ' cm'}).`;
   if (max !== null && value > max) return `The reading is above the configured maximum (${max}${key === 'ph' ? '' : key === 'temperature' ? ' °C' : ' mg/L'}).`;
   return parameter?.severity === 'normal' ? `The reading is within the configured limits. ${range}.`
     : parameter?.explanation || 'The existing evaluator reports a condition that needs verification.';
@@ -79,7 +78,7 @@ export function buildSensorRecommendations({ tankId, tankName, parameters = {}, 
     const range = thresholds ? formatSensorSafeRange(key, thresholds) : 'Safe limits unavailable';
     const timestamp = reading?.timestamp || null;
     const latestValue = invalidValue(key, value) ? key === 'ammonia' ? 'No recent ammonia reading' : 'No reading'
-      : `${value.toFixed(decimals)}${unit ? ` ${unit}` : ''}`;
+      : key === 'waterLevel' ? formatWaterDepth(value) : `${value.toFixed(decimals)}${unit ? ` ${unit}` : ''}`;
     let reason;
     let action;
     if (!thresholds) {

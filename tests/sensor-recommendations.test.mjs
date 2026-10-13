@@ -51,10 +51,11 @@ test('uses existing evaluated severity, ordered Critical then Warning then unava
   assert.match(items[1].reason, /below the configured minimum \(6.5\)/);
 });
 
-test('water rounding matches evaluation and device critical reports do not invent an upper limit', () => {
+test('water uses the raw comparison and device critical reports do not invent an upper limit', () => {
   const rounded = generate(context({ water_depth_cm: 3.99 }, { waterLevelMin: 4 })).find(r => r.parameter === 'waterLevel');
-  assert.equal(rounded.severity, 'normal');
-  assert.match(rounded.reason, /within the configured limits/);
+  assert.equal(rounded.severity, 'warning');
+  assert.equal(rounded.latestValue, '3.99 cm');
+  assert.match(rounded.reason, /3.99 cm is below.*4.00 cm/);
   const device = generate(context({ water_depth_cm: 6, water_status: 'CRITICAL_HIGH' })).find(r => r.parameter === 'waterLevel');
   assert.equal(device.severity, 'critical');
   assert.match(device.reason, /monitoring device reports/i);

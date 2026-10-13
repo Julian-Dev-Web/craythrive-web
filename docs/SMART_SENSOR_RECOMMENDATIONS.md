@@ -66,6 +66,12 @@ classification implementation or establish mobile parity by itself.
 
 ## Optional AI explanation
 
+Update 2026-10-13: completed explanations now persist per verified owner/tank in
+the current browser tab (five entries, up to 24 hours). Background refresh keeps
+the previous answer visible and marks it outdated when evidence changes. See
+`TANK_DETAILS_AI_PERSISTENCE.md` for the refresh root cause, storage limits and
+regression results. Only explicit generation calls AI.
+
 Only an explicit Explain with AI Guide click calls the existing
 `craythrive-ai-guide` Edge Function. The request supplies this tank's verified
 snapshot, effective limits and deterministic recommendations, identifies

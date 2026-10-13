@@ -1,6 +1,7 @@
 import { formatPhilippineDateTime } from './philippineTime';
 import { evaluateReadingSafety, getLocalThresholds, resolveTankThresholds } from "./thresholdEvaluation";
 import { sensorNumber, sensorValues } from '../../supabase/functions/_shared/sensorReadingContract.js';
+import { formatWaterDepth } from '../../supabase/functions/_shared/waterDepthDisplay.js';
 
 // src/utils/sensorReadingUtils.js
 
@@ -114,8 +115,8 @@ export function normalizeSensorReading(reading, thresholds = getLocalThresholds(
         : !safety.parameters.waterLevel.hasValue
         ? "No Data"
         : safety.parameters.waterLevel.health === "stale"
-        ? `Latest available: ${formatNumber(waterValue, 1)} cm`
-        : `${formatNumber(waterValue, 1)} cm`,
+        ? `Latest available: ${formatWaterDepth(waterValue)}`
+        : formatWaterDepth(waterValue),
     waterStatus,
 
     createdAt: reading.created_at || null,
