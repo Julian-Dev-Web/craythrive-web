@@ -13,6 +13,8 @@ import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
 import SensorSafeRange, { SensorReadingValue } from "../../components/SensorSafeRange";
 import SensorRecommendations from "../../components/SensorRecommendations";
 import TankActivityHistory from "../../components/TankActivityHistory";
+import ManualFeedOptions from "../../components/ManualFeedOptions";
+import { dispenseCycleLabel, formatRecordedFeedingAction, isPairedFeedActuator, normalizeDispenseCycles } from '../../../supabase/functions/_shared/feederControl.js';
 import { getTankPairingState } from "../../utils/tankPairing";
 import { getTankPopulationLabel } from "../../utils/tankCreationRules";
 import { getSafetyLabelSeverity, getSafetySeverity, getParameterExplanation, getSafetyStatusLabel } from "../../utils/statusHelpers";
@@ -410,6 +412,8 @@ function getCommandLabel(commandType) {
 function getShortResultMessage(
   command = {}
 ) {
+  const feeding = formatRecordedFeedingAction(command, getRecordedActionOutcome(command));
+  if (feeding) return feeding.message;
   const pump = formatRecordedPumpAction(command);
   if (pump) return pump.message;
   const outcome = getRecordedActionOutcome(command);
@@ -1364,7 +1368,8 @@ async function fetchActuatorDeviceForTank(
 async function fetchActiveCommandsForActuator(
   selectedTank,
   actuatorDevice,
-  routeTankId
+  routeTankId,
+  requireVerified = false
 ) {
   if (
     !selectedTank ||
@@ -1416,6 +1421,7 @@ async function fetchActiveCommandsForActuator(
     error ||
     !Array.isArray(data)
   ) {
+    if (requireVerified) throw new Error('Active commands could not be verified.');
     return [];
   }
 
@@ -1425,7 +1431,8 @@ async function fetchActiveCommandsForActuator(
 async function fetchTodaysFeedCommands(
   selectedTank,
   actuatorDevice,
-  routeTankId
+  routeTankId,
+  requireVerified = false
 ) {
   if (
     !selectedTank ||
@@ -1442,7 +1449,7 @@ async function fetchTodaysFeedCommands(
 
   let range;
   try { range = await getTodayRangeForSupabase(); }
-  catch { return []; } // Keep other saved tank data usable; sending needs trusted time.
+  catch (error) { if (requireVerified) throw error; return []; } // Sending needs trusted time.
   const { startIso, endIso } = range;
 
   const {
@@ -1487,10 +1494,11 @@ async function fetchTodaysFeedCommands(
     error ||
     !Array.isArray(data)
   ) {
+    if (requireVerified) throw new Error('Today’s feeding history could not be verified.');
     return [];
   }
 
-  return data;
+  return data.filter(command => command.command_status === 'done' && getRecordedActionOutcome(command) === 'Completed');
 }
 
 /* =========================================================
@@ -1540,6 +1548,12 @@ function EmptyBlock({
 ========================================================= */
 
 export default function TankDetailsPage() {
+  const [dispenseCycles, setDispenseCycles] = useState(2);
+  const [feedConfirmation, setFeedConfirmation] = useState(null);
+  const [submittedFeed, setSubmittedFeed] = useState(null);
+  const [feedError, setFeedError] = useState('');
+  const feedSubmission = useRef(false);
+  const feedContext = useRef(null);
   const [ammoniaHistoryError, setAmmoniaHistoryError] = useState(false);
   const { tankId } =
     useParams();
@@ -1631,6 +1645,10 @@ export default function TankDetailsPage() {
   ] = useState(0);
 
   const nowMs = useServerTime();
+  useEffect(() => {
+    feedContext.current = { tankId, userId: currentUser?.id };
+    return () => { feedContext.current = null; };
+  }, [tankId, currentUser?.id]);
 
   const monitoring = useTankMonitoring(tank?.id === tankId ? [tank] : []);
   const { rows: currentRows, thresholds: thresholdBundle, refresh: refreshMonitoring } = monitoring;
@@ -1919,6 +1937,10 @@ export default function TankDetailsPage() {
 
   useEffect(() => {
     setReadingsPage(1);
+    setDispenseCycles(2);
+    setFeedConfirmation(null);
+    setFeedError('');
+    setSubmittedFeed(null);
 
     setCommandWaitSeconds(0);
     setCommandMessage("");
@@ -1927,8 +1949,10 @@ export default function TankDetailsPage() {
     );
   }, [tankId]);
 
-  const hasActiveCommand =
-    activeCommands.length > 0;
+  const trackedFeed = submittedFeed?.tank_id === tankId && submittedFeed?.user_id === currentUser?.id
+    ? controlLogs.find(command => command.id === submittedFeed.id) || submittedFeed : null;
+  const hasTrackedFeedPending = trackedFeed && ['pending', 'running'].includes(trackedFeed.command_status);
+  const hasActiveCommand = activeCommands.length > 0 || !!hasTrackedFeedPending;
 
   const refreshTankControls = useCallback(async () => {
     if (!tank || tank.id !== tankId || !currentUser?.id) return;
@@ -2201,7 +2225,8 @@ export default function TankDetailsPage() {
   const latestCommandLog =
     sortedControlLogs.find(item => item.action_type !== "threshold_updated") ||
     null;
-  const latestActionOutcome = latestCommandLog ? getRecordedActionOutcome(latestCommandLog) : null;
+  const latestFeedPresentation = latestCommandLog ? formatRecordedFeedingAction(latestCommandLog, getRecordedActionOutcome(latestCommandLog)) : null;
+  const latestActionOutcome = latestFeedPresentation?.outcome || (latestCommandLog ? getRecordedActionOutcome(latestCommandLog) : null);
 
   const latestAlert =
     sortedAlerts[0] ||
@@ -2301,7 +2326,12 @@ export default function TankDetailsPage() {
 
   const activeCommand =
     activeCommands[0] ||
-    null;
+    (hasTrackedFeedPending ? trackedFeed : null);
+  const selectedCycles = normalizeDispenseCycles(dispenseCycles);
+  const feedActuatorReady = isPairedFeedActuator(actuatorDevice, tank, getPrimaryTankId(tank, tankId));
+  const activeFeedCommand = activeCommands.find(command => command.command_type === 'FEED_ONCE') || (hasTrackedFeedPending ? trackedFeed : null);
+  const latestFeedCommand = activeFeedCommand || trackedFeed || sortedControlLogs.find(command => command.command_type === 'FEED_ONCE');
+  const feedingStatus = latestFeedCommand ? formatRecordedFeedingAction(latestFeedCommand, getRecordedActionOutcome(latestFeedCommand)) : null;
 
   const isStuckLong =
     hasActiveCommand &&
@@ -2548,11 +2578,24 @@ export default function TankDetailsPage() {
      SEND COMMAND
   ======================================================= */
 
+  function requestManualFeed() {
+    setFeedError('');
+    if (nowMs === null) { setCommandMessage('Server time is unavailable. Reconnect and retry.'); return; }
+    if (!feedActuatorReady) { setFeedError('Actuator device is not connected to this tank.'); return; }
+    if (isSendingCommand || hasActiveCommand || shouldWaitForSensorRefresh || feedSubmission.current) return;
+    setFeedConfirmation({ tankId, cycles: normalizeDispenseCycles(dispenseCycles) });
+  }
+
   async function sendDeviceCommand(
     commandType,
-    durationMs = 0
+    durationMs = 0,
+    requestedCycles = dispenseCycles
   ) {
+    const isFeeding = commandType === 'FEED_ONCE';
+    const requestContext = feedContext.current;
+    if (isFeeding && feedSubmission.current) return;
     setCommandMessage("");
+    if (isFeeding) setFeedError('');
 
     if (nowMs === null && commandType !== "STOP_ALL") {
       setCommandMessage("Server time is unavailable. Reconnect and retry.");
@@ -2623,27 +2666,6 @@ export default function TankDetailsPage() {
       return;
     }
 
-    if (
-      commandType ===
-        "FEED_ONCE" &&
-      hasFedToday
-    ) {
-      const continueFeed =
-        window.confirm(
-          "This tank was already fed today. Extra feeding can leave uneaten food and increase ammonia. Feed again anyway?"
-        );
-
-      if (
-        !continueFeed
-      ) {
-        setCommandMessage(
-          "Feeding cancelled."
-        );
-
-        return;
-      }
-    }
-
     const commandTankId =
       getPrimaryTankId(
         tank,
@@ -2667,16 +2689,41 @@ export default function TankDetailsPage() {
     }
 
     const commandValueMap = {
-      FEED_ONCE: "once",
+      FEED_ONCE: normalizeDispenseCycles(requestedCycles),
       DRAIN_FOR: "on",
       REFILL_FOR: "on",
       STOP_ALL: "stop",
     };
 
     try {
+      if (isFeeding) feedSubmission.current = true;
       setIsSendingCommand(
         true
       );
+
+      let commandActuator = actuatorDevice;
+      if (isFeeding) {
+        commandActuator = await fetchActuatorDeviceForTank(tank, tankId);
+        if (!isPairedFeedActuator(commandActuator, tank, commandTankId)) {
+          setFeedError('Actuator device is not connected to this tank.');
+          return;
+        }
+        const [pendingCommands, completedFeeds] = await Promise.all([
+          fetchActiveCommandsForActuator(tank, commandActuator, tankId, true),
+          fetchTodaysFeedCommands(tank, commandActuator, tankId, true),
+        ]);
+        if (feedContext.current !== requestContext) return;
+        if (pendingCommands.length) {
+          setActiveCommands(pendingCommands);
+          setCommandMessage('Another action is still running. Please wait for it to finish.');
+          return;
+        }
+        setTodaysFeedCommands(completedFeeds);
+        if (completedFeeds.length && !window.confirm('This tank was already fed today. Extra feeding can leave uneaten food and increase ammonia. Feed again anyway?')) {
+          setCommandMessage('Feeding cancelled.');
+          return;
+        }
+      }
 
       const payload = {
         user_id:
@@ -2686,7 +2733,7 @@ export default function TankDetailsPage() {
           commandTankId,
 
         device_uid:
-          actuatorDevice.device_uid,
+          commandActuator.device_uid,
 
         command_type:
           commandType,
@@ -2697,7 +2744,7 @@ export default function TankDetailsPage() {
           ] || "manual",
 
         duration_ms:
-          durationMs || 0,
+          isFeeding ? 0 : durationMs || 0,
 
         command_status:
           "pending",
@@ -2706,17 +2753,25 @@ export default function TankDetailsPage() {
           "Command queued from web dashboard.",
       };
 
-      const { error } =
-        await supabase
+      let insert = supabase
           .from(
             "device_commands"
           )
           .insert(payload);
+      if (isFeeding) insert = insert.select('*').single();
+      const { data: inserted, error } = await insert;
+      if (isFeeding && feedContext.current !== requestContext) return;
 
       if (error) {
         throw new Error(
           error.message
         );
+      }
+
+      if (isFeeding) {
+        if (!inserted?.id) throw new Error('The feeding request could not be confirmed.');
+        setSubmittedFeed(inserted);
+        setControlLogs(previous => [inserted, ...previous.filter(command => command.id !== inserted.id)]);
       }
 
       const label =
@@ -2725,7 +2780,8 @@ export default function TankDetailsPage() {
         );
 
       setCommandMessage(
-        `${label} request sent. Waiting for the device...`
+        isFeeding ? `Feeding request sent — ${dispenseCycleLabel(normalizeDispenseCycles(requestedCycles))} requested.`
+          : `${label} request sent. Waiting for the device...`
       );
 
       setCommandWaitSeconds(
@@ -2740,10 +2796,10 @@ export default function TankDetailsPage() {
         true
       );
     } catch (error) {
-      setCommandMessage(
-        getSafeErrorMessage(error, "Could not send the action.")
-      );
+      if (isFeeding) setFeedError(getSafeErrorMessage(error, 'The feeding request could not be verified or sent. Refresh activity before retrying.'));
+      else setCommandMessage(getSafeErrorMessage(error, "Could not send the action."));
     } finally {
+      if (isFeeding) feedSubmission.current = false;
       setIsSendingCommand(
         false
       );
@@ -3416,13 +3472,13 @@ export default function TankDetailsPage() {
 
                 <div>
                   <strong>
-                    {formatRecordedPumpAction(latestCommandLog || {})?.title || getCommandLabel(latestCommandLog?.command_type || latestCommandLog?.action)}
+                    {latestFeedPresentation?.title || formatRecordedPumpAction(latestCommandLog || {})?.title || getCommandLabel(latestCommandLog?.command_type || latestCommandLog?.action)}
                   </strong>
 
                   <p>
                     Status:{" "}
 
-                    <b className={`modern-tank-status ${latestActionOutcome === "Completed" ? "normal" : latestActionOutcome === "Failed" ? "critical" : latestActionOutcome === "Skipped" ? "warning" : "no-data"}`}>
+                    <b className={`modern-tank-status ${latestActionOutcome === "Completed" ? "normal" : latestActionOutcome === "Failed" ? "critical" : ["Skipped", "Rejected"].includes(latestActionOutcome) ? "warning" : "no-data"}`}>
                       {latestActionOutcome}
                     </b>
 
@@ -3694,34 +3750,51 @@ export default function TankDetailsPage() {
 
           {/* ACTION BUTTONS */}
 
+          <ManualFeedOptions cycles={activeFeedCommand ? feedingStatus?.cycles ?? selectedCycles : selectedCycles} onChange={setDispenseCycles}
+            disabled={isSendingCommand || hasActiveCommand}
+            confirmation={feedConfirmation?.tankId === tankId ? feedConfirmation : null}
+            busy={isSendingCommand}
+            onCancel={() => setFeedConfirmation(null)}
+            onConfirm={() => {
+              if (feedConfirmation?.tankId !== tankId) return;
+              const cycles = normalizeDispenseCycles(feedConfirmation.cycles);
+              setFeedConfirmation(null);
+              void sendDeviceCommand('FEED_ONCE', 0, cycles);
+            }} />
+          {!feedActuatorReady && <p className="manual-feed-note">Actuator device is not connected to this tank.</p>}
+          {feedError && <div className="modern-device-command-message warning" role="alert"><AlertTriangle size={18} /><span>{feedError}</span></div>}
+          {feedingStatus && <div className={`command-status-card manual-feed-status ${feedingStatus.outcome?.toLowerCase()}`} role="status" data-feed-status={feedingStatus.outcome}>
+            <div>
+              <strong>{feedingStatus.title}</strong>
+              <p>{feedingStatus.message}</p>
+              {feedingStatus.cycles !== null && <small>Dispense cycles: {feedingStatus.cycles}</small>}
+              {['Rejected', 'Failed', 'Skipped'].includes(feedingStatus.outcome) && latestFeedCommand.result_message && <small>Device report: {latestFeedCommand.result_message}</small>}
+            </div>
+            {['Requested', 'Started'].includes(feedingStatus.outcome) ? <Loader2 className="spin-icon" size={18} aria-hidden="true" />
+              : feedingStatus.outcome === 'Completed' ? <CheckCircle2 size={18} aria-hidden="true" /> : <AlertTriangle size={18} aria-hidden="true" />}
+          </div>}
+
           <div className="modern-device-command-grid">
 
             <button
               type="button"
               disabled={
                 isSendingCommand ||
-                !actuatorDevice
-                  ?.device_uid ||
+                !feedActuatorReady ||
                 hasActiveCommand ||
                 shouldWaitForSensorRefresh
               }
-              onClick={() =>
-                sendDeviceCommand(
-                  "FEED_ONCE",
-                  500
-                )
-              }
+              onClick={requestManualFeed}
             >
-              <Play
-                size={20}
-              />
+              {activeFeedCommand ? <Loader2 className="spin-icon" size={20} /> : <Play size={20} />}
 
               <strong>
-                Feed Now
+                {activeFeedCommand ? 'Feeding…' : 'Feed Now'}
               </strong>
 
               <span>
-                Give one feeding cycle
+                {activeFeedCommand && feedingStatus?.cycles === null ? 'Dispense cycles not recorded'
+                  : dispenseCycleLabel(activeFeedCommand ? feedingStatus?.cycles ?? selectedCycles : selectedCycles)}{activeFeedCommand && feedingStatus?.cycles !== null ? ' requested' : ''}
               </span>
             </button>
 

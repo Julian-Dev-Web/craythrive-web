@@ -23,5 +23,6 @@
 .tank-activity-outcome.outcome-completed { color: var(--ct-success); border-color: var(--ct-success); }
 .tank-activity-outcome.outcome-failed { color: var(--ct-danger); border-color: var(--ct-danger); }
 .tank-activity-outcome.outcome-skipped { color: var(--ct-warning); border-color: var(--ct-warning); }
+.tank-activity-outcome.outcome-rejected { color: var(--ct-warning); border-color: var(--ct-warning); }
 .tank-activity-pagination { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 14px; font-size: .8rem; }
 @media (max-width: 640px) { .tank-activity-filters { grid-template-columns: 1fr; } .tank-activity-timeline article { padding: 12px; } }

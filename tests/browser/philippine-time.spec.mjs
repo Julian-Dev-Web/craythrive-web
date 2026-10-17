@@ -70,6 +70,7 @@ test('feeding day uses server Manila date; queued command omits client event tim
   && read.query?.some(([key,value])=>key==='created_at'&&value==='lt.2026-10-11T16:00:00.000Z'))).toBe(true);
  await page.getByRole('button',{name:'Controls',exact:true}).click();
  await page.getByRole('button',{name:/Feed Now/}).click();
+ await page.getByRole('dialog',{name:'Feed crayfish?',exact:true}).getByRole('button',{name:'Feed Now',exact:true}).click();
  await expect.poll(()=>qa.writes.filter(write=>write.table==='device_commands'&&write.method==='POST').length).toBe(1);
  const body=qa.writes.find(write=>write.table==='device_commands'&&write.method==='POST').body;
  expect(body).not.toHaveProperty('created_at');expect(body).not.toHaveProperty('updated_at');expect(body).not.toHaveProperty('executed_at');

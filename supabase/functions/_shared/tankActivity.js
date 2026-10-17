@@ -4,6 +4,7 @@ import { formatSensorSafeRange } from './sensorSafeRanges.js';
 import { formatPumpAction } from './pumpActionWording.js';
 import { formatWaterDepth, formatWaterDepthAlert, recordedWaterDepth } from './waterDepthDisplay.js';
 import { formatMonitoringAlert } from './monitoringAlertPresentation.js';
+import { formatRecordedFeedingAction } from './feederControl.js';
 
 const text = value => typeof value === 'string' ? value.trim() : '';
 const code = value => text(value).toLowerCase().replace(/[\s-]+/g, '_');
@@ -126,6 +127,12 @@ export function buildTankActivity({ tank, userId, sources = {} }) {
       }
       if (pump) event.reason = ['Completed', 'Unknown / Unconfirmed'].includes(event.outcome)
         ? pump.message : [pump.message, event.reason].filter(Boolean).join(' ');
+      const feeding = formatRecordedFeedingAction(row, event.outcome);
+      if (feeding) {
+        event.outcome = feeding.outcome;
+        event.dispenseCycles = feeding.cycles;
+        event.result = feeding.message;
+      }
       if (kind === 'threshold_updated') {
         event.category = 'thresholds'; event.title = 'Threshold Updated'; event.action = 'Saved threshold settings';
         event.result = metadata.source === 'ai_recommendation' ? 'AI recommendation accepted by user' : 'Updated';
@@ -152,6 +159,8 @@ export function buildTankActivity({ tank, userId, sources = {} }) {
         event.action = event.title;
         event.outcome = getRecordedActionOutcome(recorded, metadata.command_type ? 'device_commands' : 'control_logs');
         event.result = 'This is a recorded action notification. Execution confirmation was not independently available in this history.';
+        const feeding = formatRecordedFeedingAction(recorded, event.outcome);
+        if (feeding) { event.dispenseCycles = feeding.cycles; event.outcome = feeding.outcome; }
       }
       const recovery = code(row.type) === 'sensor_recovery' || metadata.event_type === 'sensor_recovery';
       if (recovery) { event.severity = 'normal'; event.result = 'A recovery event was recorded by the backend.'; }

@@ -1,0 +1,28 @@
+.manual-feed-options { margin: 16px 0 0; min-width: 0; }
+.manual-feed-options fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.manual-feed-options legend { margin-bottom: 8px; font-size: .8rem; font-weight: 700; color: var(--ct-text); }
+.manual-feed-options legend span { font-weight: 400; color: var(--ct-muted); margin-left: 8px; }
+.manual-feed-choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; max-width: 560px; }
+.manual-feed-choices label { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 52px; padding: 8px 10px; border: 1px solid var(--ct-border-strong); border-radius: 10px; background: var(--ct-surface-soft); color: var(--ct-text); cursor: pointer; }
+.manual-feed-choices label.selected { border-color: var(--ct-brand); background: var(--ct-brand-soft); }
+.manual-feed-choices input { accent-color: var(--ct-brand); flex: 0 0 auto; margin: 0; }
+.manual-feed-choices span { min-width: 0; overflow-wrap: anywhere; }
+.manual-feed-choices b { display: block; font-size: .78rem; }
+.manual-feed-choices small, .manual-feed-note { color: var(--ct-muted); font-size: .72rem; line-height: 1.5; }
+.manual-feed-note { margin: 8px 0; }
+.manual-feed-options fieldset:disabled { opacity: .65; }
+.manual-feed-options fieldset:disabled label { cursor: default; }
+.manual-feed-confirm { width: min(420px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; box-sizing: border-box; padding: 22px; border: 1px solid var(--ct-border-strong); border-radius: 16px; background: var(--ct-surface); color: var(--ct-text); }
+.manual-feed-confirm::backdrop { background: rgb(0 15 25 / 55%); }
+.manual-feed-confirm h3 { margin: 0 0 14px; font-size: 1.1rem; }
+.manual-feed-confirm p { font-size: .85rem; line-height: 1.6; overflow-wrap: anywhere; }
+.manual-feed-confirm-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.manual-feed-confirm button { min-height: 44px; padding: 8px 16px; border: 1px solid var(--ct-border-strong); border-radius: 10px; background: var(--ct-surface-soft); color: var(--ct-text); font: inherit; cursor: pointer; }
+.manual-feed-confirm button.manual-feed-submit { background: var(--ct-brand); color: #04191d; font-weight: 700; }
+.manual-feed-options :is(input, button):focus-visible { outline: 2px solid var(--ct-brand); outline-offset: 3px; }
+.manual-feed-choices label:focus-within { outline: 2px solid var(--ct-brand); outline-offset: 3px; }
+.manual-feed-status { margin-top: 12px; }
+.manual-feed-status.failed { border-color: var(--ct-danger); }
+.manual-feed-status.rejected { border-color: var(--ct-warning); }
+.manual-feed-status.completed { border-color: var(--ct-success); }
+@media (max-width: 480px) { .manual-feed-choices { grid-template-columns: 1fr; gap: 6px; } }

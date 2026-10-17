@@ -8,7 +8,7 @@ import SafetyBadge from './SafetyBadge';
 import '../styles/tankActivity.css';
 
 const PER_PAGE = 10;
-const icons = { Completed: CheckCircle2, Requested: Clock3, Started: Activity, Skipped: AlertTriangle, Failed: XCircle };
+const icons = { Completed: CheckCircle2, Requested: Clock3, Started: Activity, Skipped: AlertTriangle, Rejected: AlertTriangle, Failed: XCircle };
 
 export default function TankActivityHistory({ tankId }) {
   const [fromDate, setFromDate] = useState('');
@@ -98,6 +98,7 @@ export default function TankActivityHistory({ tankId }) {
                 {event.threshold && <p><b>Recorded limit:</b> {event.threshold}</p>}
                 {event.category === 'sensor' && !event.threshold && <p className="tank-activity-note">The event’s threshold was not saved. Current settings are not substituted.</p>}
                 {event.action && <p><b>Action:</b> {event.action}</p>}
+                {event.category === 'feeding' && <p><b>Dispense cycles:</b> {event.dispenseCycles ?? 'Not recorded'}</p>}
                 {event.result && <p><b>Result:</b> <span>{event.result}</span></p>}
                 {event.recommendation && <p><b>{event.recommendationLabel}:</b> {event.recommendation}</p>}
               </article>
