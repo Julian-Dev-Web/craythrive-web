@@ -19,52 +19,70 @@ export default function TankActivityHistory({ tankId }) {
   const version = useRef(0);
   const pending = useRef(null);
   const id = useId();
-  const invalidate = useCallback(() => { ++version.current; pending.current?.abort(); }, []);
+  const scope = JSON.stringify([tankId, fromDate, toDate]);
+  const invalidate = useCallback(() => {
+    ++version.current;
+    pending.current?.controller.abort();
+    pending.current = null;
+  }, []);
   const reload = useCallback(async (recheckAutomation = false) => {
+    if (pending.current?.scope === scope) return;
     const request = ++version.current;
-    pending.current?.abort();
+    pending.current?.controller.abort();
     const controller = new AbortController();
-    pending.current = controller;
+    pending.current = { scope, controller };
     const timeout = setTimeout(() => controller.abort(), 15000);
-    setLoaded({ status: 'loading' });
+    // Retain the verified snapshot while refreshing this same tank/date scope.
+    setLoaded(previous => previous.status === 'ready' && previous.scope === scope
+      ? { ...previous, refreshing: true, error: null } : { status: 'loading', scope });
     try {
       const interrupted = new Promise((_, reject) => controller.signal.addEventListener('abort',
         () => reject(new Error('Activity request timed out or was interrupted. Reconnect and retry.')), { once: true }));
       const result = await Promise.race([loadTankActivity(supabase, { tankId, fromDate, toDate, signal: controller.signal,
         recheckAutomation: recheckAutomation === true }), interrupted]);
-      if (version.current === request) { setLoaded({ status: 'ready', ...result }); setPage(1); }
+      if (version.current === request) setLoaded({ status: 'ready', scope, ...result });
     } catch (error) {
-      if (version.current === request) setLoaded({ status: 'error', error: error.message });
+      if (version.current === request) setLoaded(previous => previous.status === 'ready' && previous.scope === scope
+        ? { ...previous, refreshing: false, error: error.message } : { status: 'error', scope, error: error.message });
     } finally {
       clearTimeout(timeout);
-      if (pending.current === controller) pending.current = null;
+      if (pending.current?.controller === controller) pending.current = null;
     }
-  }, [tankId, fromDate, toDate]);
-  useThresholdRefresh(reload);
+  }, [tankId, fromDate, toDate, scope]);
+  const backgroundReload = useCallback(() => {
+    if (document.visibilityState === 'visible') void reload();
+  }, [reload]);
+  useThresholdRefresh(backgroundReload);
   useEffect(() => {
     let active = true;
     void Promise.resolve().then(() => { if (active) void reload(); });
-    const interval = setInterval(reload, 30000);
+    const interval = setInterval(backgroundReload, 30000);
     return () => { active = false; invalidate(); clearInterval(interval); };
-  }, [reload, invalidate]);
-  const events = loaded.status === 'ready' ? loaded.events.filter(event => category === 'all' || event.category === category) : [];
+  }, [reload, backgroundReload, invalidate]);
+  const current = loaded.scope === scope ? loaded : { status: 'loading' };
+  const events = current.status === 'ready' ? current.events.filter(event => category === 'all' || event.category === category) : [];
   const pages = Math.max(1, Math.ceil(events.length / PER_PAGE));
   const currentPage = Math.min(page, pages);
   return <section className="modern-tank-detail-panel tank-activity" aria-label="Tank activity history">
     <div className="modern-panel-heading"><div><p className="dashboard-eyebrow">Activity</p><h3>Tank activity history</h3></div>
-      <button type="button" onClick={() => reload(true)} aria-label="Refresh activity" disabled={loaded.status === 'loading'}><RefreshCw size={18} /></button></div>
+      <button type="button" onClick={() => reload(true)} aria-label="Refresh activity" aria-busy={current.status === 'loading' || !!current.refreshing}
+        disabled={current.status === 'loading' || current.refreshing}><RefreshCw size={18} /></button></div>
     <p className="tank-activity-note">Latest recorded events first · Asia/Manila. Completion refers to reported execution; physical water flow and feed delivery are not measured.</p>
     <div className="tank-activity-filters">
       <div><label htmlFor={`${id}-type`}>Activity type</label><select id={`${id}-type`} value={category} onChange={event => { setCategory(event.target.value); setPage(1); }}>
         <option value="all">All activity</option>{Object.entries(ACTIVITY_CATEGORIES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </select></div>
-      <label htmlFor={`${id}-from`}>From date<input id={`${id}-from`} type="date" value={fromDate} onChange={event => { invalidate(); setFromDate(event.target.value); }} /></label>
-      <label htmlFor={`${id}-to`}>To date<input id={`${id}-to`} type="date" value={toDate} onChange={event => { invalidate(); setToDate(event.target.value); }} /></label>
+      <label htmlFor={`${id}-from`}>From date<input id={`${id}-from`} type="date" value={fromDate} onChange={event => { invalidate(); setPage(1); setFromDate(event.target.value); }} /></label>
+      <label htmlFor={`${id}-to`}>To date<input id={`${id}-to`} type="date" value={toDate} onChange={event => { invalidate(); setPage(1); setToDate(event.target.value); }} /></label>
     </div>
-    {loaded.status === 'loading' ? <p role="status"><Loader2 size={16} /> Loading verified activity…</p>
-      : loaded.status === 'error' ? <div role="alert"><p>{loaded.error}</p><button type="button" onClick={() => reload(true)}>Retry activity</button></div>
+    {current.error && <div role="alert">
+      {current.status === 'ready' && <p>Showing previously loaded activity. It could not be updated.</p>}
+      <p>{current.error}</p><button type="button" onClick={() => reload(true)} disabled={current.refreshing}>Retry activity</button>
+    </div>}
+    {current.status === 'loading' ? <p role="status"><Loader2 size={16} /> Loading verified activity…</p>
+      : current.status === 'error' ? null
       : <>
-        {loaded.notices.length > 0 && <div className="tank-activity-notices" role="status">{loaded.notices.map(notice => <p key={notice}>{notice}</p>)}</div>}
+        {current.notices.length > 0 && <div className="tank-activity-notices" role="status">{current.notices.map(notice => <p key={notice}>{notice}</p>)}</div>}
         {!events.length ? <p role="status">No recorded activity matches these filters. Missing history does not prove that no device action occurred.</p>
           : <ol className="tank-activity-timeline">{events.slice((currentPage - 1) * PER_PAGE, currentPage * PER_PAGE).map(event => {
             const Icon = icons[event.outcome] || HelpCircle;

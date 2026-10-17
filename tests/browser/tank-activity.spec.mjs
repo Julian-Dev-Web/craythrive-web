@@ -92,13 +92,14 @@ test('activity filters apply Philippine calendar dates before retrieval', async 
   expect(qa.writes).toEqual([]);
 });
 
-test('a stalled read times out, clears incomplete results and supports a fresh retry', async ({ page, qa }) => {
+test('a stalled refresh times out, preserves verified history and supports a fresh retry', async ({ page, qa }) => {
   setup(qa);
   const panel = await open(page);
   qa.activityReadDelay = 16000;
   await panel.getByRole('button', { name: 'Refresh activity' }).click();
   await expect(panel.getByRole('alert')).toContainText('timed out or was interrupted', { timeout: 20000 });
-  await expect(panel.locator('li[data-activity-id]')).toHaveCount(0);
+  await expect(entry(panel, 'device_commands', 'refill')).toBeVisible();
+  await expect(panel.getByRole('alert')).toContainText('Showing previously loaded activity');
   // Allow the intercepted slow response to finish before retrying.
   await page.waitForTimeout(1200);
   qa.activityReadDelay = 0;
@@ -112,6 +113,19 @@ test('a tank with no recorded events has an honest empty state', async ({ page, 
   const panel = await open(page);
   await expect(panel).toContainText('Missing history does not prove that no device action occurred');
   await expect(panel.locator('li[data-activity-id]')).toHaveCount(0);
+  expect(qa.writes).toEqual([]);
+});
+
+test('an initial activity failure offers retry without claiming empty or previously verified history', async ({ page, qa }) => {
+  setup(qa);
+  qa.activityReadFailure = true;
+  const panel = await open(page);
+  await expect(panel.getByRole('alert')).toContainText('Activity could not be loaded');
+  await expect(panel).not.toContainText('Showing previously loaded activity');
+  await expect(panel).not.toContainText('No recorded activity matches these filters');
+  qa.activityReadFailure = false;
+  await panel.getByRole('button', { name: 'Retry activity', exact: true }).click();
+  await expect(entry(panel, 'device_commands', 'refill')).toBeVisible();
   expect(qa.writes).toEqual([]);
 });
 
@@ -139,17 +153,69 @@ test('unavailable automation RPC preserves mirrored history and clearly reports 
   expect(qa.writes).toEqual([]);
 });
 
-test('failed reads do not present incomplete history as empty success and can be retried', async ({ page, qa }) => {
+test('failed refresh preserves previous history with an error instead of showing empty success', async ({ page, qa }) => {
   setup(qa);
   const panel = await open(page);
   qa.activityReadFailure = true;
   await panel.getByRole('button', { name: 'Refresh activity' }).click();
   await expect(panel.getByRole('alert')).toContainText('Activity could not be loaded');
-  await expect(panel.locator('li[data-activity-id]')).toHaveCount(0);
+  await expect(entry(panel, 'device_commands', 'refill')).toBeVisible();
+  await expect(panel.getByRole('alert')).toContainText('Showing previously loaded activity');
   qa.activityReadFailure = false;
   await panel.getByRole('button', { name: 'Retry activity' }).click();
   await expect(entry(panel, 'device_commands', 'refill')).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Refresh activity', exact: true })).toBeEnabled();
+  await expect(panel.getByRole('alert')).toHaveCount(0);
   expect(qa.writes).toEqual([]);
+});
+
+test('silent refresh retrieves new activity and pauses polling while the page is hidden', async ({ page, qa }) => {
+  setup(qa);
+  await page.clock.install();
+  const panel = await open(page);
+  await page.waitForLoadState('networkidle');
+  const reads = () => qa.reads.filter(read => read.table === 'get_tank_automation_history').length;
+  const before = reads();
+  await page.evaluate(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' }); });
+  await page.clock.runFor(65000);
+  expect(reads()).toBe(before);
+  qa.data.control_logs.push(row('new-event', { action_type: 'threshold_updated', notes: 'New saved threshold change' }));
+  await page.evaluate(() => {
+    delete document.visibilityState;
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('focus'));
+  });
+  await expect(entry(panel, 'control_logs', 'new-event')).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Refresh activity', exact: true })).toBeEnabled();
+  expect(reads()).toBe(before + 1);
+  expect(qa.writes).toEqual([]);
+});
+
+test('changing dates during a refresh discards the old response instead of restoring another filter scope', async ({ page, qa }) => {
+  setup(qa);
+  const panel = await open(page);
+  await page.waitForLoadState('networkidle');
+  let release;
+  let started = false;
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.route('**/rest/v1/rpc/get_tank_automation_history', async route => {
+    started = true;
+    await gate;
+    // A scope change aborts this browser request before the test releases it.
+    if (!route.request().failure()) await route.fallback();
+  }, { times: 1 });
+  try {
+    await panel.getByRole('button', { name: 'Refresh activity', exact: true }).click();
+    await expect.poll(() => started).toBe(true);
+    await panel.getByLabel('From date', { exact: true }).fill('2026-10-12');
+    await expect(panel.getByRole('button', { name: 'Refresh activity', exact: true })).toBeEnabled();
+    await expect(panel.locator('li[data-activity-id]')).toHaveCount(0);
+    release();
+    await page.waitForLoadState('networkidle');
+    await expect(panel.locator('li[data-activity-id]')).toHaveCount(0);
+    await expect(panel).toContainText('No recorded activity matches these filters');
+    expect(qa.writes).toEqual([]);
+  } finally { release(); }
 });
 
 test('tank changes, narrow layouts, filtering and pagination keep events isolated and readable', async ({ page, qa }) => {
@@ -172,4 +238,46 @@ test('tank changes, narrow layouts, filtering and pagination keep events isolate
   await expect(other).toContainText('Tank B only');
   await expect(other).not.toContainText('Saved change');
   expect(qa.writes).toEqual([]);
+});
+
+test('background activity refresh keeps the current page and mounted events visible', async ({ page, qa }) => {
+  setup(qa);
+  qa.data.control_logs = Array.from({ length: 12 }, (_, i) => row(`entry-${i}`, { action_type: 'threshold_updated', notes: `Saved change ${i}` }));
+  await page.clock.install();
+  const panel = await open(page);
+  await panel.getByLabel('Activity type', { exact: true }).selectOption('thresholds');
+  await panel.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(panel.getByRole('navigation', { name: 'Activity pages' })).toContainText('Page 2 of 2');
+  const event = panel.locator('li[data-activity-id]').first();
+  await event.evaluate(element => { element.dataset.refreshProbe = 'same-event'; });
+  await page.waitForLoadState('networkidle');
+  let started = 0;
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.route('**/rest/v1/rpc/get_tank_automation_history', async route => {
+    started++;
+    await gate;
+    await route.fallback();
+  });
+  try {
+    await page.clock.runFor(31000);
+    await expect.poll(() => started).toBe(1);
+    await expect(panel.locator('li[data-activity-id]')).toHaveCount(2);
+    await expect(event).toHaveAttribute('data-refresh-probe', 'same-event');
+    await expect(panel).not.toContainText('Loading verified activity');
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event('focus'));
+      window.dispatchEvent(new Event('focus'));
+    });
+    release();
+    await expect(panel.getByRole('button', { name: 'Refresh activity', exact: true })).toBeEnabled();
+    expect(started).toBe(1);
+    await expect(panel.getByRole('navigation', { name: 'Activity pages' })).toContainText('Page 2 of 2');
+    await expect(event).toHaveAttribute('data-refresh-probe', 'same-event');
+    await expect(panel.getByLabel('Activity type', { exact: true })).toHaveValue('thresholds');
+    await panel.getByRole('button', { name: 'Refresh activity', exact: true }).click();
+    await expect(panel.getByRole('button', { name: 'Refresh activity', exact: true })).toBeEnabled();
+    await expect(panel.getByRole('navigation', { name: 'Activity pages' })).toContainText('Page 2 of 2');
+    expect(qa.writes).toEqual([]);
+  } finally { release(); }
 });
