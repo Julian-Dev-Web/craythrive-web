@@ -34,16 +34,16 @@ test('completion requires the inspected device acknowledgement, not a default st
   assert.equal(byId('failed').outcome, 'Failed');
 });
 
-test('raw automation overrides its lossy mirror; arbitrary done never becomes confirmed', () => {
+test('raw automation honors the recorded outcome contract while lossy mirrors remain pending', () => {
   const items = history({ tank_automation_logs: [row('auto-a', { action_type: 'AUTO_REFILL', action_status: 'done', reason: 'Automatic water-level correction pulse completed.', water_status: 'LOW_WARNING' }),
     row('auto-b', { action_type: 'AUTO_REFILL', action_status: 'done' }), row('auto-skip', { action_type: 'AUTO_FEED', action_status: 'skipped', reason: 'Critical pH' })],
   device_commands: [row('mirror', { command_type: 'REFILL_FOR', command_value: 'auto', command_status: 'done', executed_at: date, result_message: 'Automatic water assist: correction | Auto log id: auto-a' })] });
   assert.equal(items.length, 3);
   assert.equal(items.find(item => item.id.endsWith(':auto-a')).outcome, 'Completed');
-  assert.equal(items.find(item => item.id.endsWith(':auto-b')).outcome, 'Unknown / Unconfirmed');
+  assert.equal(items.find(item => item.id.endsWith(':auto-b')).outcome, 'Completed');
   assert.equal(items.find(item => item.id.endsWith(':auto-skip')).outcome, 'Skipped');
   const mirror = history({ device_commands: [row('mirror', { command_value: 'auto', command_type: 'REFILL_FOR', command_status: 'done', executed_at: date, result_message: 'Automatic water assist: correction | Auto log id: absent' })] });
-  assert.equal(mirror[0].outcome, 'Unknown / Unconfirmed');
+  assert.equal(mirror[0].outcome, 'Pending Verification');
 });
 
 test('recorded pump wording keeps acknowledgement requirements and never displays requested drain runtime', () => {

@@ -1,10 +1,11 @@
+import { waterAutomationStatus } from './waterAutomationStatus.js';
 // Presentation only. Requested duration_ms/seconds never proves actual runtime.
 // Portable across Vite, Expo and Deno. No reads, writes or actuator commands.
 const text = value => typeof value === 'string' ? value.trim() : '';
 const key = value => text(value).toLowerCase().replace(/[\s-]+/g, '_');
 const object = value => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 const actions = /^(drain|drain_for|drain_water|drain_pump|pump_drain|auto_drain|refill|refill_for|fill|fill_water|add_water|refill_pump|pump_refill|auto_refill)$/;
-const statuses = /^(done|completed|success|succeeded|failed|error|rejected|blocked|cancelled|canceled|pending|queued|running|executing)$/;
+const statuses = /^(done|completed|success|succeeded|rechecking|skipped|failed|error|rejected|blocked|cancelled|canceled|pending|queued|running|executing)$/;
 
 export function getActualRefillDurationMs(record = {}) {
   record = object(record);
@@ -42,12 +43,19 @@ export function formatPumpAction(record = {}) {
 
   // alerts.status is read/resolution state, not execution success. Explicit
   // execution status always wins over an old title/result containing completed.
-  const status = [record.command_status, record.action_status, metadata.command_status, metadata.action_status,
+  const automation = waterAutomationStatus(record);
+  const status = automation?.rawStatus || [record.command_status, record.action_status, metadata.command_status, metadata.action_status,
     action && record.status, action && record.result, action && record.state].map(key).find(value => statuses.test(value))
     || (/rejected|blocked/i.test(title) ? 'rejected' : /failed|failure/i.test(title) ? 'failed'
       : /cancelled|canceled/i.test(title) ? 'cancelled' : /completed|\bdone\b/i.test(title) ? 'done' : 'recorded');
   const label = kind === 'drain' ? 'Drain' : 'Add Water';
   const actionLabel = kind === 'drain' ? 'drain' : 'refill';
+  if (automation && !['completed', 'blocked', 'failed'].includes(automation.tone)) return {
+    title: `${label} – ${automation.label}`, message: automation.message, status: automation.rawStatus, kind,
+  };
+  if (status === 'rechecking') return {
+    title: `${label} – Executed – Rechecking`, message: `The ${actionLabel} pump was activated successfully. Fresh sensor readings are being evaluated to confirm the expected water-level change.`, status, kind,
+  };
   if (['rejected', 'blocked'].includes(status)) return {
     title: `${label} rejected`, message: `The ${actionLabel} action was blocked by a safety rule.`, status: 'rejected', kind,
   };

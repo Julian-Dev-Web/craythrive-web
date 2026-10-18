@@ -80,7 +80,7 @@ test('automatic/control-log drain and refill share wording while preserving raw 
   ['AUTO_REFILL','done',{duration_seconds:10,actual_duration_ms:2000},'The refill pump ran for 2 seconds.'],
   ['AUTO_REFILL','done',{duration_seconds:10},'The refill pump was activated.'],
  ]) {
-  const notes='Raw actuator diagnostic retained for audit.';
+  const notes=status==='failed'?'STOP_ALL interrupted the pump action.':'Raw actuator diagnostic retained for audit.';
   const row=(await db.query('INSERT INTO control_logs(user_id,tank_id,action_type,action_status,notes,metadata) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',[owner,tank,type,status,notes,metadata])).rows[0];
   const alert=(await alerts()).find(a=>a.metadata.control_log_id===row.id);
   assert.equal(alert.message,message);assert.equal(row.action_status,status);
@@ -92,7 +92,7 @@ test('automatic/control-log drain and refill share wording while preserving raw 
 test('SQL and portable Web/mobile formatter agree for outcomes, actual durations, historical alerts and recommendation-only text',async()=>{
  for(const row of [
   {command_type:'DRAIN_FOR',command_status:'done',duration_ms:10000},
-  {action_type:'AUTO_DRAIN',action_status:'failed'},
+  {action_type:'AUTO_DRAIN',action_status:'failed',reason:'STOP_ALL interrupted the pump action.'},
   {title:'Drain completed',status:'resolved',metadata:{command_type:'DRAIN_FOR',command_status:'rejected'}},
   {title:'Refill completed',message:'The refill pump ran for 10 seconds.'},
   {action_type:'AUTO_REFILL',action_status:'done',metadata:{actual_duration_seconds:2}},

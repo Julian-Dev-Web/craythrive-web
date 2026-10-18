@@ -8,7 +8,7 @@ import SafetyBadge from './SafetyBadge';
 import '../styles/tankActivity.css';
 
 const PER_PAGE = 10;
-const icons = { Completed: CheckCircle2, Requested: Clock3, Started: Activity, Skipped: AlertTriangle, Rejected: AlertTriangle, Failed: XCircle };
+const icons = { Completed: CheckCircle2, 'Executed – Rechecking': RefreshCw, 'Pending Verification': Clock3, Blocked: AlertTriangle, Requested: Clock3, Started: Activity, Skipped: Clock3, Rejected: AlertTriangle, Failed: XCircle };
 
 export default function TankActivityHistory({ tankId }) {
   const [fromDate, setFromDate] = useState('');
@@ -67,7 +67,7 @@ export default function TankActivityHistory({ tankId }) {
     <div className="modern-panel-heading"><div><p className="dashboard-eyebrow">Activity</p><h3>Tank activity history</h3></div>
       <button type="button" onClick={() => reload(true)} aria-label="Refresh activity" aria-busy={current.status === 'loading' || !!current.refreshing}
         disabled={current.status === 'loading' || current.refreshing}><RefreshCw size={18} /></button></div>
-    <p className="tank-activity-note">Latest recorded events first · Asia/Manila. Completion refers to reported execution; physical water flow and feed delivery are not measured.</p>
+    <p className="tank-activity-note">Latest recorded events first · Asia/Manila. Automatic water completion means the actuator reported a confirmed water-level effect. Delivered water volume and feed delivery are not measured.</p>
     <div className="tank-activity-filters">
       <div><label htmlFor={`${id}-type`}>Activity type</label><select id={`${id}-type`} value={category} onChange={event => { setCategory(event.target.value); setPage(1); }}>
         <option value="all">All activity</option>{Object.entries(ACTIVITY_CATEGORIES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -89,17 +89,19 @@ export default function TankActivityHistory({ tankId }) {
             return <li key={event.id} data-activity-id={event.id}>
               <article>
                 <div className="tank-activity-heading"><h4>{event.title}</h4>
-                  {event.outcome && <span className={`tank-activity-outcome outcome-${event.outcome.split(' ')[0].toLowerCase()}`}><Icon size={14} aria-hidden="true" />{event.outcome}</span>}
+                  {event.outcome && <span className={`tank-activity-outcome outcome-${event.outcomeTone || event.outcome.split(' ')[0].toLowerCase()}`}><Icon size={14} aria-hidden="true" />{event.outcome}</span>}
                   {event.severity !== 'no-data' && <SafetyBadge severity={event.severity} />}</div>
                 <p className="tank-activity-date">{event.tankName} · <time dateTime={event.timestamp || undefined}>{event.timestampLabel}</time> (Asia/Manila)</p>
                 <p className="tank-activity-note">{ACTIVITY_CATEGORIES[event.category]}</p>
+                {event.outcomeTone && event.result && <p><b>Result:</b> <span>{event.result}</span></p>}
                 {event.reason && <p><b>Recorded reason:</b> <span>{event.reason}</span></p>}
                 {event.reading && <p><b>Recorded reading:</b> {event.reading}</p>}
                 {event.threshold && <p><b>Recorded limit:</b> {event.threshold}</p>}
                 {event.category === 'sensor' && !event.threshold && <p className="tank-activity-note">The event’s threshold was not saved. Current settings are not substituted.</p>}
                 {event.action && <p><b>Action:</b> {event.action}</p>}
                 {event.category === 'feeding' && <p><b>Dispense cycles:</b> {event.dispenseCycles ?? 'Not recorded'}</p>}
-                {event.result && <p><b>Result:</b> <span>{event.result}</span></p>}
+                {!event.outcomeTone && event.result && <p><b>Result:</b> <span>{event.result}</span></p>}
+                {event.context?.map(item => <p key={item.label}><b>{item.label === 'duration seconds' ? 'Recorded duration (seconds)' : item.label}:</b> {item.value}</p>)}
                 {event.recommendation && <p><b>{event.recommendationLabel}:</b> {event.recommendation}</p>}
               </article>
             </li>;

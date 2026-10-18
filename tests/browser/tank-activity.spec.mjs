@@ -147,7 +147,7 @@ test('unavailable automation RPC preserves mirrored history and clearly reports 
     result_message: 'Automatic water assist: correction | Auto log id: unavailable' }));
   const panel = await open(page);
   await expect(panel).toContainText('full automation history is unavailable');
-  await expect(entry(panel, 'device_commands', 'mirror-only')).toContainText('Unknown / Unconfirmed');
+  await expect(entry(panel, 'device_commands', 'mirror-only')).toContainText('Pending Verification');
   await expect(entry(panel, 'device_commands', 'refill')).toBeVisible();
   expect(qa.reads.some(read => read.table === 'tank_automation_logs')).toBe(false);
   expect(qa.writes).toEqual([]);

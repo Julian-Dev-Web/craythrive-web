@@ -101,7 +101,7 @@ export const THRESHOLD_FIELDS = {
 // control_logs — confirmed via mobile src/screens/main/ReportsScreen.js
 export const CONTROL_LOG_FIELDS = {
   ACTION_TYPE: "action_type", // e.g. contains "pump" or is a feeding action
-  ACTION_STATUS: "action_status", // "failed" vs anything else = success
+  ACTION_STATUS: "action_status", // Recorded outcome; pending/rechecking do not establish confirmed completion.
   NOTES: "notes",
 };
 

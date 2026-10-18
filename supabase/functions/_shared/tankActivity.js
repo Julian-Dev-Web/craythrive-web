@@ -5,6 +5,7 @@ import { formatPumpAction } from './pumpActionWording.js';
 import { formatWaterDepth, formatWaterDepthAlert, recordedWaterDepth } from './waterDepthDisplay.js';
 import { formatMonitoringAlert } from './monitoringAlertPresentation.js';
 import { formatRecordedFeedingAction } from './feederControl.js';
+import { automationLogId, waterAutomationStatus } from './waterAutomationStatus.js';
 
 const text = value => typeof value === 'string' ? value.trim() : '';
 const code = value => text(value).toLowerCase().replace(/[\s-]+/g, '_');
@@ -36,6 +37,8 @@ function recordedSeverity(row) {
 }
 
 export function getRecordedActionOutcome(row, source = 'device_commands') {
+  const automation = waterAutomationStatus(row, source);
+  if (automation) return automation.label;
   const status = code(source === 'device_commands' ? row.command_status : row.action_status || row.status);
   const note = text(row.result_message || row.notes || row.reason);
   if (['skipped', 'blocked', 'rejected', 'cancelled', 'canceled'].includes(status)) return 'Skipped';
@@ -69,6 +72,8 @@ function actionFor(row) {
 export function formatRecordedPumpAction(row, source = 'device_commands') {
   const pump = formatPumpAction(row);
   if (!pump) return null;
+  const automation = waterAutomationStatus(row, source);
+  if (automation) return { ...pump, message: automation.tone === 'completed' ? pump.message : automation.message };
   const outcome = getRecordedActionOutcome(row, source);
   if (outcome === 'Unknown / Unconfirmed') return { ...pump,
     title: `${pump.kind === 'drain' ? 'Drain' : 'Add Water'} recorded`,
@@ -90,13 +95,11 @@ export function buildTankActivity({ tank, userId, sources = {} }) {
     .sort((a, b) => compareTimestamps(a.row.created_at, b.row.created_at))
     .map(item => [String(item.row.metadata.ammonia_reading_id), item.row]));
   const events = new Map();
+  const sourcePriority = { tank_automation_logs: 0, device_commands: 1, control_logs: 2, alerts: 3 };
   for (const { source, row } of rows) {
     const metadata = object(row.metadata);
-    if (source === 'device_commands') {
-      const autoId = /Auto log id:\s*([\w-]+)/i.exec(text(row.result_message))?.[1];
-      if (autoId && autos.has(autoId)) continue;
-    }
-    if (source === 'control_logs' && commands.has(String(metadata.command_id))) continue;
+    if (source !== 'tank_automation_logs' && autos.has(automationLogId(row))) continue;
+    if (source === 'control_logs' && commands.has(String(row.command_id || metadata.command_id))) continue;
     if (source === 'alerts' && (commands.has(String(row.command_id || metadata.command_id))
       || controls.has(String(metadata.control_log_id)) || scans.has(String(metadata.ammonia_reading_id)))) continue;
 
@@ -120,12 +123,20 @@ export function buildTankActivity({ tank, userId, sources = {} }) {
         : event.outcome === 'Started' ? 'Execution was reported as started; completion has not been confirmed.'
         : 'See the recorded reason. No successful completion is claimed.';
       const pump = formatRecordedPumpAction(row, source);
+      const automation = waterAutomationStatus(row, source);
+      if (automation) {
+        event.outcomeTone = automation.tone;
+        event.severity = 'no-data';
+        event.result = automation.message;
+        event.reason = event.reason.replace(/\s*\|\s*Auto (?:log id|action status):[^|]*/gi, '').trim();
+      }
       if (source === 'tank_automation_logs') {
         event.reason = text(row.reason);
-        event.result += ['water_status', 'ph_status', 'turbidity_status', 'temperature_status', 'ammonia_status']
-          .filter(key => text(row[key])).map(key => ` ${key.replaceAll('_', ' ')}: ${row[key]}.`).join('');
+        event.context = ['water_status', 'ph_status', 'turbidity_status', 'temperature_status', 'ammonia_status', 'stable_reading_count', 'duration_seconds']
+          .filter(key => row[key] !== null && row[key] !== undefined && String(row[key]).trim() !== '')
+          .map(key => ({ label: key.replaceAll('_', ' '), value: String(row[key]) }));
       }
-      if (pump) event.reason = ['Completed', 'Unknown / Unconfirmed'].includes(event.outcome)
+      if (pump && !automation) event.reason = ['Completed', 'Unknown / Unconfirmed'].includes(event.outcome)
         ? pump.message : [pump.message, event.reason].filter(Boolean).join(' ');
       const feeding = formatRecordedFeedingAction(row, event.outcome);
       if (feeding) {
@@ -157,8 +168,15 @@ export function buildTankActivity({ tank, userId, sources = {} }) {
         event.category = /feed/.test(kind) ? 'feeding' : /drain|refill|pump|fill|stop/.test(kind) ? 'water' : 'other';
         event.title = actionFor(recorded);
         event.action = event.title;
+        const automation = waterAutomationStatus(recorded);
         event.outcome = getRecordedActionOutcome(recorded, metadata.command_type ? 'device_commands' : 'control_logs');
+        if (automation) {
+          event.outcomeTone = automation.tone; event.severity = 'no-data';
+          event.reason = text(metadata.reason || metadata.notes || row.reason || row.message)
+            .replace(/\s*\|\s*Auto (?:log id|action status):[^|]*/gi, '').trim();
+        }
         event.result = 'This is a recorded action notification. Execution confirmation was not independently available in this history.';
+        if (automation) event.result = automation.message;
         const feeding = formatRecordedFeedingAction(recorded, event.outcome);
         if (feeding) { event.dispenseCycles = feeding.cycles; event.outcome = feeding.outcome; }
       }
@@ -184,7 +202,13 @@ export function buildTankActivity({ tank, userId, sources = {} }) {
       event.recommendationLabel = text(metadata.recommendation?.action) ? 'Recorded recommendation' : 'Inspection guidance';
     }
     if (event.category === 'device') event.outcome = null;
-    events.set(event.id, event);
+    // Preserve a single canonical card even if only repeated command/alert
+    // mirrors are available while the full automation RPC is unavailable.
+    const linkedId = automationLogId(row);
+    const key = linkedId ? `automation:${linkedId}` : event.id;
+    const previous = events.get(key);
+    if (!previous || sourcePriority[source] < sourcePriority[previous.source]
+      || sourcePriority[source] === sourcePriority[previous.source] && compareTimestamps(event.timestamp, previous.timestamp) >= 0) events.set(key, event);
   }
   return [...events.values()].sort((a, b) => compareTimestamps(b.timestamp, a.timestamp) || a.id.localeCompare(b.id));
 }

@@ -3,7 +3,7 @@ import useTankMonitoring from '../../hooks/useTankMonitoring';
 import MonitoringSyncNotice from '../../components/MonitoringSyncNotice';
 import { formatPhilippineDateTime, formatPhilippineTime, compareTimestamps } from '../../utils/philippineTime';
 import { getServerNowDate } from '../../services/serverTimeService';
-import { formatMonitoringAlert } from "../../../supabase/functions/_shared/monitoringAlertPresentation.js";
+import { formatMonitoringAlert, waterAutomationAlertSeverity } from "../../../supabase/functions/_shared/monitoringAlertPresentation.js";
 import { formatWaterDepth } from '../../../supabase/functions/_shared/waterDepthDisplay.js';
 import { logDiagnostic } from "../../utils/securityDiagnostics";
 import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
@@ -148,6 +148,8 @@ function normalizeStatusText(value) {
 ========================================================= */
 
 function getAlertSeverity(alert) {
+  const automationSeverity = waterAutomationAlertSeverity(alert);
+  if (automationSeverity) return automationSeverity;
   const raw = normalizeStatusText(
     alert?.severity ||
       alert?.priority ||

@@ -2,7 +2,7 @@ import { formatPhilippineDateTime, formatPhilippineTime, compareTimestamps } fro
 import { getServerNowDate } from '../../services/serverTimeService';
 import { logDiagnostic } from "../../utils/securityDiagnostics";
 import SafetyBadge from "../../components/SafetyBadge";
-import { formatMonitoringAlert } from "../../../supabase/functions/_shared/monitoringAlertPresentation.js";
+import { formatMonitoringAlert, waterAutomationAlertSeverity } from "../../../supabase/functions/_shared/monitoringAlertPresentation.js";
 import {
   useEffect,
   useMemo,
@@ -225,6 +225,8 @@ function getAlertMessage(row) {
 }
 
 function getAlertSeverity(row) {
+  const automationSeverity = waterAutomationAlertSeverity(row);
+  if (automationSeverity) return automationSeverity;
   const raw = normalizeText(
     row?.severity ||
       row?.priority ||

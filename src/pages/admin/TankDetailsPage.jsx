@@ -4,7 +4,7 @@ import { mergeSensorHistoryRows, currentSensorSafety } from '../../../supabase/f
 import { philippineDayBounds, philippineDateKey, timestampMs, formatPhilippineDateTime, compareTimestamps } from '../../utils/philippineTime';
 import useServerTime from '../../hooks/useServerTime';
 import { fetchServerTimestamp } from '../../services/serverTimeService';
-import { formatMonitoringAlert } from "../../../supabase/functions/_shared/monitoringAlertPresentation.js";
+import { formatMonitoringAlert, waterAutomationAlertSeverity } from "../../../supabase/functions/_shared/monitoringAlertPresentation.js";
 import { formatRecordedPumpAction, getRecordedActionOutcome } from "../../../supabase/functions/_shared/tankActivity.js";
 import { logDiagnostic, getSafeErrorMessage } from "../../utils/securityDiagnostics";
 import { getAmmoniaLabel, getAmmoniaNumericValue, getAmmoniaScanDate, getLatestAmmoniaForTank, recordMatchesAmmoniaTank, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
@@ -3479,7 +3479,7 @@ export default function TankDetailsPage() {
                   <p>
                     Status:{" "}
 
-                    <b className={`modern-tank-status ${latestActionOutcome === "Completed" ? "normal" : latestActionOutcome === "Failed" ? "critical" : ["Skipped", "Rejected"].includes(latestActionOutcome) ? "warning" : "no-data"}`}>
+                    <b className={`modern-tank-status ${latestActionOutcome === "Completed" ? "normal" : latestActionOutcome === "Failed" ? "critical" : ["Blocked", "Rejected", "Executed – Rechecking"].includes(latestActionOutcome) ? "warning" : "no-data"}`}>
                       {latestActionOutcome}
                     </b>
 
@@ -4254,7 +4254,7 @@ export default function TankDetailsPage() {
                     item,
                     index
                   ) => {
-                    const severity =
+                    const severity = waterAutomationAlertSeverity(item) ||
                       getStatusSeverity(
                         [
                           item?.severity,
@@ -4293,7 +4293,7 @@ export default function TankDetailsPage() {
                           </span>
                         </div>
 
-                        <SafetyBadge className="modern-tank-status" severity={severity} />
+                        <SafetyBadge className="modern-tank-status" severity={severity} emptyLabel="Information" />
                       </div>
                     );
                   }
