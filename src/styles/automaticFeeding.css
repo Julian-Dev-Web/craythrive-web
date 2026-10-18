@@ -1,0 +1,16 @@
+.automatic-feeding-card { min-width: 0; margin: 18px 0; padding: 18px; border: 1px solid var(--ct-border-strong); border-radius: 14px; background: var(--ct-surface-soft); color: var(--ct-text); }
+.automatic-feeding-card p { overflow-wrap: anywhere; font-size: .8rem; line-height: 1.6; }
+.automatic-feeding-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.automatic-feeding-heading h3 { display: flex; align-items: center; gap: 8px; margin: 4px 0 14px; font-size: 1rem; }
+.automatic-feeding-card button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 8px 12px; border: 1px solid var(--ct-border-strong); border-radius: 10px; background: var(--ct-surface); color: var(--ct-text); cursor: pointer; font: inherit; font-size: .8rem; }
+.automatic-feeding-card button:disabled { opacity: .55; cursor: default; }
+.automatic-feeding-toggle { display: flex; align-items: center; gap: 9px; min-height: 44px; font-size: .85rem; }
+.automatic-feeding-toggle input { accent-color: var(--ct-brand); width: 18px; height: 18px; }
+.automatic-feeding-time { display: grid; gap: 5px; max-width: 220px; margin: 10px 0; font-size: .8rem; }
+.automatic-feeding-time input { min-width: 0; min-height: 44px; padding: 8px 10px; box-sizing: border-box; border: 1px solid var(--ct-border-strong); border-radius: 10px; background: var(--ct-surface); color: var(--ct-text); font: inherit; }
+.automatic-feeding-time small { color: var(--ct-muted); }
+.automatic-feeding-card .automatic-feeding-save { margin-top: 12px; color: #04191d; background: var(--ct-brand); font-weight: 700; }
+.automatic-feeding-summary { margin-bottom: 0; }
+.manual-feeding-heading { margin: 18px 0 8px; font-size: .9rem; color: var(--ct-text); }
+.automatic-feeding-card :is(input, button):focus-visible { outline: 2px solid var(--ct-brand); outline-offset: 3px; }
+@media (max-width: 480px) { .automatic-feeding-card { padding: 14px; } }

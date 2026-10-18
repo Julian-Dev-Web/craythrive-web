@@ -14,6 +14,7 @@ import SensorSafeRange, { SensorReadingValue } from "../../components/SensorSafe
 import SensorRecommendations from "../../components/SensorRecommendations";
 import TankActivityHistory from "../../components/TankActivityHistory";
 import ManualFeedOptions from "../../components/ManualFeedOptions";
+import AutomaticFeedingSettings from "../../components/AutomaticFeedingSettings";
 import { dispenseCycleLabel, formatRecordedFeedingAction, isPairedFeedActuator, normalizeDispenseCycles } from '../../../supabase/functions/_shared/feederControl.js';
 import { getTankPairingState } from "../../utils/tankPairing";
 import { getTankPopulationLabel } from "../../utils/tankCreationRules";
@@ -3750,6 +3751,10 @@ export default function TankDetailsPage() {
 
           {/* ACTION BUTTONS */}
 
+          <AutomaticFeedingSettings key={tankId} tank={tank} nowMs={nowMs}
+            lastFeed={sortedControlLogs.find(command => command.command_type === 'FEED_ONCE' && getRecordedActionOutcome(command) === 'Completed')} />
+
+          <h4 className="manual-feeding-heading">Manual Feed Now</h4>
           <ManualFeedOptions cycles={activeFeedCommand ? feedingStatus?.cycles ?? selectedCycles : selectedCycles} onChange={setDispenseCycles}
             disabled={isSendingCommand || hasActiveCommand}
             confirmation={feedConfirmation?.tankId === tankId ? feedConfirmation : null}

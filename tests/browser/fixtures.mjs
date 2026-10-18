@@ -28,7 +28,7 @@ export function datasets() {
     ],
     seller_profiles: [{ id: user.id, user_id: user.id, seller_id: user.id, store_name: 'QA Store With A Long Name For Responsive Verification', seller_mobile: '09000000000', phone: '09000000000', pickup_municipality: 'Malolos', pickup_municipality_code: '031410000', pickup_barangay: 'Poblacion', pickup_barangay_code: '031410001', is_active: true, website_url: 'javascript:alert(1)', facebook_url: 'https://example.invalid/store', created_at: now }],
     marketplace_orders: [{ id: 'order-a', listing_id: 'listing-a', seller_id: user.id, buyer_id: user.id, user_id: user.id, quantity: 1, total_price: 150, status: 'pending', created_at: now }],
-    alerts: [], iot_devices: [], device_commands: [], control_logs: [], tank_automation_logs: [], notification_preferences: [],
+    alerts: [], iot_devices: [], device_commands: [], control_logs: [], tank_automation_logs: [], tank_automation_settings: [], notification_preferences: [],
     marketplace_chat_threads: [], marketplace_chat_messages: [],
   };
 }
@@ -135,6 +135,32 @@ export const test = base.extend({
         // Supabase rejects browser/public-key schema discovery. Table CRUD works.
         if (url.pathname === '/rest/v1/') return reply({ message: 'Access to schema is forbidden' }, 403);
         const table = url.pathname.split('/').at(-1);
+        if (['get_tank_feeding_schedule', 'save_tank_feeding_schedule'].includes(table)) {
+          const args = request.postDataJSON();
+          state.reads.push({ table, filters: args });
+          if (state.feedingRPCMissing) return reply({ code: 'PGRST202' }, 404);
+          if (state.feedingReadFailure) return reply({ code: '503' }, 503);
+          const owner = (state.authUser || user).id;
+          const tank = state.data.tanks.find(row => row.id === args.p_tank_id && row.user_id === owner);
+          if (!tank) return reply({ code: '42501' }, 403);
+          const rows = state.data.tank_automation_settings.filter(row => row.tank_id === tank.id && row.user_id === owner);
+          if (rows.length > 1) return reply({ code: '21000' }, 400);
+          let settings = rows[0];
+          const device = state.data.iot_devices.find(row => row.user_id === owner && row.tank_id === tank.id && row.device_type === 'actuator_hub' && row.is_claimed === true);
+          if (table === 'save_tank_feeding_schedule') {
+            if (state.feedingSaveDelay) await new Promise(resolve => setTimeout(resolve, state.feedingSaveDelay));
+            if (state.feedingSaveFailure) return reply({ code: '42501' }, 403);
+            if (typeof args.p_enabled !== 'boolean' || !Number.isInteger(args.p_hour) || args.p_hour < 0 || args.p_hour > 23
+              || !Number.isInteger(args.p_minute) || args.p_minute < 0 || args.p_minute > 59
+              || !Number.isInteger(args.p_cycles) || args.p_cycles < 1 || args.p_cycles > 3 || !settings && !device) return reply({ code: '22023' }, 400);
+            if (!settings) { settings = { id: `automation-${tank.id}`, tank_id: tank.id, user_id: owner, device_uid: device.device_uid }; state.data.tank_automation_settings.push(settings); }
+            Object.assign(settings, { auto_feeding_enabled: args.p_enabled, auto_feed_hour: args.p_hour, auto_feed_minute: args.p_minute, auto_feed_cycles: args.p_cycles });
+            state.writes.push({ table: 'tank_automation_settings', method: 'RPC', body: args });
+          }
+          const fields = ['auto_feeding_enabled', 'auto_feed_hour', 'auto_feed_minute', 'auto_feed_cycles'];
+          return reply({ tank_id: tank.id, exists: !!settings, can_save: !!settings || !!device,
+            settings: settings ? Object.fromEntries(fields.map(key => [key, settings[key]])) : null });
+        }
         if (url.pathname === '/rest/v1/rpc/craythrive_server_time') {
           state.reads.push({ table: 'craythrive_server_time', filters: {} });
           if (state.serverTimeFailure) return reply({ code: 'PGRST202', message: 'Server time unavailable' }, 404);
@@ -305,10 +331,14 @@ export const test = base.extend({
       const expectedActivityFailure = (state.activityRPCMissing && /^Failed to load resource:.*status of 404/.test(message.text()))
         || (state.activityReadFailure && /^Failed to load resource:.*status of (403|503)/.test(message.text()));
       const expectedReadingFailure = state.currentReadingFailure && /^Failed to load resource:.*status of 503/.test(message.text());
+      const expectedFeedingFailure = /\/rpc\/(?:get|save)_tank_feeding_schedule/.test(message.location().url || '')
+        && ((state.feedingSaveFailure && /^Failed to load resource:.*status of 403/.test(message.text()))
+          || (state.feedingRPCMissing && /^Failed to load resource:.*status of 404/.test(message.text()))
+          || (state.feedingReadFailure && /^Failed to load resource:.*status of 503/.test(message.text())));
       const expectedDeveloperFailure = (state.developerDenied && /^Failed to load resource:.*status of 403/.test(message.text())) ||
         (state.developerInvalidOtp && /^Failed to load resource:.*status of 401/.test(message.text())) ||
         (state.developerOperationStatus && new RegExp(`^Failed to load resource:.*status of ${state.developerOperationStatus}`).test(message.text()));
-      if (message.type() === 'error' && !expectedAuthFailure && !expectedTankFailure && !expectedDeveloperFailure && !expectedRecommendationFailure && !expectedActivityFailure && !expectedReadingFailure) state.errors.push(message.text());
+      if (message.type() === 'error' && !expectedAuthFailure && !expectedTankFailure && !expectedDeveloperFailure && !expectedRecommendationFailure && !expectedActivityFailure && !expectedReadingFailure && !expectedFeedingFailure) state.errors.push(message.text());
       if (message.type() === 'warning') state.warnings.push(message.text());
     });
     page.on('response', response => {

@@ -161,6 +161,9 @@ test('failed refresh preserves previous history with an error instead of showing
   await expect(panel.getByRole('alert')).toContainText('Activity could not be loaded');
   await expect(entry(panel, 'device_commands', 'refill')).toBeVisible();
   await expect(panel.getByRole('alert')).toContainText('Showing previously loaded activity');
+  // Let expected 403 responses finish emitting their browser console events
+  // before clearing the mock failure flag and starting a fresh request.
+  await page.waitForLoadState('networkidle');
   qa.activityReadFailure = false;
   await panel.getByRole('button', { name: 'Retry activity' }).click();
   await expect(entry(panel, 'device_commands', 'refill')).toBeVisible();

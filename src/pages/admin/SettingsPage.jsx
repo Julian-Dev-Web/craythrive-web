@@ -1,5 +1,6 @@
 import useTankThresholdSettings from "../../hooks/useTankThresholdSettings";
 import TankThresholdControls from "../../components/TankThresholdControls";
+import AutomaticFeedingSettings from "../../components/AutomaticFeedingSettings";
 import { DEFAULT_THRESHOLDS } from "../../utils/thresholdEvaluation";
 import { logDiagnostic } from "../../utils/securityDiagnostics";
 import DashboardTourHelp from "../../components/tour/DashboardTourHelp";
@@ -1337,6 +1338,7 @@ export default function SettingsPage() {
 
           <TankThresholdControls editor={editor} valid={validation.valid} />
 
+
           <div className="cray-settings-actions">
             <button
               type="button"
@@ -1429,6 +1431,8 @@ export default function SettingsPage() {
       {/* ===============================================
           MESSAGE
       ================================================ */}
+
+      {editor.selectedTank && <AutomaticFeedingSettings key={editor.selectedTankId} tank={editor.selectedTank} />}
 
       {message && (
         <section

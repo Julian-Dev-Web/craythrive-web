@@ -6,6 +6,7 @@ function setup(qa) {
   qa.data.iot_devices = [{ id: 'actuator-a', tank_id: 'tank-a', user_id: user.id, device_uid: 'actuator-a', device_type: 'actuator_hub', is_claimed: true, last_seen: instant }];
   Object.assign(qa.data.sensor_readings[0], { created_at: instant, ph_value: 7.2, water_depth_cm: 5, water_status: 'SAFE_IDEAL', temperature_status: 'SAFE_IDEAL' });
 }
+const manualChoices = page => page.locator('.manual-feed-options').filter({ has: page.locator('dialog.manual-feed-confirm') });
 const feedWrites = qa => qa.writes.filter(write => write.table === 'device_commands' && write.method === 'POST');
 const feedButton = page => page.locator('.modern-device-command-grid').getByRole('button', { name: /Feed Now|Feeding/ });
 async function open(page) {
@@ -22,8 +23,8 @@ async function confirm(page) {
 for (const cycles of [1, 2, 3]) test(`${cycles} dispense cycles are confirmed and queued to the paired actuator`, async ({ page, qa }) => {
   setup(qa);
   await open(page);
-  await expect(page.getByRole('radio', { name: /2 Cycles/ })).toBeChecked();
-  await page.getByRole('radio', { name: new RegExp(`${cycles} Cycle`) }).check();
+  await expect(manualChoices(page).getByRole('radio', { name: /2 Cycles/ })).toBeChecked();
+  await manualChoices(page).getByRole('radio', { name: new RegExp(`${cycles} Cycle`) }).check();
   await feedButton(page).click();
   const dialog = page.getByRole('dialog', { name: 'Feed crayfish?', exact: true });
   await expect(dialog).toContainText(`${cycles} dispense ${cycles === 1 ? 'cycle' : 'cycles'}`);
@@ -36,21 +37,21 @@ for (const cycles of [1, 2, 3]) test(`${cycles} dispense cycles are confirmed an
   await expect(page.locator('[data-feed-status="Requested"]')).toContainText('Feeding request sent');
   await expect(page.locator('[data-feed-status="Requested"]')).not.toContainText('Feeding completed');
   await expect(feedButton(page)).toBeDisabled();
-  await expect(page.getByRole('radio', { name: new RegExp(`${cycles} Cycle`) })).toBeChecked();
-  await expect(page.getByRole('radio', { name: new RegExp(`${cycles} Cycle`) })).toBeDisabled();
+  await expect(manualChoices(page).getByRole('radio', { name: new RegExp(`${cycles} Cycle`) })).toBeChecked();
+  await expect(manualChoices(page).getByRole('radio', { name: new RegExp(`${cycles} Cycle`) })).toBeDisabled();
   await page.getByRole('button', { name: 'Activity', exact: true }).click();
   await expect(page.locator('[data-activity-id^="device_commands:"]')).toContainText(`Dispense cycles: ${cycles}`);
 });
 
 test('cancel and Escape do not queue a command and leave the selection intact', async ({ page, qa }) => {
   setup(qa); await open(page);
-  await page.getByRole('radio', { name: /3 Cycles/ }).check();
+  await manualChoices(page).getByRole('radio', { name: /3 Cycles/ }).check();
   await feedButton(page).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(page.getByRole('dialog')).not.toBeVisible();
   await feedButton(page).click(); await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).not.toBeVisible();
-  await expect(page.getByRole('radio', { name: /3 Cycles/ })).toBeChecked();
+  await expect(manualChoices(page).getByRole('radio', { name: /3 Cycles/ })).toBeChecked();
   expect(feedWrites(qa)).toHaveLength(0);
 });
 
@@ -142,7 +143,7 @@ test('existing pending feeds lock the selected requested amount after page reloa
     command_type: 'FEED_ONCE', command_value: '3', command_status: 'pending', created_at: instant }];
   await open(page);
   await expect(feedButton(page)).toBeDisabled();
-  await expect(page.getByRole('radio', { name: /3 Cycles/ })).toBeChecked();
+  await expect(manualChoices(page).getByRole('radio', { name: /3 Cycles/ })).toBeChecked();
   await expect(page.locator('[data-feed-status="Requested"]')).toContainText('3 dispense cycles requested');
   expect(feedWrites(qa)).toHaveLength(0);
 });
