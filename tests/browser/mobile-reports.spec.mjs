@@ -145,8 +145,8 @@ test.describe('phone exports', () => {
       await popup.close();
     };
     const allCsv = await download(page);
-    expect(parseCsv(allCsv.text).some(row => row.Type === 'Alert' && row.Priority === 'Critical')).toBe(true);
-    await save('all-tanks', 'Water level is below the configured minimum');
+    expect(parseCsv(allCsv.text).some(row => row.Type === 'Alert')).toBe(false);
+    await save('all-tanks', 'Water Readings', 'Water level is below the configured minimum');
     await choose(page, 'Choose which tank to include in the report', longTank);
     const selectedCsv = await download(page);
     expect(selectedCsv.filename).toMatch(/^craythrive-julian-breeder-tank.*report\.csv$/);

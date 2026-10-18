@@ -1,4 +1,5 @@
 import { formatPhilippineDateTime } from './philippineTime.js';
+import { PRINT_PAGINATION_SCRIPT } from './printPagination.js';
 // CSV keeps complete raw field text; print uses its own readable presentation.
 function cleanValue(value) {
   return value == null ? "" : String(value).replace(/\s+/g, " ").trim();
@@ -67,31 +68,32 @@ function buildSection(section, index) {
   const current = rows.filter(row => row.Type === "Current Tank Status");
   const other = rows.filter(row => !["Water Reading", "Ammonia Reading", "Current Tank Status"].includes(row.Type));
   let content = "";
-  if (current.length) content += buildSnapshotCards(current);
+  if (current.length) content += current.map(row => `<div class="report-group">${buildSnapshotCards([row])}</div>`).join('');
   const history = section?.kind === "monitoring-history" || water.length || ammonia.length;
-  if (history) content += `<h3>Water Readings</h3>${buildTable(water, [
+  if (history) content += `<div class="report-group"><h3>Water Readings</h3>${buildTable(water, [
     { key: "Date" }, { key: "Tank" },
     { key: "Temperature", condition: "Temperature Condition" },
     { key: "pH", condition: "pH Condition" },
     { key: "Water Clarity", condition: "Water Clarity Condition" },
     { key: "Water Level", condition: "Water Level Condition" },
     { key: "Overall Condition", label: "Overall" },
-  ])}`;
-  if (history) content += `<h3>Ammonia Scans</h3><p class="section-note">Manual ammonia readings keep their own scan timestamps; scans are separate from water reading history.</p>${ammonia.length ? buildTable(ammonia, [
+  ])}</div>`;
+  if (history) content += `<div class="report-group"><h3>Ammonia Scans</h3><p class="section-note">Manual ammonia readings keep their own scan timestamps; scans are separate from water reading history.</p>${ammonia.length ? buildTable(ammonia, [
     { key: "Date" }, { key: "Tank" }, { key: "Ammonia" }, { key: "Ammonia Condition", label: "Condition" },
-  ]) : `<p class="empty">No Scan — ${escapeHtml(section?.ammoniaEmptyMessage || "No ammonia scan recorded during this period.")}</p>`}`;
+  ]) : `<p class="empty">No Scan — ${escapeHtml(section?.ammoniaEmptyMessage || "No ammonia scan recorded during this period.")}</p>`}</div>`;
   if (other.length) {
     // Separate listings and orders to avoid sparse, wide union tables.
     for (const group of [...new Set(other.map(row => row.Type || "Records"))]) {
       const groupRows = other.filter(row => (row.Type || "Records") === group);
       const headers = getHeaders(groupRows);
-      content += `<h3>${escapeHtml(group)}</h3>`;
+      content += `<div class="report-group"><h3>${escapeHtml(group)}</h3>`;
       content += headers.length > 7 || groupRows.some(row => "Message" in row)
         ? buildRecordCards(groupRows)
         : buildTable(groupRows, headers.map(key => ({ key })));
+      content += '</div>';
     }
   }
-  if (!rows.length && !history) content = '<p class="empty">No records available for this selection.</p>';
+  if (!rows.length && !history) content = '<div class="report-group"><p class="empty">No records available for this selection.</p></div>';
   return `<section class="report-section"><div class="section-heading"><h2>${escapeHtml(section?.title || `Report ${index + 1}`)}</h2>${section?.description ? `<p>${escapeHtml(section.description)}</p>` : ""}</div>${content}</section>`;
 }
 // Browser pagination uses actual rendered row heights, including long names.
@@ -101,15 +103,14 @@ export function buildPrintableReport({ title, subtitle, sections, generatedAt: s
   return `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <title>${escapeHtml(subtitle ? `${title} - ${subtitle}` : title)}</title>
     <style>
-      @page {
-        size: A4 portrait; margin: 12mm;
-        @bottom-left { content: "CrayThrive"; font: 9pt Arial, sans-serif; color: #465b62; }
-        @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 9pt Arial, sans-serif; color: #465b62; }
-      }
+      @page { size: A4 portrait; margin: 0; }
       * { box-sizing: border-box; }
       html, body { margin: 0; padding: 0; background: #fff; color: #172c32; font-family: Arial, Helvetica, sans-serif; color-scheme: light; }
       body { font-size: 10pt; line-height: 1.4; }
       .print-report { width: 100%; overflow-wrap: anywhere; }
+      .report-page { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; width: 210mm; height: 297mm; padding: 12mm; background: #fff; break-after: page; page-break-after: always; }
+      .report-page:last-child { break-after: auto; page-break-after: auto; }
+      .report-page-content { min-height: 0; }
       .report-header { border-bottom: 2px solid #11877e; padding-bottom: 12px; margin-bottom: 18px; }
       .brand { color: #14665f; font-size: 10pt; font-weight: bold; letter-spacing: .1em; }
       h1 { font-size: 20pt; line-height: 1.2; margin: 6px 0 10px; }
@@ -133,48 +134,40 @@ export function buildPrintableReport({ title, subtitle, sections, generatedAt: s
       .snapshot-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
       .snapshot-card h3 { margin-top: 4px; }
       dt { color: #465b62; font-size: 9pt; } dd { margin: 2px 0 0; }
-      .report-footer { border-top: 1px solid #b8c6ca; padding-top: 8px; color: #465b62; font-size: 9pt; }
+      .report-footer { display: flex; justify-content: space-between; gap: 12px; border-top: 1px solid #b8c6ca; padding-top: 8px; color: #465b62; font-size: 9pt; }
       .print-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 auto 12px; max-width: 186mm; }
       .print-actions button { min-height: 44px; padding: 8px 16px; border: 1px solid #b8c6ca; border-radius: 8px; background: #fff; color: #172c32; font: inherit; cursor: pointer; }
       @media screen {
         body { padding: 16px; background: #edf3f4; }
-        .print-report { max-width: 186mm; margin: 0 auto; padding: 20px; background: #fff; box-shadow: 0 4px 20px #172c321a; }
+        .print-report { max-width: 210mm; margin: 0 auto; }
+        .report-page { margin: 0 auto 16px; box-shadow: 0 4px 20px #172c321a; }
       }
       @media screen and (max-width: 600px) {
-        body { padding: 10px; } .print-report { padding: 14px; }
-        table, tbody, tr, td { display: block; } thead { display: none; }
-        tr { margin-bottom: 12px; border: 1px solid #b8c6ca; }
-        td { border: 0; border-bottom: 1px solid #edf3f4; }
-        td::before { content: attr(data-label); display: block; font-weight: bold; color: #465b62; }
-        dl { grid-template-columns: minmax(0, 1fr); }
-        .snapshot-grid { grid-template-columns: minmax(0, 1fr); }
+        body { padding: 10px; }
+        html:not(.paper-layout) .report-page { width: 100%; height: auto; min-height: 0; padding: 14px; }
+        html:not(.paper-layout) table, html:not(.paper-layout) tbody, html:not(.paper-layout) tr, html:not(.paper-layout) td { display: block; }
+        html:not(.paper-layout) thead { display: none; }
+        html:not(.paper-layout) tr { margin-bottom: 12px; border: 1px solid #b8c6ca; }
+        html:not(.paper-layout) td { border: 0; border-bottom: 1px solid #edf3f4; }
+        html:not(.paper-layout) td::before { content: attr(data-label); display: block; font-weight: bold; color: #465b62; }
+        html:not(.paper-layout) dl, html:not(.paper-layout) .snapshot-grid { grid-template-columns: minmax(0, 1fr); }
       }
+      .paper-layout .print-report { width: 210mm; max-width: 210mm; }
       @media print {
         html, body { background: #fff !important; }
         .print-report { max-width: none; margin: 0; padding: 0; box-shadow: none; }
         .print-actions { display: none; }
-        .report-footer { display: none; }
+        .report-page { margin: 0; box-shadow: none; }
         .report-section:last-of-type { margin-bottom: 0; }
       }
     </style></head><body>
     <div class="print-actions"><button type="button" onclick="window.print()">Print / Save PDF</button></div>
-    <main class="print-report"><header class="report-header"><div class="brand">CRAYTHRIVE</div><h1>${escapeHtml(title)}</h1>
+    <template id="report-header-source"><header class="report-header"><div class="brand">CRAYTHRIVE</div><h1>${escapeHtml(title)}</h1>
     ${subtitle ? `<div class="report-subtitle">Report For: <strong>${escapeHtml(subtitle)}</strong></div>` : ""}
-    <div class="generated">Generated: ${escapeHtml(generatedAt)}</div></header>
-    ${sections.map(buildSection).join("")}<footer class="report-footer">CrayThrive · Monitoring and marketplace report</footer></main>
-    <script>
-      (function () {
-        function startPrint() {
-          Promise.resolve(document.fonts && document.fonts.ready).then(function() {
-            requestAnimationFrame(function() { requestAnimationFrame(function() {
-              setTimeout(function() { window.focus(); window.print(); }, 250);
-            }); });
-          });
-        }
-        if (document.readyState === 'complete') startPrint();
-        else window.addEventListener('load', startPrint, { once: true });
-      })();
-    </script></body></html>`;
+    <div class="generated">Generated: ${escapeHtml(generatedAt)}</div></header></template>
+    <template id="report-sections-source">${sections.map(buildSection).join("")}</template>
+    <main class="print-report" id="report-pages"></main>
+    <script>${PRINT_PAGINATION_SCRIPT}</script></body></html>`;
 }
 export function printReport(report) {
   if (!Array.isArray(report.sections) || !report.sections.length) {

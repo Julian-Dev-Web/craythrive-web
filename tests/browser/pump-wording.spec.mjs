@@ -50,7 +50,7 @@ test('Alerts, bell and Tank Details format historical pump records without rewri
  expect(qa.data.alerts).toEqual(raw);expect(qa.writes).toEqual([]);
 });
 
-test('dashboard history and report CSV/print use the same presentation wording',async({page,qa})=>{
+test('dashboard retains pump history while report CSV/print excludes alert records',async({page,qa})=>{
  const created_at=new Date().toISOString();
  qa.data.alerts=[
   {id:'drain-history',user_id:user.id,tank_id:'tank-a',title:'Drain completed',message:'The drain pump ran for 10 seconds.',status:'active',created_at},
@@ -64,10 +64,11 @@ test('dashboard history and report CSV/print use the same presentation wording',
  await page.goto('/admin/reports');
  const pending=page.waitForEvent('download');await page.getByRole('button',{name:'Export CSV',exact:true}).click();
  const csv=await fs.readFile(await (await pending).path(),'utf8');
- expect(csv).toContain(successfulDrain);expect(csv).toContain('The refill pump ran for 2 seconds.');expect(csv).not.toContain('pump ran for 10 seconds');
+ expect(csv).not.toContain(successfulDrain);expect(csv).not.toContain('The refill pump ran for 2 seconds.');expect(csv).not.toContain('pump ran for 10 seconds');
  const popupPromise=page.waitForEvent('popup');await page.getByRole('button',{name:'Print Report',exact:true}).click();
- const popup=await popupPromise;await expect(popup.locator('body')).toContainText(successfulDrain);
- await expect(popup.locator('body')).toContainText('The refill pump ran for 2 seconds.');
+ const popup=await popupPromise;await expect(popup.locator('body')).toContainText('Water Readings');
+ await expect(popup.locator('body')).not.toContainText(successfulDrain);
+ await expect(popup.locator('body')).not.toContainText('The refill pump ran for 2 seconds.');
  await expect(popup.locator('body')).not.toContainText('pump ran for 10 seconds');await popup.close();
  expect(qa.writes).toEqual([]);
 });

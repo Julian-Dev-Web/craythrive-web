@@ -2,12 +2,11 @@ import useTankMonitoring from '../../hooks/useTankMonitoring';
 import MonitoringSyncNotice from '../../components/MonitoringSyncNotice';
 import { applyPhilippineDateFilter, formatPhilippineDateTime, formatPhilippineTime, formatPhilippineCalendarDate, isWithinPhilippineDateRange, compareTimestamps } from '../../utils/philippineTime';
 import { getServerNowDate } from '../../services/serverTimeService';
-import { formatMonitoringAlert } from "../../../supabase/functions/_shared/monitoringAlertPresentation.js";
 import { logDiagnostic } from "../../utils/securityDiagnostics";
 import SafetyBadge from "../../components/SafetyBadge";
 import SensorSafeRange, { SensorReadingValue } from "../../components/SensorSafeRange";
 import { getSafetySeverity, getSafetyStatusLabel, getParameterExplanation } from "../../utils/statusHelpers";
-import { buildMonitoringRecords, buildTankHistoryExportRows, buildTankSnapshotExportRows, getCurrentTankSnapshot, recordMatchesAmmoniaTank, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
+import { buildMonitoringRecords, buildTankHistoryExportRows, buildTankSnapshotExportRows, getCurrentTankSnapshot, recordMatchesAmmoniaTank } from "../../utils/monitoringRecords";
 import { loadAmmoniaHistory, loadSensorHistory } from "../../services/tankSnapshotService";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -70,11 +69,6 @@ const tableGroups = {
 
   ammonia: ["ammonia_readings"],
 
-  alerts: [
-    "alerts",
-    "notifications",
-    "tank_alerts",
-  ],
 
   listings: [
     "marketplace_listings",
@@ -411,67 +405,6 @@ function getFriendlyMarketStatus(
 }
 
 /* =========================================================
-   ALERT STATUS
-========================================================= */
-
-function getAlertSeverity(
-  alert
-) {
-  const raw =
-    normalizeStatusText(
-      alert?.severity ||
-        alert?.priority ||
-        alert?.level ||
-        alert?.status ||
-        alert?.type ||
-        ""
-    );
-
-  if (
-    raw.includes(
-      "critical"
-    ) ||
-    raw.includes(
-      "danger"
-    ) ||
-    raw.includes(
-      "unsafe"
-    ) ||
-    raw.includes(
-      "high ph"
-    ) ||
-    raw.includes(
-      "low ph"
-    )
-  ) {
-    return "critical";
-  }
-
-  if (
-    raw.includes(
-      "warning"
-    ) ||
-    raw.includes(
-      "medium"
-    ) ||
-    raw.includes(
-      "dirty"
-    ) ||
-    raw.includes(
-      "low"
-    ) ||
-    raw.includes(
-      "high"
-    )
-  ) {
-    return "warning";
-  }
-
-  return "normal";
-}
-
-
-/* =========================================================
    RECORD HELPERS
 ========================================================= */
 
@@ -525,39 +458,6 @@ function getMarketTitle(
    TANK HELPERS
 ========================================================= */
 
-function getTankKeys(
-  tank
-) {
-  return [
-    tank?.id,
-    tank?.tank_id,
-    tank?.uuid,
-    tank?.device_uid,
-    tank?.device_id,
-    tank?.iot_device_id,
-    tank?.tank_code,
-  ]
-    .filter(Boolean)
-    .map(String);
-}
-
-function getRecordTankKeys(
-  record
-) {
-  return [
-    record?.tank_id,
-    record?.tankId,
-    record?.tank_uuid,
-    record
-      ?.tank_profile_id,
-    record?.device_uid,
-    record?.device_id,
-    record?.iot_device_id,
-  ]
-    .filter(Boolean)
-    .map(String);
-}
-
 function getTankName(
   tank,
   index = 0
@@ -585,61 +485,6 @@ function getTankOptionId(
         ?.iot_device_id ||
       `tank-${index}`
   );
-}
-
-function getTankDisplayName(
-  record,
-  tanks,
-  index = 0
-) {
-  const directName =
-    record?.tank_name ||
-    record?.tank_label ||
-    record
-      ?.tank_display_name;
-
-  if (directName) {
-    return directName;
-  }
-
-  const recordKeys =
-    getRecordTankKeys(
-      record
-    );
-
-  const matchedTank =
-    tanks.find(
-      (tank) => {
-        const tankKeys =
-          getTankKeys(
-            tank
-          );
-
-        return (
-          recordKeys.some(
-            (key) =>
-              tankKeys.includes(
-                key
-              )
-          )
-        );
-      }
-    );
-
-  if (!matchedTank) {
-    return `Tank ${
-      index + 1
-    }`;
-  }
-
-  return getTankName(
-    matchedTank,
-    index
-  );
-}
-
-function recordMatchesTank(record, tank) {
-  return !tank || recordMatchesMonitoringTank(record, tank);
 }
 
 /* =========================================================
@@ -1383,7 +1228,6 @@ export default function ReportsPage() {
       tanks: [],
       readings: [],
       ammonia: [],
-      alerts: [],
       listings: [],
       orders: [],
     });
@@ -1469,7 +1313,6 @@ export default function ReportsPage() {
             tanks: [],
             readings: [],
       ammonia: [],
-            alerts: [],
             listings: [],
             orders: [],
           });
@@ -1480,7 +1323,6 @@ export default function ReportsPage() {
         const [
           tanks,
           readings,
-          alerts,
           listings,
           orders,
           ammonia,
@@ -1493,12 +1335,6 @@ export default function ReportsPage() {
             ),
 
             loadSensorHistory(currentUser, { ...dateRange, limit: 1000, paginate: !!(fromDate || toDate) }),
-
-            fetchRowsByScope(
-              tableGroups.alerts,
-              currentUser,
-              1000, dateRange
-            ),
 
             fetchRowsByScope(
               tableGroups.listings,
@@ -1525,9 +1361,6 @@ export default function ReportsPage() {
             readings.rows,
 
           ammonia: ammonia.rows,
-
-          alerts:
-            alerts.rows,
 
           listings:
             listings.rows,
@@ -1809,53 +1642,6 @@ export default function ReportsPage() {
   const tankRecords = useMemo(() => [...tankReadings, ...tankAmmonia]
     .sort((a, b) => compareTimestamps(b.date || 0, a.date || 0)), [tankReadings, tankAmmonia]);
 
-  const tankAlerts =
-    useMemo(
-      () => {
-        let scopedAlerts =
-          datasets.alerts;
-
-        if (
-          selectedTankId !==
-            "all" &&
-          selectedTank
-        ) {
-          scopedAlerts =
-            scopedAlerts.filter(
-              (
-                alert
-              ) =>
-                recordMatchesTank(
-                  alert,
-                  selectedTank
-                )
-            );
-        }
-
-        return scopedAlerts.filter(
-          (
-            alert
-          ) =>
-            (conditionFilter === "all" || getAlertSeverity(alert) === conditionFilter) &&
-            isWithinDateRange(
-              getRecordDate(
-                alert
-              ),
-              fromDate,
-              toDate
-            )
-        );
-      },
-      [
-        datasets.alerts,
-        selectedTankId,
-        selectedTank,
-        fromDate,
-        toDate,
-        conditionFilter,
-      ]
-    );
-
   const marketListings =
     useMemo(
       () => {
@@ -1972,17 +1758,6 @@ export default function ReportsPage() {
               )
           ).length;
 
-        const alertCritical =
-          tankAlerts.filter(
-            (
-              alert
-            ) =>
-              getAlertSeverity(
-                alert
-              ) ===
-              "critical"
-          ).length;
-
         return {
           totalTanks:
             selectedTankId ===
@@ -2002,14 +1777,9 @@ export default function ReportsPage() {
           totalAmmonia: tankAmmonia.length,
           ammoniaIssues: tankAmmonia.filter(item => ["warning", "critical"].includes(item.status)).length,
 
-          totalAlerts:
-            tankAlerts
-              .length,
-
           normal,
           warning,
           critical,
-          alertCritical,
           phWarning,
           waterClarityWarning,
 
@@ -2034,7 +1804,6 @@ export default function ReportsPage() {
         tankReadings,
         tankAmmonia,
         tankRecords,
-        tankAlerts,
       ]
     );
 
@@ -2239,17 +2008,6 @@ export default function ReportsPage() {
           "warning",
       },
 
-      {
-        label:
-          "Critical alerts",
-
-        value:
-          tankAnalytics
-            .alertCritical,
-
-        tone:
-          "danger",
-      },
     ];
 
   const marketBars =
@@ -2344,49 +2102,6 @@ export default function ReportsPage() {
   const recentTankRecords =
     useMemo(
       () => {
-        const alerts =
-          tankAlerts.map(
-            (
-              alert,
-              index
-            ) => ({
-              type:
-                "Alert",
-
-              title:
-                formatMonitoringAlert(alert).title ||
-                alert
-                  ?.title ||
-                alert
-                  ?.alert_title ||
-                alert
-                  ?.notification_title ||
-                alert
-                  ?.type ||
-                `Alert ${
-                  index +
-                  1
-                }`,
-
-              tankName:
-                getTankDisplayName(
-                  alert,
-                  datasets.tanks,
-                  index
-                ),
-
-              status:
-                getAlertSeverity(
-                  alert
-                ),
-
-              date:
-                getRecordDate(
-                  alert
-                ),
-            })
-          );
-
         const readings =
           tankReadings.map(
             (
@@ -2420,7 +2135,6 @@ export default function ReportsPage() {
           );
 
         return [
-          ...alerts,
           ...readings,
           ...tankAmmonia.map(item => ({ type: item.type, title: item.ammoniaLabel,
             tankName: item.tankName, status: item.status, date: item.date })),
@@ -2440,10 +2154,8 @@ export default function ReportsPage() {
           );
       },
       [
-        tankAlerts,
         tankReadings,
         tankAmmonia,
-        datasets.tanks,
       ]
     );
 
@@ -2509,82 +2221,9 @@ export default function ReportsPage() {
       () => {
         const readingRows = buildTankHistoryExportRows(tankRecords, formatDate);
 
-        const alertRows =
-          tankAlerts.map(
-            (
-              alert,
-              index
-            ) => ({
-              Type:
-                "Alert",
-
-              Tank:
-                getTankDisplayName(
-                  alert,
-                  datasets.tanks,
-                  index
-                ),
-
-              Name:
-                formatMonitoringAlert(alert).title ||
-                alert
-                  ?.title ||
-                alert
-                  ?.alert_title ||
-                alert
-                  ?.notification_title ||
-                alert
-                  ?.type ||
-                `Alert ${
-                  index +
-                  1
-                }`,
-
-              Priority:
-                getSafetyStatusLabel(
-                  getAlertSeverity(
-                    alert
-                  )
-                ),
-
-              Status:
-                formatFriendlyText(
-                  alert
-                    ?.status ||
-                    alert
-                      ?.alert_status ||
-                    "Open"
-                ),
-
-              Message:
-                formatMonitoringAlert(alert).message ||
-                alert
-                  ?.message ||
-                alert
-                  ?.description ||
-                alert
-                  ?.body ||
-                "N/A",
-
-              Date:
-                formatDate(
-                  getRecordDate(
-                    alert
-                  )
-                ),
-            })
-          );
-
-        return [
-          ...readingRows,
-          ...alertRows,
-        ];
+        return readingRows;
       },
-      [
-        tankRecords,
-        tankAlerts,
-        datasets.tanks,
-      ]
+      [tankRecords]
     );
 
   /* =======================================================
@@ -2737,8 +2376,8 @@ export default function ReportsPage() {
       description:
         selectedTankId ===
         "all"
-          ? `Sensor readings, ammonia results, water conditions, and alert history for all tanks. Date range: ${dateRangeLabel}.`
-          : `Sensor readings, ammonia results, water conditions, and alert history for ${selectedTankName}. Date range: ${dateRangeLabel}.`,
+          ? `Sensor readings, ammonia results, and water conditions for all tanks. Date range: ${dateRangeLabel}.`
+          : `Sensor readings, ammonia results, and water conditions for ${selectedTankName}. Date range: ${dateRangeLabel}.`,
 
       rows:
         tankExportRows,
@@ -3243,7 +2882,7 @@ export default function ReportsPage() {
           <span>
             {activeReport ===
             "tanks"
-              ? "Historical records, alerts, and analytics use this date range. Latest Tank Status keeps each tank's latest available records."
+              ? "Historical readings and analytics use this date range. Latest Tank Status keeps each tank's latest available records."
               : "Marketplace listings, orders, sales analytics, CSV, and print output use this date range."}
           </span>
         </div>
@@ -3292,7 +2931,7 @@ export default function ReportsPage() {
                   {selectedTankId ===
                   "all"
                     ? `All registered tanks are included for ${dateRangeLabel}.`
-                    : `Only readings and alerts linked to ${selectedTankName} are included for ${dateRangeLabel}.`}
+                    : `Only readings linked to ${selectedTankName} are included for ${dateRangeLabel}.`}
                 </span>
               </div>
 
@@ -3352,12 +2991,12 @@ export default function ReportsPage() {
               icon={
                 AlertTriangle
               }
-              label="Critical Alerts"
+              label="Critical Readings"
               value={
                 tankAnalytics
-                  .alertCritical
+                  .critical
               }
-              helper={`${tankAnalytics.totalAlerts} total alert records`}
+              helper="Readings classified as Critical"
               tone="danger"
             />
 
@@ -3588,8 +3227,8 @@ export default function ReportsPage() {
                     </strong>
 
                     <span>
-                      No readings
-                      or alerts
+                      No sensor readings
+                      or ammonia scans
                       were found
                       for this tank
                       and date

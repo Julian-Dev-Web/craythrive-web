@@ -45,7 +45,7 @@ test.describe('Manila date boundary in a New York browser',()=>{
   expect(csv).toContain('26.1');expect(csv).toContain('27.1');expect(csv).not.toContain('25.1');expect(csv).not.toContain('28.1');
   expect(csv).toMatch(/Oct 11, 2026,? 12:00\s*AM/);expect(csv).toMatch(/Oct 11, 2026,? 11:59\s*PM/);
   const popupPromise=page.waitForEvent('popup');await page.getByRole('button',{name:'Print Report',exact:true}).click();
-  const popup=await popupPromise;await expect(popup.locator('.generated')).toContainText(timestamp);await popup.close();
+  const popup=await popupPromise;await expect(popup.locator('.generated').first()).toContainText(timestamp);await popup.close();
  });
 });
 
