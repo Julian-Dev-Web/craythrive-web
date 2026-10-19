@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { DispenseCycleSelector } from './ManualFeedOptions';
 import { feedingTimeInput, feedingTimeLabel, nextFeedingSchedule, parseFeedingTime, validFeedingSchedule } from '../../supabase/functions/_shared/feedingSchedule.js';
 import { dispenseCycleLabel, recordedDispenseCycles } from '../../supabase/functions/_shared/feederControl.js';
-import { getRecordedActionOutcome } from '../../supabase/functions/_shared/tankActivity.js';
+import { hasRecordedCommandAcknowledgement } from '../../supabase/functions/_shared/tankActivity.js';
 import { formatPhilippineDateTime, philippineDateKey } from '../utils/philippineTime';
 import { FEEDING_SCHEDULE_CHANGED, feedingScheduleError, loadFeedingSchedule, saveFeedingSchedule } from '../services/feedingScheduleService';
 import '../styles/automaticFeeding.css';
@@ -59,7 +59,7 @@ export default function AutomaticFeedingSettings({ tank, nowMs = null, lastFeed 
   const snapshot = resource.snapshot;
   const settings = draft || snapshot?.settings;
   const patch = values => { setDraft(current => ({ ...(current || snapshot.settings), ...values })); setMessage(''); };
-  const confirmedFeed = lastFeed?.tank_id === tankId && lastFeed.command_status === 'done' && getRecordedActionOutcome(lastFeed) === 'Completed' ? lastFeed : null;
+  const confirmedFeed = lastFeed?.tank_id === tankId && lastFeed.command_status === 'done' && hasRecordedCommandAcknowledgement(lastFeed) ? lastFeed : null;
   const completedToday = confirmedFeed && nowMs !== null && philippineDateKey(confirmedFeed.executed_at) === philippineDateKey(nowMs);
   const next = snapshot?.exists && resource.verified ? nextFeedingSchedule(snapshot.settings, nowMs, !!completedToday) : null;
   const lastCycles = confirmedFeed ? recordedDispenseCycles(confirmedFeed.command_value) : null;

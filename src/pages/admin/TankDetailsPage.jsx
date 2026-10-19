@@ -5,7 +5,7 @@ import { philippineDayBounds, philippineDateKey, timestampMs, formatPhilippineDa
 import useServerTime from '../../hooks/useServerTime';
 import { fetchServerTimestamp } from '../../services/serverTimeService';
 import { formatMonitoringAlert, waterAutomationAlertSeverity } from "../../../supabase/functions/_shared/monitoringAlertPresentation.js";
-import { formatRecordedPumpAction, getRecordedActionOutcome } from "../../../supabase/functions/_shared/tankActivity.js";
+import { formatRecordedPumpAction, getRecordedActionOutcome, hasRecordedCommandAcknowledgement } from "../../../supabase/functions/_shared/tankActivity.js";
 import { logDiagnostic, getSafeErrorMessage } from "../../utils/securityDiagnostics";
 import { getAmmoniaLabel, getAmmoniaNumericValue, getAmmoniaScanDate, getLatestAmmoniaForTank, recordMatchesAmmoniaTank, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
 import { loadAmmoniaHistory, loadSensorHistory } from "../../services/tankSnapshotService";
@@ -413,14 +413,14 @@ function getCommandLabel(commandType) {
 function getShortResultMessage(
   command = {}
 ) {
-  const feeding = formatRecordedFeedingAction(command, getRecordedActionOutcome(command));
+  const feeding = formatRecordedFeedingAction(command, getRecordedActionOutcome(command, 'device_commands'));
   if (feeding) return feeding.message;
-  const pump = formatRecordedPumpAction(command);
+  const pump = formatRecordedPumpAction(command, 'device_commands');
   if (pump) return pump.message;
-  const outcome = getRecordedActionOutcome(command);
+  const outcome = getRecordedActionOutcome(command, 'device_commands');
   if (outcome === "Unknown / Unconfirmed") return "Execution has not been confirmed.";
-  if (outcome === "Requested") return "Request recorded; awaiting completion confirmation.";
-  if (outcome === "Started") return "Execution was reported as started; completion is unconfirmed.";
+  if (outcome === "Pending Verification") return "The action is pending verification.";
+  if (outcome === "In Progress") return "The actuator action is in progress.";
   if (outcome === "Completed") return "Device reports a completed command cycle; physical water flow or feed delivery is not measured.";
   const text =
     String(command.result_message || command.notes || "").trim();
@@ -1499,7 +1499,7 @@ async function fetchTodaysFeedCommands(
     return [];
   }
 
-  return data.filter(command => command.command_status === 'done' && getRecordedActionOutcome(command) === 'Completed');
+  return data.filter(command => command.command_status === 'done' && hasRecordedCommandAcknowledgement(command));
 }
 
 /* =========================================================
@@ -2226,8 +2226,8 @@ export default function TankDetailsPage() {
   const latestCommandLog =
     sortedControlLogs.find(item => item.action_type !== "threshold_updated") ||
     null;
-  const latestFeedPresentation = latestCommandLog ? formatRecordedFeedingAction(latestCommandLog, getRecordedActionOutcome(latestCommandLog)) : null;
-  const latestActionOutcome = latestFeedPresentation?.outcome || (latestCommandLog ? getRecordedActionOutcome(latestCommandLog) : null);
+  const latestFeedPresentation = latestCommandLog ? formatRecordedFeedingAction(latestCommandLog, getRecordedActionOutcome(latestCommandLog, 'device_commands')) : null;
+  const latestActionOutcome = latestFeedPresentation?.outcome || (latestCommandLog ? getRecordedActionOutcome(latestCommandLog, 'device_commands') : null);
 
   const latestAlert =
     sortedAlerts[0] ||
@@ -2332,7 +2332,7 @@ export default function TankDetailsPage() {
   const feedActuatorReady = isPairedFeedActuator(actuatorDevice, tank, getPrimaryTankId(tank, tankId));
   const activeFeedCommand = activeCommands.find(command => command.command_type === 'FEED_ONCE') || (hasTrackedFeedPending ? trackedFeed : null);
   const latestFeedCommand = activeFeedCommand || trackedFeed || sortedControlLogs.find(command => command.command_type === 'FEED_ONCE');
-  const feedingStatus = latestFeedCommand ? formatRecordedFeedingAction(latestFeedCommand, getRecordedActionOutcome(latestFeedCommand)) : null;
+  const feedingStatus = latestFeedCommand ? formatRecordedFeedingAction(latestFeedCommand, getRecordedActionOutcome(latestFeedCommand, 'device_commands')) : null;
 
   const isStuckLong =
     hasActiveCommand &&
@@ -3473,7 +3473,7 @@ export default function TankDetailsPage() {
 
                 <div>
                   <strong>
-                    {latestFeedPresentation?.title || formatRecordedPumpAction(latestCommandLog || {})?.title || getCommandLabel(latestCommandLog?.command_type || latestCommandLog?.action)}
+                    {latestFeedPresentation?.title || formatRecordedPumpAction(latestCommandLog || {}, 'device_commands')?.title || getCommandLabel(latestCommandLog?.command_type || latestCommandLog?.action)}
                   </strong>
 
                   <p>
@@ -3752,7 +3752,7 @@ export default function TankDetailsPage() {
           {/* ACTION BUTTONS */}
 
           <AutomaticFeedingSettings key={tankId} tank={tank} nowMs={nowMs}
-            lastFeed={sortedControlLogs.find(command => command.command_type === 'FEED_ONCE' && getRecordedActionOutcome(command) === 'Completed')} />
+            lastFeed={sortedControlLogs.find(command => command.command_type === 'FEED_ONCE' && hasRecordedCommandAcknowledgement(command))} />
 
           <h4 className="manual-feeding-heading">Manual Feed Now</h4>
           <ManualFeedOptions cycles={activeFeedCommand ? feedingStatus?.cycles ?? selectedCycles : selectedCycles} onChange={setDispenseCycles}
@@ -3775,7 +3775,7 @@ export default function TankDetailsPage() {
               {feedingStatus.cycles !== null && <small>Dispense cycles: {feedingStatus.cycles}</small>}
               {['Rejected', 'Failed', 'Skipped'].includes(feedingStatus.outcome) && latestFeedCommand.result_message && <small>Device report: {latestFeedCommand.result_message}</small>}
             </div>
-            {['Requested', 'Started'].includes(feedingStatus.outcome) ? <Loader2 className="spin-icon" size={18} aria-hidden="true" />
+            {['Pending Verification', 'In Progress'].includes(feedingStatus.outcome) ? <Loader2 className="spin-icon" size={18} aria-hidden="true" />
               : feedingStatus.outcome === 'Completed' ? <CheckCircle2 size={18} aria-hidden="true" /> : <AlertTriangle size={18} aria-hidden="true" />}
           </div>}
 

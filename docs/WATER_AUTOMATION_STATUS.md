@@ -1,5 +1,72 @@
 # Automatic water control status compatibility
 
+## Current Web rendering correction
+
+The rendering rules below supersede the original presentation contract recorded
+later in this document. No additional SQL migration or database rewrite is
+required for this correction.
+
+`actionStatus.js` is now the shared source-aware status reader. Automation logs
+use `action_status`; device commands use `command_status`. Other/legacy rows use
+`action_status ?? command_status ?? status ?? result`. Embedded notification
+metadata is a fallback, and alert read/resolution state is kept separate from
+execution status. A missing `command_status` cannot invalidate a saved
+automation `action_status`.
+
+| Saved status | Current Web label |
+| --- | --- |
+| done / completed | Completed |
+| rechecking | Executed – Rechecking |
+| blocked | Blocked |
+| skipped | Skipped |
+| failed | Failed |
+| rejected | Rejected |
+| running | In Progress |
+| pending | Pending Verification |
+| null / unknown | Unknown / Unconfirmed |
+
+DONE is never downgraded by missing acknowledgement timestamps, exact reason
+wording, missing mirror metadata, or diagnostic text containing another status.
+Saved failed rows remain Failed regardless of reason parsing. Automatic DONE,
+rechecking, failed and blocked results use the requested friendly explanations;
+original automation reasons and sensor context remain visible. ID-based
+deduplication and source priority remain in place.
+
+This rendering correction updates `actionStatus.js`, `waterAutomationStatus.js`,
+`tankActivity.js`, `pumpActionWording.js`, `feederControl.js`, Tank Details,
+the Activity timeline, and Automatic Feeding Settings plus their regression tests.
+The existing feeding acknowledgement predicate is preserved separately as
+`hasRecordedCommandAcknowledgement()` for the daily control guard. Display labels
+no longer participate in that decision. Pump/feeder commands and safety rules
+are unchanged. Reports continue exporting sensor/ammonia and marketplace records;
+they do not combine actuator history sources.
+
+The existing SQL migration below remains a historical migration and its legacy
+notification text is tested independently of the current Web presentation.
+
+Files modified for this rendering correction:
+
+- `supabase/functions/_shared/actionStatus.js` (new)
+- `supabase/functions/_shared/waterAutomationStatus.js`
+- `supabase/functions/_shared/tankActivity.js`
+- `supabase/functions/_shared/pumpActionWording.js`
+- `supabase/functions/_shared/feederControl.js`
+- `src/pages/admin/TankDetailsPage.jsx`
+- `src/components/TankActivityHistory.jsx`
+- `src/components/AutomaticFeedingSettings.jsx`
+- `tests/action-status.test.mjs` (new)
+- `tests/tank-activity.test.mjs`
+- `tests/water-automation-status.test.mjs`
+- `tests/water-automation-sql.test.mjs`
+- `tests/feeder-control.test.mjs`
+- `tests/browser/tank-activity.spec.mjs`
+- `tests/browser/water-automation-status.spec.mjs`
+- `tests/browser/pump-wording.spec.mjs`
+- `tests/browser/manual-feeding.spec.mjs`
+- `docs/WATER_AUTOMATION_STATUS.md`
+
+## Original implementation audit
+
 Implemented on 2026-10-19. No remote SQL, firmware deployment, historical-row
 rewrite, actuator request, Git commit or push was performed for this change.
 
@@ -35,7 +102,7 @@ Current remote constraints and deployment are **unverified**. Local PostgreSQL
 tests cover unconstrained text, a restrictive CHECK, an enum, repeat application,
 and rejecting a composite safety constraint without weakening it.
 
-## Final UI contract
+## Original UI contract (superseded above)
 
 The portable `waterAutomationStatus.js` helper handles automatic refill/drain:
 

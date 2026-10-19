@@ -1,11 +1,11 @@
 import { waterAutomationStatus } from './waterAutomationStatus.js';
+import { getRecordedActionStatus } from './actionStatus.js';
 // Presentation only. Requested duration_ms/seconds never proves actual runtime.
 // Portable across Vite, Expo and Deno. No reads, writes or actuator commands.
 const text = value => typeof value === 'string' ? value.trim() : '';
 const key = value => text(value).toLowerCase().replace(/[\s-]+/g, '_');
 const object = value => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 const actions = /^(drain|drain_for|drain_water|drain_pump|pump_drain|auto_drain|refill|refill_for|fill|fill_water|add_water|refill_pump|pump_refill|auto_refill)$/;
-const statuses = /^(done|completed|success|succeeded|rechecking|skipped|failed|error|rejected|blocked|cancelled|canceled|pending|queued|running|executing)$/;
 
 export function getActualRefillDurationMs(record = {}) {
   record = object(record);
@@ -29,7 +29,7 @@ export function getActualRefillDurationMs(record = {}) {
   return null;
 }
 
-export function formatPumpAction(record = {}) {
+export function formatPumpAction(record = {}, source = '') {
   record = object(record);
   const metadata = object(record.metadata);
   const action = [record.command_type, record.action_type, record.action, record.control_action,
@@ -43,9 +43,9 @@ export function formatPumpAction(record = {}) {
 
   // alerts.status is read/resolution state, not execution success. Explicit
   // execution status always wins over an old title/result containing completed.
-  const automation = waterAutomationStatus(record);
-  const status = automation?.rawStatus || [record.command_status, record.action_status, metadata.command_status, metadata.action_status,
-    action && record.status, action && record.result, action && record.state].map(key).find(value => statuses.test(value))
+  const automation = waterAutomationStatus(record, source);
+  const status = automation?.rawStatus || getRecordedActionStatus({ ...record,
+    status: action ? record.status : undefined, result: action ? record.result ?? record.state : undefined }, source)
     || (/rejected|blocked/i.test(title) ? 'rejected' : /failed|failure/i.test(title) ? 'failed'
       : /cancelled|canceled/i.test(title) ? 'cancelled' : /completed|\bdone\b/i.test(title) ? 'done' : 'recorded');
   const label = kind === 'drain' ? 'Drain' : 'Add Water';

@@ -6,6 +6,7 @@ import { formatWaterDepth, formatWaterDepthAlert, recordedWaterDepth } from './w
 import { formatMonitoringAlert } from './monitoringAlertPresentation.js';
 import { formatRecordedFeedingAction } from './feederControl.js';
 import { automationLogId, waterAutomationStatus } from './waterAutomationStatus.js';
+import { getActionStatusPresentation, getRecordedActionStatus } from './actionStatus.js';
 
 const text = value => typeof value === 'string' ? value.trim() : '';
 const code = value => text(value).toLowerCase().replace(/[\s-]+/g, '_');
@@ -36,25 +37,19 @@ function recordedSeverity(row) {
     : value === 'warning' ? 'warning' : ['normal', 'safe', 'success'].includes(value) ? 'normal' : 'no-data';
 }
 
-export function getRecordedActionOutcome(row, source = 'device_commands') {
-  const automation = waterAutomationStatus(row, source);
-  if (automation) return automation.label;
-  const status = code(source === 'device_commands' ? row.command_status : row.action_status || row.status);
+// Used only by the existing feeding verification guard, never by status labels.
+export function hasRecordedCommandAcknowledgement(row) {
   const note = text(row.result_message || row.notes || row.reason);
-  if (['skipped', 'blocked', 'rejected', 'cancelled', 'canceled'].includes(status)) return 'Skipped';
-  if (['failed', 'error'].includes(status)) return 'Failed';
-  if (['running', 'started', 'executing'].includes(status)) return 'Started';
-  if (['pending', 'queued', 'sent', 'requested', 'acknowledged'].includes(status)) return 'Requested';
-  if (source === 'control_logs' && row.action_type === 'threshold_updated') return 'Completed';
-  // Status defaults and copied "done" fields are insufficient. Recognize the
-  // inspected manual firmware acknowledgement, or explicit backend evidence.
-  const manualAck = source === 'device_commands' && Number.isFinite(timestampMs(row.executed_at))
+  return ['done', 'completed', 'success', 'succeeded'].includes(code(row.command_status))
+    && Number.isFinite(timestampMs(row.executed_at))
     && /^(?:FEED_ONCE completed\.|(?:REFILL_FOR|DRAIN_FOR) completed for \d+ ms\.|STOP_ALL executed[. ])/i.test(note)
     && !/Auto log id:/i.test(note);
-  const autoAck = source === 'tank_automation_logs' && ['AUTO_REFILL', 'AUTO_DRAIN'].includes(row.action_type)
-    && Number.isFinite(timestampMs(row.created_at)) && note === 'Automatic water-level correction pulse completed.';
-  if (['done', 'completed', 'success', 'succeeded'].includes(status) && (manualAck || autoAck)) return 'Completed';
-  return 'Unknown / Unconfirmed';
+}
+
+export function getRecordedActionOutcome(row, source = '') {
+  const status = getRecordedActionStatus(row, source);
+  if (source === 'control_logs' && row.action_type === 'threshold_updated' && ['', 'updated'].includes(status)) return 'Completed';
+  return getActionStatusPresentation(row, source).label;
 }
 
 function actionFor(row) {
@@ -67,19 +62,16 @@ function actionFor(row) {
   return text(row.action_type || row.command_type).replaceAll('_', ' ') || 'Tank activity';
 }
 
-// Reuse pump wording only after checking execution evidence. A copied "done"
-// status must not turn an unconfirmed history record into successful execution.
-export function formatRecordedPumpAction(row, source = 'device_commands') {
-  const pump = formatPumpAction(row);
+export function formatRecordedPumpAction(row, source = '') {
+  const pump = formatPumpAction(row, source);
   if (!pump) return null;
   const automation = waterAutomationStatus(row, source);
-  if (automation) return { ...pump, message: automation.tone === 'completed' ? pump.message : automation.message };
-  const outcome = getRecordedActionOutcome(row, source);
-  if (outcome === 'Unknown / Unconfirmed') return { ...pump,
+  if (automation) return { ...pump, message: automation.message };
+  const presentation = getActionStatusPresentation(row, source);
+  if (presentation.tone === 'unknown') return { ...pump,
     title: `${pump.kind === 'drain' ? 'Drain' : 'Add Water'} recorded`,
-    message: 'Execution has not been confirmed.' };
-  const status = { Completed: 'done', Requested: 'queued', Started: 'running', Failed: 'failed' }[outcome];
-  return status ? formatPumpAction({ ...row, command_status: status }) : pump;
+    message: presentation.message };
+  return pump;
 }
 
 // Only saved event evidence is accepted. Current settings/readings are never an
@@ -117,11 +109,9 @@ export function buildTankActivity({ tank, userId, sources = {} }) {
       const kind = code(row.command_type || row.action_type);
       event.category = /feed/.test(kind) ? 'feeding' : /drain|refill|pump|fill|stop/.test(kind) ? 'water' : 'other';
       event.title = event.action;
-      event.result = event.outcome === 'Completed' ? 'Recorded completion. Equipment outcomes below refer to a reported command cycle, not measured water flow or feed delivery.'
-        : event.outcome === 'Unknown / Unconfirmed' ? 'Execution is unconfirmed. A saved status alone does not prove completion.'
-        : event.outcome === 'Requested' ? 'A request was recorded; completion has not been confirmed.'
-        : event.outcome === 'Started' ? 'Execution was reported as started; completion has not been confirmed.'
-        : 'See the recorded reason. No successful completion is claimed.';
+      const presentation = getActionStatusPresentation(row, source);
+      event.outcomeTone = presentation.tone;
+      event.result = presentation.message;
       const pump = formatRecordedPumpAction(row, source);
       const automation = waterAutomationStatus(row, source);
       if (automation) {
@@ -147,6 +137,7 @@ export function buildTankActivity({ tank, userId, sources = {} }) {
       if (kind === 'threshold_updated') {
         event.category = 'thresholds'; event.title = 'Threshold Updated'; event.action = 'Saved threshold settings';
         event.result = metadata.source === 'ai_recommendation' ? 'AI recommendation accepted by user' : 'Updated';
+        if (event.outcome === 'Completed') event.outcomeTone = 'completed';
       }
       if (/device_(connected|disconnected|online|offline)/.test(kind)) event.category = 'device';
     } else if (source === 'ammonia_readings') {
@@ -163,7 +154,7 @@ export function buildTankActivity({ tank, userId, sources = {} }) {
       event.reason = presentation.message || event.reason;
       event.category = /sensor|ammonia/.test(code(row.type)) ? 'sensor' : /device.*(connect|online|offline)/.test(code(row.type || row.title)) ? 'device' : 'other';
       if (row.command_id || metadata.command_type || code(row.type) === 'control_log') {
-        const recorded = { ...row, ...metadata, command_status: metadata.command_status, action_status: metadata.action_status };
+        const recorded = { ...row, ...metadata, command_status: row.command_status ?? metadata.command_status, action_status: row.action_status ?? metadata.action_status };
         const kind = code(recorded.command_type || recorded.action_type);
         event.category = /feed/.test(kind) ? 'feeding' : /drain|refill|pump|fill|stop/.test(kind) ? 'water' : 'other';
         event.title = actionFor(recorded);
@@ -175,7 +166,8 @@ export function buildTankActivity({ tank, userId, sources = {} }) {
           event.reason = text(metadata.reason || metadata.notes || row.reason || row.message)
             .replace(/\s*\|\s*Auto (?:log id|action status):[^|]*/gi, '').trim();
         }
-        event.result = 'This is a recorded action notification. Execution confirmation was not independently available in this history.';
+        event.outcomeTone = getActionStatusPresentation(recorded).tone;
+        event.result = getActionStatusPresentation(recorded).message;
         if (automation) event.result = automation.message;
         const feeding = formatRecordedFeedingAction(recorded, event.outcome);
         if (feeding) { event.dispenseCycles = feeding.cycles; event.outcome = feeding.outcome; }

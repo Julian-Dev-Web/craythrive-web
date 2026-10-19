@@ -34,8 +34,8 @@ for (const cycles of [1, 2, 3]) test(`${cycles} dispense cycles are confirmed an
   expect(feedWrites(qa)[0].body).toMatchObject({ command_type: 'FEED_ONCE', command_value: cycles, duration_ms: 0,
     command_status: 'pending', user_id: user.id, tank_id: 'tank-a', device_uid: 'actuator-a' });
   expect(feedWrites(qa)[0].body).not.toHaveProperty('created_at');
-  await expect(page.locator('[data-feed-status="Requested"]')).toContainText('Feeding request sent');
-  await expect(page.locator('[data-feed-status="Requested"]')).not.toContainText('Feeding completed');
+  await expect(page.locator('[data-feed-status="Pending Verification"]')).toContainText('Feeding request sent');
+  await expect(page.locator('[data-feed-status="Pending Verification"]')).not.toContainText('Feeding completed');
   await expect(feedButton(page)).toBeDisabled();
   await expect(manualChoices(page).getByRole('radio', { name: new RegExp(`${cycles} Cycle`) })).toBeChecked();
   await expect(manualChoices(page).getByRole('radio', { name: new RegExp(`${cycles} Cycle`) })).toBeDisabled();
@@ -62,7 +62,7 @@ for (const status of ['done', 'rejected', 'failed']) test(`polling reports ${sta
   const command = qa.data.device_commands.at(-1);
   Object.assign(command, { command_status: 'running', created_at: instant });
   await page.clock.runFor(2000);
-  await expect(page.locator('[data-feed-status="Started"]')).toBeVisible();
+  await expect(page.locator('[data-feed-status="In Progress"]')).toBeVisible();
   Object.assign(command, { command_status: status, executed_at: instant,
     result_message: status === 'done' ? 'FEED_ONCE completed.' : status === 'rejected' ? 'Unsafe pH: feeding rejected.' : 'Servo command failed.' });
   await page.clock.runFor(2000);
@@ -78,12 +78,12 @@ for (const status of ['done', 'rejected', 'failed']) test(`polling reports ${sta
   expect(feedWrites(qa)).toHaveLength(1);
 });
 
-test('a done row without a firmware acknowledgement stays unconfirmed and does not count as fed today', async ({ page, qa }) => {
+test('a done row displays Completed while the existing daily guard still requires its acknowledgement', async ({ page, qa }) => {
   setup(qa);
   qa.data.device_commands = [{ id: 'unconfirmed', user_id: user.id, tank_id: 'tank-a', device_uid: 'actuator-a',
     command_type: 'FEED_ONCE', command_value: '3', command_status: 'done', created_at: '2026-10-17T01:00:00Z' }];
   await open(page);
-  await expect(page.locator('[data-feed-status="Unknown / Unconfirmed"]')).toContainText('Execution has not been confirmed');
+  await expect(page.locator('[data-feed-status="Completed"]')).toContainText('Feeding completed');
   await expect(page.getByText(/This tank was already fed today/)).toHaveCount(0);
   await expect(feedButton(page)).toBeEnabled();
 });
@@ -102,12 +102,12 @@ test('double confirmation cannot insert duplicates while a request is in flight'
     await expect(feedButton(page)).toBeDisabled();
     release();
     await expect.poll(() => feedWrites(qa).length).toBe(1);
-    await expect(page.locator('[data-feed-status="Requested"]')).toBeVisible();
+    await expect(page.locator('[data-feed-status="Pending Verification"]')).toBeVisible();
     qa.activityReadFailure = true;
     await page.getByRole('button', { name: 'Refresh', exact: true }).last().click();
     await page.waitForLoadState('networkidle');
     await expect(feedButton(page)).toBeDisabled();
-    await expect(page.locator('[data-feed-status="Requested"]')).toBeVisible();
+    await expect(page.locator('[data-feed-status="Pending Verification"]')).toBeVisible();
     expect(feedWrites(qa)).toHaveLength(1);
   } finally { release(); }
 });
@@ -144,7 +144,7 @@ test('existing pending feeds lock the selected requested amount after page reloa
   await open(page);
   await expect(feedButton(page)).toBeDisabled();
   await expect(manualChoices(page).getByRole('radio', { name: /3 Cycles/ })).toBeChecked();
-  await expect(page.locator('[data-feed-status="Requested"]')).toContainText('3 dispense cycles requested');
+  await expect(page.locator('[data-feed-status="Pending Verification"]')).toContainText('3 dispense cycles requested');
   expect(feedWrites(qa)).toHaveLength(0);
 });
 

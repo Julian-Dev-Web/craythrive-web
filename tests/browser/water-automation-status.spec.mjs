@@ -4,6 +4,36 @@ const date = '2026-10-19T02:00:00Z';
 const row = (id, values = {}) => ({ id, user_id: user.id, tank_id: 'tank-a', created_at: date, ...values });
 const entry = (page, id) => page.locator(`[data-activity-id="tank_automation_logs:${id}"]`);
 
+test('verified AUTO_DRAIN/AUTO_REFILL and manual DONE are green Completed without acknowledgement fields', async ({ page, qa }) => {
+  const reason = 'controlled exchange drain verified: before=3.21 cm, after=2.10 cm, delta=-1.11 cm. Expected water decrease confirmed.';
+  const drain = row('verified-drain', { action_type: 'AUTO_DRAIN', action_status: 'done', command_status: 'pending', reason });
+  qa.data.tank_automation_logs = [drain, drain, row('verified-refill', { action_type: 'AUTO_REFILL', action_status: 'done', reason })];
+  qa.data.device_commands = ['DRAIN_FOR', 'REFILL_FOR'].map(command_type => row(command_type, { command_type,
+    action_type: command_type === 'DRAIN_FOR' ? 'AUTO_DRAIN' : 'AUTO_REFILL', command_status: 'done', action_status: 'pending' }));
+  qa.data.control_logs = [];
+  qa.data.alerts = [];
+  qa.data.ammonia_readings = [];
+  const before = structuredClone(qa.data);
+  await page.goto('/admin/tanks/tank-a');
+  const latest = page.locator('.command-status-card').filter({ has: page.getByRole('button', { name: 'View Activity', exact: true }) });
+  await expect(latest).toContainText('Completed');
+  await expect(latest).not.toContainText('Execution has not been confirmed');
+  await page.getByRole('button', { name: 'Activity', exact: true }).click();
+  const cards = page.locator('li[data-activity-id]');
+  await expect(cards).toHaveCount(4);
+  await expect(page.locator('.tank-activity-outcome.outcome-completed')).toHaveCount(4);
+  for (const card of await cards.all()) {
+    await expect(card.locator('.tank-activity-outcome')).toHaveText('Completed');
+    await expect(card).not.toContainText('Pending Verification');
+    await expect(card).not.toContainText('Execution has not been confirmed');
+  }
+  await expect(entry(page, 'verified-drain')).toContainText(reason);
+  await expect(entry(page, 'verified-drain')).toContainText('The automatic action completed and the expected water-level movement was confirmed.');
+  await expect(entry(page, 'verified-drain')).toHaveCount(1);
+  expect(qa.writes).toEqual([]);
+  expect(qa.data).toEqual(before);
+});
+
 for (const width of [1440, 390]) {
   test(`automatic water outcomes, context and explicit-ID deduplication at ${width}px`, async ({ page, qa }) => {
     await page.setViewportSize({ width, height: 900 });
@@ -29,10 +59,10 @@ for (const width of [1440, 390]) {
     await expect(entry(page, 'refill-done').locator('.tank-activity-outcome')).toHaveText('Completed');
     await expect(entry(page, 'refill-fail').locator('.tank-activity-outcome')).toHaveText('Failed');
     await expect(entry(page, 'drain-block').locator('.tank-activity-outcome')).toHaveText('Blocked');
-    await expect(entry(page, 'legacy-fail').locator('.tank-activity-outcome')).toHaveText('Pending Verification');
+    await expect(entry(page, 'legacy-fail').locator('.tank-activity-outcome')).toHaveText('Failed');
     await expect(page.locator('li[data-activity-id]')).toHaveCount(7); // six automation + this tank's manual ammonia record
     await expect(entry(page, 'refill-check')).toContainText('1.80 cm. Latest reading: 1.51 cm.');
-    await expect(entry(page, 'refill-check')).toContainText('Fresh sensor readings are being evaluated');
+    await expect(entry(page, 'refill-check')).toContainText('Fresh sensor readings are still being checked');
     await expect(entry(page, 'refill-check')).toContainText('LOW_WARNING');
     await expect(entry(page, 'refill-check')).toContainText('stable reading count: 3');
     await expect(entry(page, 'refill-check')).toContainText('Recorded duration (seconds): 2');

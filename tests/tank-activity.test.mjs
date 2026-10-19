@@ -13,7 +13,7 @@ const server = await createServer({ server: { middlewareMode: true, hmr: false }
 after(() => server.close());
 const { loadTankActivity } = await server.ssrLoadModule('/src/services/tankActivityService.js');
 
-test('completion requires the inspected device acknowledgement, not a default status or hopeful text', () => {
+test('saved command status determines presentation without acknowledgement wording or timestamps', () => {
   const items = history({ device_commands: [
     row('pending', { command_type: 'FEED_ONCE', command_status: 'pending', result_message: 'completed' }),
     row('default', { command_type: 'REFILL_FOR', command_status: 'done' }),
@@ -23,18 +23,18 @@ test('completion requires the inspected device acknowledgement, not a default st
     row('failed', { command_status: 'failed' }),
   ] });
   const byId = id => items.find(item => item.id.endsWith(`:${id}`));
-  assert.equal(byId('pending').outcome, 'Requested');
-  assert.equal(byId('default').outcome, 'Unknown / Unconfirmed');
-  assert.equal(byId('fake').outcome, 'Unknown / Unconfirmed');
+  assert.equal(byId('pending').outcome, 'Pending Verification');
+  assert.equal(byId('default').outcome, 'Completed');
+  assert.equal(byId('fake').outcome, 'Completed');
   assert.equal(byId('ack').outcome, 'Completed');
-  assert.match(byId('ack').result, /not measured water flow/);
-  assert.equal(byId('running').outcome, 'Started');
-  assert.equal(byId('skip').outcome, 'Skipped');
+  assert.equal(byId('ack').result, 'The actuator action completed.');
+  assert.equal(byId('running').outcome, 'In Progress');
+  assert.equal(byId('skip').outcome, 'Rejected');
   assert.equal(byId('skip').reason, 'Water level too low');
   assert.equal(byId('failed').outcome, 'Failed');
 });
 
-test('raw automation honors the recorded outcome contract while lossy mirrors remain pending', () => {
+test('raw automation and fallback command mirrors honor their own saved status fields', () => {
   const items = history({ tank_automation_logs: [row('auto-a', { action_type: 'AUTO_REFILL', action_status: 'done', reason: 'Automatic water-level correction pulse completed.', water_status: 'LOW_WARNING' }),
     row('auto-b', { action_type: 'AUTO_REFILL', action_status: 'done' }), row('auto-skip', { action_type: 'AUTO_FEED', action_status: 'skipped', reason: 'Critical pH' })],
   device_commands: [row('mirror', { command_type: 'REFILL_FOR', command_value: 'auto', command_status: 'done', executed_at: date, result_message: 'Automatic water assist: correction | Auto log id: auto-a' })] });
@@ -43,10 +43,10 @@ test('raw automation honors the recorded outcome contract while lossy mirrors re
   assert.equal(items.find(item => item.id.endsWith(':auto-b')).outcome, 'Completed');
   assert.equal(items.find(item => item.id.endsWith(':auto-skip')).outcome, 'Skipped');
   const mirror = history({ device_commands: [row('mirror', { command_value: 'auto', command_type: 'REFILL_FOR', command_status: 'done', executed_at: date, result_message: 'Automatic water assist: correction | Auto log id: absent' })] });
-  assert.equal(mirror[0].outcome, 'Pending Verification');
+  assert.equal(mirror[0].outcome, 'Completed');
 });
 
-test('recorded pump wording keeps acknowledgement requirements and never displays requested drain runtime', () => {
+test('recorded pump wording honors done without acknowledgement and never displays requested drain runtime', () => {
   const sources = { device_commands: [
     row('drain', { command_type: 'DRAIN_FOR', command_status: 'done', executed_at: date, duration_ms: 10000,
       result_message: 'DRAIN_FOR completed for 250 ms. Safety check passed.' }),
@@ -60,8 +60,8 @@ test('recorded pump wording keeps acknowledgement requirements and never display
   assert.equal(drain.reason, 'The drain pump was activated.');
   assert.doesNotMatch(JSON.stringify(drain), /250|10000|seconds/);
   assert.equal(events.find(event => event.id.endsWith(':refill')).reason, 'The refill pump ran for 1 second.');
-  assert.equal(formatRecordedPumpAction(sources.device_commands[2]).title, 'Drain recorded');
-  assert.equal(events.find(event => event.id.endsWith(':unknown')).outcome, 'Unknown / Unconfirmed');
+  assert.equal(formatRecordedPumpAction(sources.device_commands[2]).title, 'Drain completed');
+  assert.equal(events.find(event => event.id.endsWith(':unknown')).outcome, 'Completed');
   assert.deepEqual(sources, before);
 });
 
@@ -86,11 +86,11 @@ test('handled alerts are not invented recoveries; explicit backend recovery is d
   assert.match(items.find(item => item.id.endsWith(':recovered')).result, /recovery event was recorded/);
 });
 
-test('a completed-looking orphan action alert cannot claim equipment completion', () => {
+test('an orphan action notification uses its saved command status rather than its title', () => {
   const items = history({ alerts: [row('orphan', { title: 'Add Water completed', command_id: 'unavailable',
     metadata: { command_type: 'REFILL_FOR', command_status: 'done' } })] });
   assert.equal(items[0].title, 'Manual water refill');
-  assert.equal(items[0].outcome, 'Unknown / Unconfirmed');
+  assert.equal(items[0].outcome, 'Completed');
 });
 
 test('deduplicates source IDs and explicit command/control/ammonia alert links without inventing event correlations', () => {

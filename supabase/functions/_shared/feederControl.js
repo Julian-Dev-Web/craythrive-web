@@ -1,3 +1,5 @@
+import { getRecordedActionStatus } from './actionStatus.js';
+
 export const FEED_AMOUNTS = [
   { cycles: 1, label: 'Light' },
   { cycles: 2, label: 'Normal' },
@@ -23,15 +25,17 @@ export function isPairedFeedActuator(device, tank, tankId) {
       || !device.tank_id && pairedUid === device.device_uid));
 }
 
-// The caller supplies the existing acknowledgement evaluator's outcome.
+// The caller supplies the saved status presentation outcome.
 // Legacy values ("once", "auto", missing) cannot establish a cycle count.
 export function formatRecordedFeedingAction(row, outcome) {
   if (!/feed/i.test(row?.command_type || row?.action_type || '')) return null;
   const cycles = recordedDispenseCycles(row.command_value ?? row.metadata?.dispense_cycles);
-  const status = String(row.command_status || row.action_status || row.status || '').toLowerCase();
+  const status = getRecordedActionStatus(row);
   const finalOutcome = ['blocked', 'rejected'].includes(status) ? 'Rejected' : outcome;
   const amount = cycles === null ? 'Dispense cycles were not recorded.' : `${dispenseCycleLabel(cycles)} requested.`;
   const states = {
+    'Pending Verification': ['Feeding request sent', `${amount} Waiting for the actuator.`],
+    'In Progress': ['Feeding in progress', `${amount} Waiting for completion confirmation.`],
     Requested: ['Feeding request sent', `${amount} Waiting for the actuator.`],
     Started: ['Feeding in progress', `${amount} Waiting for completion confirmation.`],
     Completed: ['Feeding completed', `${cycles === null ? 'Feeding completed.' : `Feeding completed — ${dispenseCycleLabel(cycles)}.`} Feed delivery is not measured.`],

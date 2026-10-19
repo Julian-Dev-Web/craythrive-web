@@ -4,12 +4,12 @@ import fs from 'node:fs/promises';
 const successfulDrain='The drain pump was activated.';
 for(const [name,type,status,result,title,message,value] of [
  ['manual drain','DRAIN_FOR','done','DRAIN_FOR completed for 250 ms. Safety check passed.','Drain completed',successfulDrain,'on'],
- ['automatic drain','DRAIN_FOR','done','Automatic water assist: Relay pulse executed.','Drain – Pending Verification','The automatic action result has not been verified.','auto'],
+ ['automatic drain','DRAIN_FOR','done','Automatic water assist: Relay pulse executed.','Drain completed','The actuator action completed.','auto'],
  ['rejected drain','DRAIN_FOR','rejected','Drain rejected: hardware safety lock is ON.','Drain rejected','The drain action was blocked by a safety rule.','on'],
  ['failed drain','DRAIN_FOR','failed','Drain could not be completed.','Drain failed','The drain action could not be completed.','on'],
  ['one second refill','REFILL_FOR','done','REFILL_FOR completed for 1000 ms. Safety check passed.','Add Water completed','The refill pump ran for 1 second.','on'],
  ['two second refill','REFILL_FOR','done','REFILL_FOR completed for 2000 ms. Safety check passed.','Add Water completed','The refill pump ran for 2 seconds.','on'],
- ['automatic refill unknown runtime','REFILL_FOR','done','Automatic water assist: Relay pulse executed.','Add Water – Pending Verification','The automatic action result has not been verified.','auto'],
+ ['automatic refill unknown runtime','REFILL_FOR','done','Automatic water assist: Relay pulse executed.','Add Water completed','The actuator action completed.','auto'],
 ]) {
  test(`${name}: Latest Action and activity use accurate wording and retain status/metadata`,async({page,qa})=>{
   const row={id:'pump-action',tank_id:'tank-a',user_id:user.id,command_type:type,command_status:status,status,
@@ -20,7 +20,7 @@ for(const [name,type,status,result,title,message,value] of [
   await expect(latest).toContainText(title);await expect(latest).toContainText(message);
   await page.getByRole('button',{name:'Activity',exact:true}).click();
   const activity=page.locator('[data-activity-id="device_commands:pump-action"]');
-  const outcome=value==='auto'?'Pending Verification':status==='done'?'Completed':status==='rejected'?'Skipped':'Failed';
+  const outcome=status==='done'?'Completed':status==='rejected'?'Rejected':'Failed';
   await expect(activity).toContainText(message);await expect(activity.locator('.tank-activity-outcome')).toHaveText(outcome);
   await expect(activity).not.toContainText('10 seconds');await expect(activity).not.toContainText('250 ms');
   expect(qa.data.device_commands[0]).toEqual(raw);expect(qa.writes).toEqual([]);

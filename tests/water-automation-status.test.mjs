@@ -29,20 +29,21 @@ test('automatic water statuses A–E honor the recorded contract and preserve di
     if (action_status === 'rechecking') {
       assert.equal(event.outcomeTone, 'rechecking');
       assert.equal(event.severity, 'no-data');
-      assert.match(event.result, /activated successfully.*Fresh sensor/);
+      assert.equal(event.result, 'The pump action was executed. Fresh sensor readings are still being checked.');
       assert.doesNotMatch(event.result, /reached|Failed|Unconfirmed/);
     }
   }
 });
 
-test('legacy missing/unknown/pending and sensor verification failures remain neutral without rewriting history', () => {
-  for (const action_status of [null, undefined, 'unknown', 'pending', 'constructor', '__proto__']) {
-    assert.equal(getRecordedActionOutcome(row('old', { action_status }), 'tank_automation_logs'), 'Pending Verification');
+test('unknown and pending remain distinct; failed is authoritative regardless of diagnostic wording', () => {
+  for (const action_status of [null, undefined, 'unknown', 'constructor', '__proto__']) {
+    assert.equal(getRecordedActionOutcome(row('old', { action_status }), 'tank_automation_logs'), 'Unknown / Unconfirmed');
   }
+  assert.equal(getRecordedActionOutcome(row('queued', { action_status: 'pending' }), 'tank_automation_logs'), 'Pending Verification');
   const raw = row('legacy', { action_status: 'failed', reason: 'No water movement confirmed by fresh readings.' });
-  assert.equal(waterAutomationStatus(raw).label, 'Pending Verification');
+  assert.equal(waterAutomationStatus(raw).label, 'Failed');
   assert.equal(raw.action_status, 'failed');
-  assert.equal(waterAutomationStatus(row('sensor-check', { action_status: 'failed', reason: 'Sensor verification interrupted; effect inconclusive.' })).label, 'Pending Verification');
+  assert.equal(waterAutomationStatus(row('sensor-check', { action_status: 'failed', reason: 'Sensor verification interrupted; effect inconclusive.' })).label, 'Failed');
   assert.equal(waterAutomationStatus(row('stop', { action_status: 'failed', reason: 'Pump action could not complete.' })).label, 'Failed');
 });
 
@@ -68,12 +69,12 @@ test('known rechecking overrides stale titles, stays informational and never hid
   assert.equal(raw.severity, 'critical');
 });
 
-test('lossy mirrors stay pending while new mirrors retain their original recorded status', () => {
+test('command_status remains authoritative even when diagnostic text contains a different outcome', () => {
   const mirror = { command_type: 'REFILL_FOR', command_value: 'auto', command_status: 'done', result_message: 'Auto log id: absent' };
-  assert.equal(getRecordedActionOutcome(mirror), 'Pending Verification');
+  assert.equal(getRecordedActionOutcome(mirror), 'Completed');
   mirror.command_status = 'done';
   mirror.result_message = 'Before: 1.80 cm | Auto action status: rechecking | Auto log id: absent';
-  assert.equal(getRecordedActionOutcome(mirror), 'Executed – Rechecking');
+  assert.equal(getRecordedActionOutcome(mirror), 'Completed');
 });
 
 test('repeated fallback mirrors share one card and notifications cannot override the command evidence', () => {
@@ -82,6 +83,6 @@ test('repeated fallback mirrors share one card and notifications cannot override
   const events = history({ device_commands: [mirror, { ...mirror, id: 'mirror-again' }],
     alerts: [row('notification', { metadata: { auto_log_id: 'unavailable', action_type: 'AUTO_REFILL', action_status: 'failed' }, reason: 'STOP_ALL interruption' })] });
   assert.equal(events.length, 1);
-  assert.equal(events[0].outcome, 'Executed – Rechecking');
+  assert.equal(events[0].outcome, 'Completed');
   assert.doesNotMatch(events[0].reason, /Auto log id/);
 });

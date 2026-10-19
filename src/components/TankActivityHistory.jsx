@@ -8,7 +8,7 @@ import SafetyBadge from './SafetyBadge';
 import '../styles/tankActivity.css';
 
 const PER_PAGE = 10;
-const icons = { Completed: CheckCircle2, 'Executed – Rechecking': RefreshCw, 'Pending Verification': Clock3, Blocked: AlertTriangle, Requested: Clock3, Started: Activity, Skipped: Clock3, Rejected: AlertTriangle, Failed: XCircle };
+const icons = { Completed: CheckCircle2, 'Executed – Rechecking': RefreshCw, 'Pending Verification': Clock3, 'In Progress': Activity, Blocked: AlertTriangle, Requested: Clock3, Started: Activity, Skipped: Clock3, Rejected: AlertTriangle, Failed: XCircle };
 
 export default function TankActivityHistory({ tankId }) {
   const [fromDate, setFromDate] = useState('');

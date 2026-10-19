@@ -31,8 +31,8 @@ test('chronological history combines actual events, acknowledgements and reasons
   setup(qa);
   const before = structuredClone(qa.data);
   const panel = await open(page);
-  await expect(entry(panel, 'device_commands', 'request')).toContainText('Requested');
-  await expect(entry(panel, 'device_commands', 'no-ack')).toContainText('Unknown / Unconfirmed');
+  await expect(entry(panel, 'device_commands', 'request')).toContainText('Pending Verification');
+  await expect(entry(panel, 'device_commands', 'no-ack')).toContainText('Completed');
   await expect(entry(panel, 'device_commands', 'refill').locator('.tank-activity-outcome')).toHaveText('Completed');
   await expect(entry(panel, 'tank_automation_logs', 'skip')).toContainText('Skipped');
   await expect(entry(panel, 'tank_automation_logs', 'skip')).toContainText('pH is unsafe for feeding.');
@@ -45,16 +45,16 @@ test('chronological history combines actual events, acknowledgements and reasons
   expect(qa.data).toEqual(before);
 });
 
-test('Latest Action and history agree that a done status without acknowledgement is unconfirmed', async ({ page, qa }) => {
+test('Latest Action and history show Completed for a done status without requiring acknowledgement text', async ({ page, qa }) => {
   setup(qa);
   qa.data.device_commands = [row('no-ack', { command_type: 'REFILL_FOR', command_status: 'done' })];
   await page.goto('/admin/tanks/tank-a');
   const summary = page.locator('.command-status-card').filter({ has: page.getByRole('button', { name: 'View Activity', exact: true }) });
-  await expect(summary).toContainText('Unknown / Unconfirmed');
-  await expect(summary).toContainText('Execution has not been confirmed');
+  await expect(summary).toContainText('Completed');
+  await expect(summary).not.toContainText('Execution has not been confirmed');
   await expect(summary).not.toContainText('Completed successfully');
   await page.getByRole('button', { name: 'View Activity', exact: true }).click();
-  await expect(page.locator('[data-activity-id="device_commands:no-ack"]')).toContainText('Unknown / Unconfirmed');
+  await expect(page.locator('[data-activity-id="device_commands:no-ack"]')).toContainText('Completed');
   expect(qa.writes).toEqual([]);
 });
 
@@ -147,7 +147,7 @@ test('unavailable automation RPC preserves mirrored history and clearly reports 
     result_message: 'Automatic water assist: correction | Auto log id: unavailable' }));
   const panel = await open(page);
   await expect(panel).toContainText('full automation history is unavailable');
-  await expect(entry(panel, 'device_commands', 'mirror-only')).toContainText('Pending Verification');
+  await expect(entry(panel, 'device_commands', 'mirror-only')).toContainText('Completed');
   await expect(entry(panel, 'device_commands', 'refill')).toBeVisible();
   expect(qa.reads.some(read => read.table === 'tank_automation_logs')).toBe(false);
   expect(qa.writes).toEqual([]);
