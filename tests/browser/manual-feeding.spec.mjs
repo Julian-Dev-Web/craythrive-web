@@ -69,7 +69,7 @@ for (const status of ['done', 'rejected', 'failed']) test(`polling reports ${sta
   const outcome = { done: 'Completed', rejected: 'Rejected', failed: 'Failed' }[status];
   const card = page.locator(`[data-feed-status="${outcome}"]`);
   await expect(card).toBeVisible();
-  await expect(card).toContainText(status === 'done' ? 'Feeder servo command sequence completed — 2 dispense cycles' : status === 'rejected' ? 'blocked by a safety rule' : 'could not be completed');
+  await expect(card).toContainText(status === 'done' ? 'Feeder servo command sequence completed — 2 dispense cycles' : status === 'rejected' ? 'Unsafe pH: feeding rejected.' : 'could not be completed');
   if (status !== 'done') {
     await expect(feedButton(page)).toBeEnabled();
     await expect(page.getByText(/This tank was already fed today/)).toHaveCount(0);

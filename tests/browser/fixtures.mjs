@@ -135,6 +135,51 @@ export const test = base.extend({
         // Supabase rejects browser/public-key schema discovery. Table CRUD works.
         if (url.pathname === '/rest/v1/') return reply({ message: 'Access to schema is forbidden' }, 403);
         const table = url.pathname.split('/').at(-1);
+        if (['get_tank_actuator_control_state', 'request_tank_emergency_control'].includes(table)) {
+          const args = request.postDataJSON(); state.reads.push({ table, filters: args });
+          if (state.controlRPCMissing) return reply({ code: 'PGRST202' }, 404);
+          if (state.controlReadFailure) return reply({ code: '503' }, 503);
+          const owner = (state.authUser || user).id;
+          const tank = state.data.tanks.find(row => row.id === args.p_tank_id && row.user_id === owner);
+          const device = state.data.iot_devices.find(row => row.device_uid === args.p_device_uid && row.user_id === owner
+            && row.tank_id === tank?.id && row.device_type === 'actuator_hub' && row.is_claimed);
+          if (!tank || !device) return reply({ code: '42501' }, 403);
+          let settings = state.data.tank_automation_settings.find(row => row.tank_id === tank.id && row.user_id === owner);
+          const scoped = () => state.data.device_commands.filter(row => row.tank_id === tank.id && row.user_id === owner && row.device_uid === device.device_uid);
+          const active = row => ['pending', 'running', 'processing'].includes(row?.command_status);
+          const timestamp = state.serverTime || new Date().toISOString();
+          const stop = () => scoped().find(row => row.id === settings?.emergency_stop_command_id);
+          const resume = () => scoped().find(row => row.id === settings?.emergency_resume_command_id);
+          if (stop()?.command_status === 'done' && stop()?.result_message === 'Emergency stop applied. Pumps and feeder are stopped.') settings.emergency_stop_applied_at ||= timestamp;
+          if (resume()?.command_status === 'done' && resume()?.result_message === 'Controls resumed. Outputs remain off until a new safe action.') settings.emergency_stop_active = false;
+          for (const command of [stop(), resume(), ...scoped().filter(row => row.command_type === 'RESET_FEED_LOCK')].filter(Boolean)) if (active(command) && new Date(timestamp) - new Date(command.created_at) > 120000) {
+            Object.assign(command, { command_status: 'failed', status: 'failed', result_message: command.command_type === 'STOP_ALL'
+              ? 'Emergency stop command timed out because the actuator did not acknowledge it.' : command.command_type === 'RESET_FEED_LOCK' ? 'Feed test lock reset could not be confirmed because the actuator did not acknowledge it.' : 'Resume controls timed out because the actuator did not acknowledge it.' });
+          }
+          let trackedId = args.p_command_id;
+          if (table === 'request_tank_emergency_control') {
+            const previous = args.p_action === 'STOP_ALL' ? stop() : resume();
+            if (active(previous) || args.p_action === 'STOP_ALL' && settings?.emergency_stop_active && !settings.emergency_resume_command_id && previous?.command_status === 'done') trackedId = previous.id;
+            else {
+              if (args.p_action === 'RESUME_CONTROLS' && (!settings?.emergency_stop_active || !settings?.emergency_stop_applied_at || scoped().some(row => active(row) && !['STOP_ALL','RESUME_CONTROLS'].includes(row.command_type)))) return reply({ code: '55000' }, 409);
+              if (!settings) { settings = { id: 'emergency-settings', tank_id: tank.id, user_id: owner, device_uid: device.device_uid }; state.data.tank_automation_settings.push(settings); }
+              trackedId = 'qa-emergency-' + (state.writes.length + 1);
+              if (args.p_action === 'STOP_ALL') {
+                Object.assign(settings, { emergency_stop_active: true, emergency_stop_command_id: trackedId, emergency_resume_command_id: null, emergency_stop_applied_at: null });
+                for (const command of scoped().filter(row => row.command_status === 'pending')) Object.assign(command, { command_status: 'rejected', status: 'rejected', result_message: 'Cancelled because Emergency Stop was activated.' });
+              } else settings.emergency_resume_command_id = trackedId;
+              const body = { id: trackedId, tank_id: tank.id, user_id: owner, device_uid: device.device_uid, command_type: args.p_action,
+                command_status: 'pending', status: 'pending', duration_ms: 0, created_at: timestamp,
+                result_message: args.p_action === 'STOP_ALL' ? 'Emergency stop requested. Waiting for actuator...' : 'Resume requested. Waiting for actuator...' };
+              state.data.device_commands.push(body); state.writes.push({ table: 'device_commands', method: 'RPC', body });
+            }
+          }
+          const rows = scoped();
+          return reply({ tank_id: tank.id, device_uid: device.device_uid, emergency_stop_active: settings?.emergency_stop_active === true,
+            applied_at: settings?.emergency_stop_applied_at || null, stop_command: stop() || null, resume_command: resume() || null,
+            command: (trackedId ? rows.find(row => row.id === trackedId) : rows.sort((a,b) => new Date(b.created_at) - new Date(a.created_at))[0]) || null,
+            active_commands: rows.filter(active), terminal_commands: rows.filter(row => !active(row)).slice(0,30) });
+        }
         if (['get_tank_feeding_schedule', 'save_tank_feeding_schedule'].includes(table)) {
           const args = request.postDataJSON();
           state.reads.push({ table, filters: args });
@@ -260,6 +305,15 @@ export const test = base.extend({
           if (value.startsWith('lt.')) rows = rows.filter(row => new Date(row[key]).getTime() < new Date(value.slice(3)).getTime());
           if (value.startsWith('in.(')) rows = rows.filter(row => value.slice(4, -1).split(',').map(item => item.replaceAll('"', '')).includes(String(row[key])));
         }
+        if (table === 'device_commands' && request.method() === 'POST') {
+          const body = request.postDataJSON();
+          if (['RESET_FEED_LOCK','FEED_ONCE','DRAIN_FOR','REFILL_FOR'].includes(body.command_type)
+            && (state.data.tank_automation_settings.some(row => row.tank_id === body.tank_id && row.emergency_stop_active)
+            || state.data.device_commands.some(row => row.tank_id === body.tank_id && row.device_uid === body.device_uid && ['pending','running','processing'].includes(row.command_status)))) {
+            state.controlQueueRejected = true;
+            return reply({code:'55000',message:'Emergency stop is active or another action is running.'},409);
+          }
+        }
         if (request.method() !== 'GET' && request.method() !== 'HEAD') {
           const body = request.postDataJSON();
           state.writes.push({ table, method: request.method(), body });
@@ -280,7 +334,7 @@ export const test = base.extend({
             const conflict = url.searchParams.get('on_conflict');
             const existing = conflict && state.data[table]?.find(row => row[conflict] === body[conflict]);
             if (existing) { Object.assign(existing, body); rows = [existing]; }
-            else { rows = [{ id: `qa-created-${state.writes.length}`, ...(table === 'tanks' ? { male_count: 0, female_count: 0, juvenile_count: 0, population_label: null, tank_size_label: null, status: 'Unpaired', has_paired_device: false, created_at: new Date().toISOString() } : {}), ...body }]; state.data[table] = [...(state.data[table] || []), ...rows]; }
+            else { rows = [{ id: `qa-created-${state.writes.length}`, created_at: state.serverTime || new Date().toISOString(), ...(table === 'tanks' ? { male_count: 0, female_count: 0, juvenile_count: 0, population_label: null, tank_size_label: null, status: 'Unpaired', has_paired_device: false, created_at: new Date().toISOString() } : {}), ...body }]; state.data[table] = [...(state.data[table] || []), ...rows]; }
           }
         }
         if (url.searchParams.get('order')?.includes('created_at.desc')) rows.sort((a, b) =>
@@ -350,10 +404,12 @@ export const test = base.extend({
           || (state.feedingRPCMissing && /^Failed to load resource:.*status of 404/.test(message.text()))
           || (state.feedingSchemaMissing && /^Failed to load resource:.*status of 400/.test(message.text()))
           || (state.feedingReadFailure && /^Failed to load resource:.*status of 503/.test(message.text())));
+      const expectedControlFailure = state.controlQueueRejected && /status of 409/.test(message.text()) || /\/rpc\/(?:get_tank_actuator_control_state|request_tank_emergency_control)/.test(message.location().url || '')
+        && ((state.controlRPCMissing && /status of 404/.test(message.text())) || (state.controlReadFailure && /status of 503/.test(message.text())));
       const expectedDeveloperFailure = (state.developerDenied && /^Failed to load resource:.*status of 403/.test(message.text())) ||
         (state.developerInvalidOtp && /^Failed to load resource:.*status of 401/.test(message.text())) ||
         (state.developerOperationStatus && new RegExp(`^Failed to load resource:.*status of ${state.developerOperationStatus}`).test(message.text()));
-      if (message.type() === 'error' && !expectedAuthFailure && !expectedTankFailure && !expectedDeveloperFailure && !expectedRecommendationFailure && !expectedActivityFailure && !expectedReadingFailure && !expectedFeedingFailure) state.errors.push(message.text());
+      if (message.type() === 'error' && !expectedControlFailure && !expectedAuthFailure && !expectedTankFailure && !expectedDeveloperFailure && !expectedRecommendationFailure && !expectedActivityFailure && !expectedReadingFailure && !expectedFeedingFailure) state.errors.push(message.text());
       if (message.type() === 'warning') state.warnings.push(message.text());
     });
     page.on('response', response => {

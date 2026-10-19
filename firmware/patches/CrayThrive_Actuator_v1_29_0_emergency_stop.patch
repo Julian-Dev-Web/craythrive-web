@@ -1,0 +1,762 @@
+diff --git a/CrayThrive_Actuator_v1_29_0_DB_FEED_SCHEDULE_SERVO_STATUS_FIX.ino b/CrayThrive_Actuator_v1_29_0_DB_FEED_SCHEDULE_SERVO_STATUS_FIX.ino
+index 8a2ff2d..0000000 100644
+--- a/CrayThrive_Actuator_v1_29_0_DB_FEED_SCHEDULE_SERVO_STATUS_FIX.ino
++++ b/CrayThrive_Actuator_v1_29_0_DB_FEED_SCHEDULE_SERVO_STATUS_FIX.ino
+@@ -6,6 +6,7 @@
+ #include <WiFiClientSecure.h>
+ #include <ESP32Servo.h>
+ #include <time.h>
++#include "EmergencyStopGuard.h"
+ 
+ // =====================================================
+ // UPDATED FROM THE USER'S PROVEN WORKING actuator-v1.4.0
+@@ -478,7 +479,15 @@ const float PH_CRITICAL_HIGH_MIN = 9.0f;
+ 
+ Servo feederServo;
+ 
+-bool actuatorBusy = false;
++std::atomic<bool> actuatorBusy{false};
++EmergencyStopGuard emergencyGuard;
++SemaphoreHandle_t emergencyOutputMutex = nullptr;
++portMUX_TYPE emergencyScopeMux = portMUX_INITIALIZER_UNLOCKED;
++struct EmergencyScope { char user[64]; char tank[64]; bool ready; };
++EmergencyScope emergencyScope = {};
++Preferences emergencyPrefs;
++bool emergencyNvsLatched = false;
++std::atomic<bool> localEmergencyPending{false};
+ String currentAction = "IDLE";
+ 
+ // =====================================================
+@@ -910,8 +919,11 @@ int relayOffSignal() {
+ }
+ 
+ void setDrainRelay(bool on) {
++  if (emergencyOutputMutex) xSemaphoreTake(emergencyOutputMutex, portMAX_DELAY);
++  if (on && !emergencyGuard.canRun()) on = false;
+   int signal = on ? relayOnSignal() : relayOffSignal();
+   digitalWrite(DRAIN_RELAY_PIN, signal);
++  if (emergencyOutputMutex) xSemaphoreGive(emergencyOutputMutex);
+   Serial.print("DRAIN RELAY GPIO");
+   Serial.print(DRAIN_RELAY_PIN);
+   Serial.print(on ? " -> ON, level=" : " -> OFF, level=");
+@@ -919,8 +931,11 @@ void setDrainRelay(bool on) {
+ }
+ 
+ void setRefillRelay(bool on) {
++  if (emergencyOutputMutex) xSemaphoreTake(emergencyOutputMutex, portMAX_DELAY);
++  if (on && !emergencyGuard.canRun()) on = false;
+   int signal = on ? relayOnSignal() : relayOffSignal();
+   digitalWrite(REFILL_RELAY_PIN, signal);
++  if (emergencyOutputMutex) xSemaphoreGive(emergencyOutputMutex);
+   Serial.print("REFILL RELAY GPIO");
+   Serial.print(REFILL_RELAY_PIN);
+   Serial.print(on ? " -> ON, level=" : " -> OFF, level=");
+@@ -932,9 +947,90 @@ void setRelaysOffRaw() {
+   digitalWrite(REFILL_RELAY_PIN, relayOffSignal());
+ }
+ 
+-void stopAllActuators() {
++void checkLocalEmergencyStop() {
++  while (Serial.available() && (Serial.peek() == '\n' || Serial.peek() == '\r' || Serial.peek() == ' ')) Serial.read();
++  if (Serial.available() && (Serial.peek() == 'X' || Serial.peek() == 'x')) {
++    Serial.read();
++    localEmergencyPending.store(true);
++    emergencyGuard.invalidate();
++    latchEmergencyStop();
++    if (emergencyOutputMutex) xSemaphoreTake(emergencyOutputMutex, portMAX_DELAY);
++    emergencyPrefs.begin("ct-stop", false); emergencyPrefs.putBool("local", true); emergencyPrefs.end();
++    if (emergencyOutputMutex) xSemaphoreGive(emergencyOutputMutex);
++    Serial.println("LOCAL EMERGENCY STOP latched. Outputs OFF; explicit cloud Resume is required.");
++  }
++}
++
++void writeFeederSafely(int angle) {
++  if (emergencyOutputMutex) xSemaphoreTake(emergencyOutputMutex, portMAX_DELAY);
++  if (angle != SERVO_REST_ANGLE && !emergencyGuard.canRun()) angle = SERVO_REST_ANGLE;
++  feederServo.write(angle);
++  if (emergencyOutputMutex) xSemaphoreGive(emergencyOutputMutex);
++}
++
++void emergencyOutputsOff() {
++  if (emergencyOutputMutex) xSemaphoreTake(emergencyOutputMutex, portMAX_DELAY);
+   setRelaysOffRaw();
+   feederServo.write(SERVO_REST_ANGLE);
++  if (emergencyOutputMutex) xSemaphoreGive(emergencyOutputMutex);
++}
++
++void latchEmergencyStop() {
++  emergencyGuard.latch();
++  emergencyOutputsOff();
++  if (emergencyOutputMutex) xSemaphoreTake(emergencyOutputMutex, portMAX_DELAY);
++  if (!emergencyNvsLatched) {
++    emergencyPrefs.begin("ct-stop", false);
++    emergencyPrefs.putBool("latched", true);
++    emergencyPrefs.end();
++    emergencyNvsLatched = true;
++  }
++  if (emergencyOutputMutex) xSemaphoreGive(emergencyOutputMutex);
++}
++
++void finishConfirmedResume() {
++  emergencyOutputsOff();
++  if (localEmergencyPending.load()) return;
++  if (emergencyOutputMutex) xSemaphoreTake(emergencyOutputMutex, portMAX_DELAY);
++  emergencyPrefs.begin("ct-stop", false);
++  emergencyPrefs.putBool("latched", false);
++  emergencyPrefs.end();
++  emergencyNvsLatched = false;
++  emergencyGuard.confirmedResume();
++  if (emergencyOutputMutex) xSemaphoreGive(emergencyOutputMutex);
++}
++
++bool interruptibleActuatorWait(unsigned long duration, uint32_t token) {
++  unsigned long started = millis();
++  while (millis() - started < duration) {
++    checkLocalEmergencyStop();
++    if (emergencyGuard.interrupted(token)) return false;
++    delay(5);
++  }
++  return !emergencyGuard.interrupted(token);
++}
++
++void publishEmergencyScope() {
++  EmergencyScope next = {};
++  strlcpy(next.user, assignedUserId.c_str(), sizeof(next.user));
++  strlcpy(next.tank, assignedTankId.c_str(), sizeof(next.tank));
++  next.ready = isClaimed && next.user[0] && next.tank[0];
++  portENTER_CRITICAL(&emergencyScopeMux);
++  if (strcmp(emergencyScope.user, next.user) || strcmp(emergencyScope.tank, next.tank) || emergencyScope.ready != next.ready) emergencyGuard.verify(false);
++  emergencyScope = next;
++  portEXIT_CRITICAL(&emergencyScopeMux);
++}
++
++bool emergencyScopeMatches(const EmergencyScope &scope) {
++  portENTER_CRITICAL(&emergencyScopeMux);
++  bool matches = emergencyScope.ready == scope.ready && !strcmp(emergencyScope.user, scope.user) && !strcmp(emergencyScope.tank, scope.tank);
++  portEXIT_CRITICAL(&emergencyScopeMux);
++  return matches;
++}
++
++void stopAllActuators() {
++  setRelaysOffRaw();
++  writeFeederSafely(SERVO_REST_ANGLE);
+   actuatorBusy = false;
+   currentAction = "IDLE";
+   Serial.println("STOP_ALL applied: relays OFF, servo REST.");
+@@ -1574,7 +1670,7 @@ bool fetchDeviceAssignmentFromSupabase() {
+ // =====================================================
+ // COMMAND STATUS UPDATE / FEEDBACK
+ // =====================================================
+-bool updateCommandStatus(String commandId, String status, String resultMessage) {
++bool updateCommandStatusScoped(String commandId, String status, String resultMessage, String owner, String tank) {
+   if (WiFi.status() != WL_CONNECTED || commandId.length() == 0) return false;
+ 
+   WiFiClientSecure client;
+@@ -1586,7 +1682,8 @@ bool updateCommandStatus(String commandId, String status, String resultMessage)
+   http.setReuse(false);
+   http.useHTTP10(true);
+ 
+-  String endpoint = String(DEVICE_COMMANDS_ENDPOINT) + "?id=eq." + commandId;
++  String endpoint = String(DEVICE_COMMANDS_ENDPOINT) + "?id=eq." + commandId +
++    "&device_uid=eq." + String(DEVICE_UID) + "&user_id=eq." + owner + "&tank_id=eq." + tank + "&command_status=in.(pending,running,processing)&select=id,command_status";
+ 
+   if (!http.begin(client, endpoint)) {
+     Serial.println("Command status HTTP begin failed.");
+@@ -1597,7 +1694,7 @@ bool updateCommandStatus(String commandId, String status, String resultMessage)
+   http.addHeader("apikey", SUPABASE_ANON_KEY);
+   http.addHeader("Authorization", String("Bearer ") + SUPABASE_ANON_KEY);
+   http.addHeader("Content-Type", "application/json");
+-  http.addHeader("Prefer", "return=minimal");
++  http.addHeader("Prefer", "return=representation");
+   http.addHeader("Connection", "close");
+ 
+   String payload = "{";
+@@ -1621,7 +1718,10 @@ bool updateCommandStatus(String commandId, String status, String resultMessage)
+   Serial.print("command update HTTP Code: ");
+   Serial.println(httpCode);
+ 
+-  bool success = (httpCode == 200 || httpCode == 201 || httpCode == 204);
++  String updatedRow = http.getString();
++  bool success = (httpCode == 200 || httpCode == 201) &&
++    extractJsonValueAsString(updatedRow, "id") == commandId &&
++    extractJsonValueAsString(updatedRow, "command_status") == status;
+ 
+   if (!success) {
+     String response = http.getString();
+@@ -1632,6 +1732,10 @@ bool updateCommandStatus(String commandId, String status, String resultMessage)
+   return success;
+ }
+ 
++bool updateCommandStatus(String commandId, String status, String message) {
++  return updateCommandStatusScoped(commandId, status, message, assignedUserId, assignedTankId);
++}
++
+ // =====================================================
+ // SENSOR + AMMONIA SAFETY READ
+ // =====================================================
+@@ -2411,6 +2515,7 @@ String buildSnapshotFeedback(SensorSnapshot snap) {
+ // RULE CHECKS
+ // =====================================================
+ bool canDrainNow(String &reason) {
++  if (!emergencyGuard.canRun()) { reason = "Action blocked: emergency stop is active or cloud safety state is unverified."; return false; }
+   if (DRAIN_HARDWARE_SAFETY_LOCK) {
+     setDrainRelay(false);
+     reason = "Drain rejected: hardware safety lock is ON until COM+NO wiring and anti-siphon behavior are verified.";
+@@ -2439,6 +2544,7 @@ bool canDrainNow(String &reason) {
+ }
+ 
+ bool canRefillNow(String &reason) {
++  if (!emergencyGuard.canRun()) { reason = "Action blocked: emergency stop is active or cloud safety state is unverified."; return false; }
+   SensorSnapshot snap = fetchLatestSensorSnapshot();
+ 
+   if (!snap.ok) {
+@@ -2466,6 +2572,7 @@ bool canRefillNow(String &reason) {
+ }
+ 
+ bool canFeedNow(String &reason) {
++  if (!emergencyGuard.canRun()) { reason = "Action blocked: emergency stop is active or cloud safety state is unverified."; return false; }
+   SensorSnapshot snap = fetchLatestSensorSnapshot();
+ 
+   // Feeding remains stricter than manual pump control. A short carried-forward
+@@ -2521,56 +2628,116 @@ bool canFeedNow(String &reason) {
+ // =====================================================
+ // CHECK STOP_ALL DURING LONG ACTION
+ // =====================================================
+-bool hasPendingStopAllCommand() {
+-  if (WiFi.status() != WL_CONNECTED || !isClaimed) return false;
+-
++bool emergencyMonitorGet(String endpoint, String &body) {
+   WiFiClientSecure client;
+-  client.setInsecure();
+-  client.setTimeout(15000);
+-
++  client.setInsecure(); client.setTimeout(1500); client.setHandshakeTimeout(2);
+   HTTPClient http;
+-  http.setTimeout(15000);
+-  http.setReuse(false);
+-  http.useHTTP10(true);
+-
+-  String endpoint = String(DEVICE_COMMANDS_ENDPOINT) +
+-                    "?device_uid=eq." + String(DEVICE_UID) +
+-                    "&user_id=eq." + assignedUserId +
+-                    "&tank_id=eq." + assignedTankId +
+-                    "&command_status=eq.pending" +
+-                    "&command_type=eq.STOP_ALL" +
+-                    "&select=id" +
+-                    "&order=created_at.asc" +
+-                    "&limit=1";
+-
++  http.setConnectTimeout(1500); http.setTimeout(1500); http.setReuse(false); http.useHTTP10(true);
+   if (!http.begin(client, endpoint)) return false;
+-
+   http.addHeader("Host", SUPABASE_HOST);
+   http.addHeader("apikey", SUPABASE_ANON_KEY);
+   http.addHeader("Authorization", String("Bearer ") + SUPABASE_ANON_KEY);
+   http.addHeader("Connection", "close");
+-
+-  int httpCode = http.GET();
+-
+-  if (httpCode != 200) {
+-    http.end();
+-    return false;
+-  }
+-
+-  String response = http.getString();
++  int code = http.GET();
++  if (code == 200) body = http.getString();
+   http.end();
++  return code == 200;
++}
+ 
+-  if (response == "[]" || response.length() < 5) return false;
++String newEmergencyUuid() {
++  char value[37];
++  snprintf(value, sizeof(value), "%08lx-%04x-4%03x-8%03x-%04x%08lx", (unsigned long)esp_random(),
++    (unsigned)(esp_random() & 0xffff), (unsigned)(esp_random() & 0xfff), (unsigned)(esp_random() & 0xfff),
++    (unsigned)(esp_random() & 0xffff), (unsigned long)esp_random());
++  return String(value);
++}
+ 
+-  String stopId = extractJsonValueAsString(response, "id");
++bool publishLocalEmergencyStop(EmergencyScope scope) {
++  if (emergencyOutputMutex) xSemaphoreTake(emergencyOutputMutex, portMAX_DELAY);
++  emergencyPrefs.begin("ct-stop", false);
++  String id = emergencyPrefs.getString("local-id", "");
++  if (!id.length()) { id = newEmergencyUuid(); emergencyPrefs.putString("local-id", id); }
++  emergencyPrefs.end();
++  if (emergencyOutputMutex) xSemaphoreGive(emergencyOutputMutex);
++  WiFiClientSecure client; client.setInsecure(); client.setTimeout(1500); client.setHandshakeTimeout(2);
++  HTTPClient http; http.setConnectTimeout(1500); http.setTimeout(1500); http.setReuse(false);
++  if (!http.begin(client, DEVICE_COMMANDS_ENDPOINT)) return false;
++  http.addHeader("Host", SUPABASE_HOST); http.addHeader("apikey", SUPABASE_ANON_KEY);
++  http.addHeader("Authorization", String("Bearer ") + SUPABASE_ANON_KEY); http.addHeader("Content-Type", "application/json");
++  String payload = "{\"id\":\"" + id + "\",\"user_id\":\"" + String(scope.user) + "\",\"tank_id\":\"" + String(scope.tank) +
++    "\",\"device_uid\":\"" + String(DEVICE_UID) + "\",\"command_type\":\"STOP_ALL\",\"command_value\":\"stop\",\"duration_ms\":0,\"command_status\":\"pending\",\"status\":\"pending\",\"result_message\":\"Local X emergency stop latched.\"}";
++  http.POST(payload); http.end();
++  String settings;
++  if (!emergencyMonitorGet(String(TANK_AUTOMATION_SETTINGS_ENDPOINT) + "?user_id=eq." + String(scope.user) +
++    "&tank_id=eq." + String(scope.tank) + "&select=emergency_stop_active,emergency_stop_command_id&limit=1", settings) ||
++    !emergencyScopeMatches(scope) || !extractJsonBool(settings, "emergency_stop_active") || extractJsonValueAsString(settings, "emergency_stop_command_id") != id) return false;
++  if (emergencyOutputMutex) xSemaphoreTake(emergencyOutputMutex, portMAX_DELAY);
++  emergencyPrefs.begin("ct-stop", false); emergencyPrefs.putBool("local", false); emergencyPrefs.remove("local-id"); emergencyPrefs.end();
++  localEmergencyPending.store(false);
++  if (emergencyOutputMutex) xSemaphoreGive(emergencyOutputMutex);
++  return true;
++}
+ 
+-  if (stopId.length() > 0) {
+-    stopAllActuators();
+-    updateCommandStatus(stopId, "done", "STOP_ALL executed during active actuator action.");
+-    return true;
++void emergencyMonitorTask(void *) {
++  for (;;) {
++    checkLocalEmergencyStop();
++    EmergencyScope scope;
++    portENTER_CRITICAL(&emergencyScopeMux); scope = emergencyScope; portEXIT_CRITICAL(&emergencyScopeMux);
++    if (!scope.ready || WiFi.status() != WL_CONNECTED) {
++      emergencyGuard.verify(false); emergencyOutputsOff(); vTaskDelay(pdMS_TO_TICKS(250)); continue;
++    }
++    if (localEmergencyPending.load() && !publishLocalEmergencyStop(scope)) { emergencyOutputsOff(); vTaskDelay(pdMS_TO_TICKS(350)); continue; }
++    String filter = "?user_id=eq." + String(scope.user) + "&tank_id=eq." + String(scope.tank);
++    String settings;
++    if (!emergencyMonitorGet(String(TANK_AUTOMATION_SETTINGS_ENDPOINT) + filter +
++      "&select=emergency_stop_active,emergency_stop_command_id,emergency_resume_command_id&limit=1", settings)) {
++      emergencyGuard.verify(false); emergencyOutputsOff(); vTaskDelay(pdMS_TO_TICKS(350)); continue;
++    }
++    bool cloudLatched = extractJsonBool(settings, "emergency_stop_active");
++    if (!emergencyScopeMatches(scope)) continue;
++    if (cloudLatched) latchEmergencyStop();
++    emergencyGuard.verify(true);
++    if (emergencyGuard.latched()) emergencyOutputsOff();
++    String command;
++    bool fetched = emergencyMonitorGet(String(DEVICE_COMMANDS_ENDPOINT) + filter + "&device_uid=eq." + String(DEVICE_UID) +
++      "&command_status=in.(pending,running,processing)&command_type=in.(STOP_ALL,RESUME_CONTROLS)" +
++      "&select=id,command_type&order=command_type.desc,created_at.asc&limit=1", command);
++    if (fetched) {
++      if (!emergencyScopeMatches(scope)) continue;
++      String id = extractJsonValueAsString(command, "id");
++      String type = extractJsonValueAsString(command, "command_type");
++      if (id.length() && type == "STOP_ALL") {
++        latchEmergencyStop();
++        updateCommandStatusScoped(id, "done", "Emergency stop applied. Pumps and feeder are stopped.", scope.user, scope.tank);
++      } else if (id.length() && type == "RESUME_CONTROLS" && cloudLatched && !localEmergencyPending.load() && !actuatorBusy.load() &&
++        id == extractJsonValueAsString(settings, "emergency_resume_command_id")) {
++        emergencyOutputsOff();
++        uint32_t resumeToken = emergencyGuard.token();
++        if (updateCommandStatusScoped(id, "done", "Controls resumed. Outputs remain off until a new safe action.", scope.user, scope.tank)) {
++          String confirmed;
++          if (resumeToken == emergencyGuard.token() && !localEmergencyPending.load() && emergencyMonitorGet(String(TANK_AUTOMATION_SETTINGS_ENDPOINT) + filter +
++            "&select=emergency_stop_active,emergency_resume_command_id&limit=1", confirmed) && emergencyScopeMatches(scope) &&
++            !extractJsonBool(confirmed, "emergency_stop_active") && extractJsonValueAsString(confirmed, "emergency_resume_command_id") == id) finishConfirmedResume();
++        }
++      } else if (!cloudLatched && emergencyGuard.latched() && !localEmergencyPending.load()) {
++        // Recover a lost HTTP response/reboot after an explicitly confirmed Resume.
++        String resumeId = extractJsonValueAsString(settings, "emergency_resume_command_id");
++        if (resumeId.length() > 10 && resumeId != "null") {
++          String resumed;
++          if (emergencyMonitorGet(String(DEVICE_COMMANDS_ENDPOINT) + filter + "&device_uid=eq." + String(DEVICE_UID) +
++            "&id=eq." + resumeId + "&command_type=eq.RESUME_CONTROLS&command_status=eq.done&select=id,result_message&limit=1", resumed) &&
++            extractJsonValueAsString(resumed, "id") == resumeId &&
++            extractJsonValueAsString(resumed, "result_message") == "Controls resumed. Outputs remain off until a new safe action.") finishConfirmedResume();
++        }
++      }
++    }
++    vTaskDelay(pdMS_TO_TICKS(350));
+   }
++}
+ 
+-  return false;
++bool hasPendingStopAllCommand() {
++  // No HTTP in the main pump/servo loop. The independent monitor sets this flag.
++  return !emergencyGuard.canRun();
+ }
+ 
+ // =====================================================
+@@ -2588,50 +2755,35 @@ void waitForPumpSettleGuard() {
+   Serial.print(remaining);
+   Serial.println(" ms before another pump action.");
+ 
+-  delay(remaining);
++  interruptibleActuatorWait(remaining, emergencyGuard.token());
+ }
+ 
+-void feedCycles(int cycles) {
++bool feedCycles(int cycles) {
++  if (!emergencyGuard.canRun()) return false;
++  uint32_t token = emergencyGuard.token();
+   cycles = constrain(cycles, 1, 3);
+-
+-  // Servo power must be regulated 5V with a COMMON GND to the ESP32.
+-  // Brown=GND, Red=+5V, Yellow/Orange=GPIO13 signal.
+-  // Re-assert the 50 Hz control setup before each feed command.
++  actuatorBusy = true; currentAction = "FEEDING"; setRelaysOffRaw();
+   feederServo.setPeriodHertz(50);
++  bool completed = true;
+   if (!feederServo.attached()) {
+     feederServo.attach(FEEDER_SERVO_PIN, 500, 2400);
+-    delay(200);
+-  }
+-
+-  actuatorBusy = true;
+-  currentAction = "FEEDING";
+-  setRelaysOffRaw();
+-
+-  Serial.print("Feeder dispense cycles: ");
+-  Serial.println(cycles);
+-
+-  for (int i = 0; i < cycles; i++) {
+-    feederServo.write(SERVO_REST_ANGLE);
+-    delay(250);
+-    Serial.print("Servo cycle ");
+-    Serial.print(i + 1);
+-    Serial.print("/");
+-    Serial.print(cycles);
+-    Serial.println(": REST -> FEED -> REST");
+-    feederServo.write(SERVO_FEED_ANGLE);
+-    delay(SERVO_HOLD_MS);
+-    feederServo.write(SERVO_REST_ANGLE);
+-    delay(700);
+-  }
+-
+-  actuatorBusy = false;
+-  currentAction = "IDLE";
+-  Serial.println("Feeding complete.");
++    completed = interruptibleActuatorWait(200, token);
++  }
++  for (int i = 0; completed && i < cycles; i++) {
++    if (emergencyGuard.interrupted(token)) { completed = false; break; }
++    writeFeederSafely(SERVO_REST_ANGLE);
++    if (!interruptibleActuatorWait(250, token)) { completed = false; break; }
++    writeFeederSafely(SERVO_FEED_ANGLE);
++    if (!interruptibleActuatorWait(SERVO_HOLD_MS, token)) { completed = false; break; }
++    writeFeederSafely(SERVO_REST_ANGLE);
++    if (!interruptibleActuatorWait(700, token)) { completed = false; break; }
++  }
++  emergencyOutputsOff();
++  actuatorBusy = false; currentAction = "IDLE";
++  return completed && !emergencyGuard.interrupted(token);
+ }
+ 
+-void feedOnce() {
+-  feedCycles(2);  // default prototype serving = 2 dispense cycles
+-}
++bool feedOnce() { return feedCycles(2); }
+ 
+ // =====================================================
+ // LIVE SAFETY ABORT (added after confirming pump flow was fixed --
+@@ -2651,6 +2803,9 @@ bool isCriticalHighForAbort(String status) {
+ }
+ 
+ bool runDrainFor(int durationMs) {
++  if (!emergencyGuard.canRun()) return false;
++  uint32_t token = emergencyGuard.token();
++  bool completed = true;
+   if (DRAIN_HARDWARE_SAFETY_LOCK) {
+     setDrainRelay(false);
+     Serial.println("DRAIN BLOCKED: hardware safety lock is ON.");
+@@ -2659,6 +2814,7 @@ bool runDrainFor(int durationMs) {
+ 
+   durationMs = clampDrainDurationMs(durationMs);
+   waitForPumpSettleGuard();
++  if (emergencyGuard.interrupted(token)) return false;
+ 
+   // SAFETY FIX v1.17:
+   // NEVER perform WiFi/HTTP/Supabase/sensor requests while a pump relay is ON.
+@@ -2675,7 +2831,9 @@ bool runDrainFor(int durationMs) {
+ 
+   unsigned long startedAt = millis();
+   while (millis() - startedAt < (unsigned long)durationMs) {
+-    // Only local CPU yielding here. No network calls while relay is energized.
++    // No HTTP while energized; only the independent stop flag is checked.
++    if (emergencyGuard.interrupted(token)) { completed = false; break; }
++    checkLocalEmergencyStop();
+     delay(5);
+   }
+ 
+@@ -2689,7 +2847,7 @@ bool runDrainFor(int durationMs) {
+ 
+   Serial.print("Drain EXACT pulse OFF after ms: ");
+   Serial.println(millis() - startedAt);
+-  return true;
++  return completed && !emergencyGuard.interrupted(token);
+ }
+ 
+ // Minimum drain->refill OFF window for EVERY refill path.
+@@ -2736,6 +2894,9 @@ bool waitForRecentDrainBeforeAnyRefill() {
+ }
+ 
+ bool runRefillFor(int durationMs) {
++  if (!emergencyGuard.canRun()) return false;
++  uint32_t token = emergencyGuard.token();
++  bool completed = true;
+   durationMs = clampRefillDurationMs(durationMs);
+ 
+   // v1.28: manual/web and automatic refill share the same minimum 90-second
+@@ -2747,6 +2908,7 @@ bool runRefillFor(int durationMs) {
+   }
+ 
+   waitForPumpSettleGuard();
++  if (emergencyGuard.interrupted(token)) return false;
+ 
+   // Same exact-pulse rule as drain: no network/sensor calls while the relay
+   // is energized. All safety re-checks happen after the pump is OFF.
+@@ -2761,6 +2923,8 @@ bool runRefillFor(int durationMs) {
+ 
+   unsigned long startedAt = millis();
+   while (millis() - startedAt < (unsigned long)durationMs) {
++    if (emergencyGuard.interrupted(token)) { completed = false; break; }
++    checkLocalEmergencyStop();
+     delay(5);
+   }
+ 
+@@ -2773,7 +2937,7 @@ bool runRefillFor(int durationMs) {
+ 
+   Serial.print("Refill EXACT pulse OFF after ms: ");
+   Serial.println(millis() - startedAt);
+-  return true;
++  return completed && !emergencyGuard.interrupted(token);
+ }
+ 
+ 
+@@ -3352,6 +3516,7 @@ bool waitForFreshStableSnapshotAfterPump(
+   SensorSnapshot &outSnap,
+   String &reason
+ ) {
++  uint32_t token = emergencyGuard.token();
+   // Capture whatever row exists immediately after pump stop.
+   // We require NEW rows after this baseline, so rows produced during pump
+   // vibration cannot immediately drive the next actuator action.
+@@ -3359,6 +3524,7 @@ bool waitForFreshStableSnapshotAfterPump(
+   String baselineCreatedAt = baseline.createdAt;
+ 
+   waitForPumpSettleGuard();
++  if (emergencyGuard.interrupted(token)) return false;
+ 
+   unsigned long startedAt = millis();
+ 
+@@ -4159,7 +4325,7 @@ bool runControlledWaterExchange(
+ 
+ void handleAutoWaterAssist() {
+   if (!LOCAL_AUTO_WATER_ASSIST_MASTER) return;
+-  if (!isClaimed || actuatorBusy || currentAction != "IDLE") return;
++  if (!emergencyGuard.canRun() || !isClaimed || actuatorBusy || currentAction != "IDLE") return;
+   if (WiFi.status() != WL_CONNECTED) return;
+ 
+   AutomationSettings settings =
+@@ -4701,8 +4867,8 @@ void executeCommand(String commandId, String commandType, int durationMs, int co
+   Serial.println(commandType);
+ 
+   if (commandType == "STOP_ALL") {
+-    stopAllActuators();
+-    updateCommandStatus(commandId, "done", "STOP_ALL executed. All relays OFF and feeder returned to rest.");
++    latchEmergencyStop();
++    updateCommandStatus(commandId, "done", "Emergency stop applied. Pumps and feeder are stopped.");
+     return;
+   }
+ 
+@@ -4711,7 +4877,17 @@ void executeCommand(String commandId, String commandType, int durationMs, int co
+     return;
+   }
+ 
+-  updateCommandStatus(commandId, "running", "Command accepted by ESP32. Checking rule-based safety now.");
++  if (!emergencyGuard.canRun()) { updateCommandStatus(commandId, "rejected", "Emergency stop is active or cloud safety state is unverified."); return; }
++  if (!updateCommandStatus(commandId, "running", "Command accepted by ESP32. Checking rule-based safety now.")) return;
++
++  if (commandType == "RESET_FEED_LOCK") {
++    // Maintenance only. Never energize outputs, alter history, or skip feed safety.
++    bool cleared = clearLastFeedLock();
++    updateCommandStatus(commandId, cleared ? "done" : "failed", cleared
++      ? "Feed test lock reset. Another manual FEED_ONCE may be attempted today. Normal feeding safety checks still apply."
++      : "Feed test lock reset failed: the actuator could not clear the last_feed NVS key.");
++    return;
++  }
+ 
+   if (commandType == "FEED_ONCE") {
+     String today = getLocalDateKey();
+@@ -4737,7 +4913,10 @@ void executeCommand(String commandId, String commandType, int durationMs, int co
+     }
+ 
+     int feedCyclesRequested = constrain(commandValue > 0 ? commandValue : 2, 1, 3);
+-    feedCycles(feedCyclesRequested);
++    if (!feedCycles(feedCyclesRequested)) {
++      updateCommandStatus(commandId, "failed", "FEED_ONCE interrupted by STOP_ALL or loss of verified emergency state. No further dispense cycles ran.");
++      return;
++    }
+ 
+     if (today.length() > 0) {
+       saveLastFeedDate(today);
+@@ -4783,11 +4962,12 @@ void executeCommand(String commandId, String commandType, int durationMs, int co
+   }
+ 
+   else {
+-    updateCommandStatus(commandId, "failed", "Unknown command type: " + commandType + ". Valid commands: FEED_ONCE, DRAIN_FOR, REFILL_FOR, STOP_ALL.");
++    updateCommandStatus(commandId, "failed", "Unknown command type: " + commandType + ". Valid commands: FEED_ONCE, DRAIN_FOR, REFILL_FOR, STOP_ALL, RESET_FEED_LOCK. RESUME_CONTROLS uses the emergency monitor.");
+   }
+ }
+ 
+ bool fetchAndRunPendingCommand() {
++  if (!emergencyGuard.canRun()) return false;
+   if (WiFi.status() != WL_CONNECTED) return false;
+ 
+   if (!isClaimed) {
+@@ -4808,7 +4988,7 @@ bool fetchAndRunPendingCommand() {
+                     "?device_uid=eq." + String(DEVICE_UID) +
+                     "&user_id=eq." + assignedUserId +
+                     "&tank_id=eq." + assignedTankId +
+-                    "&command_status=eq.pending" +
++                    "&command_status=eq.pending&command_type=not.in.(STOP_ALL,RESUME_CONTROLS)" +
+                     "&select=id,command_type,duration_ms,command_value,user_id,tank_id,device_uid" +
+                     "&order=created_at.asc" +
+                     "&limit=1";
+@@ -5059,6 +5239,7 @@ void runRawRefillHardwareTest(int durationMs) {
+ //       normal one-feed-per-day protection again.
+ // =====================================================
+ void handleSerialHardwareTests() {
++  checkLocalEmergencyStop();
+   if (!Serial.available()) return;
+   if (actuatorBusy) return;
+ 
+@@ -5121,15 +5302,13 @@ void handleSerialHardwareTests() {
+   }
+ 
+   else if (cmd == 'X') {
+-    stopAllActuators();
++    localEmergencyPending.store(true); emergencyGuard.invalidate(); latchEmergencyStop();
+     Serial.println("LOCAL TEST: STOP ALL.");
+   }
+ 
+   else if (cmd == 'C') {
+-    actuatorPrefs.begin("actuator", false);
+-    actuatorPrefs.remove("last_feed");
+-    actuatorPrefs.end();
+-    Serial.println("ONE-TIME RESET: last_feed NVS key cleared.");
++    bool cleared = clearLastFeedLock();
++    Serial.println(cleared ? "ONE-TIME RESET: last_feed NVS key cleared (or already absent)." : "Feed lock reset failed.");
+     Serial.println("FEED_ONCE is allowed again today (subject to normal safety checks).");
+     Serial.println("WiFi credentials, pairing, and tank assignment were NOT touched.");
+   }
+@@ -5138,7 +5317,7 @@ void handleSerialHardwareTests() {
+ // =====================================================
+ // AUTOMATIC FEED HISTORY
+ // =====================================================
+-bool insertAutomaticFeedHistory(int cycles, String safetyReason) {
++bool insertAutomaticFeedHistory(int cycles, String safetyReason, String status) {
+   if (WiFi.status() != WL_CONNECTED || !isClaimed) return false;
+ 
+   WiFiClientSecure client;
+@@ -5164,7 +5343,7 @@ bool insertAutomaticFeedHistory(int cycles, String safetyReason) {
+ 
+   String nowIso = getIsoTimestamp();
+   String result =
+-    "Automatic feeding servo sequence completed with " + String(cycles) +
++    (status == "done" ? "Automatic feeding servo sequence completed with " : "Automatic feeding interrupted with ") + String(cycles) +
+     " dispense cycle(s). Physical feed delivery is not sensor-verified. " +
+     safetyReason;
+ 
+@@ -5173,9 +5352,10 @@ bool insertAutomaticFeedHistory(int cycles, String safetyReason) {
+   payload += "\"tank_id\":\"" + jsonEscape(assignedTankId) + "\",";
+   payload += "\"device_uid\":\"" + String(DEVICE_UID) + "\",";
+   payload += "\"command_type\":\"FEED_ONCE\",";
++  payload += "\"command_source\":\"schedule\",";
+   payload += "\"command_value\":\"" + String(cycles) + "\",";
+-  payload += "\"command_status\":\"done\",";
+-  payload += "\"status\":\"done\",";
++  payload += "\"command_status\":\"" + jsonEscape(status) + "\",";
++  payload += "\"status\":\"" + jsonEscape(status) + "\",";
+   payload += "\"duration_ms\":0,";
+   payload += "\"result_message\":\"" + jsonEscape(result) + "\",";
+   payload += "\"created_at\":\"" + nowIso + "\",";
+@@ -5196,6 +5376,15 @@ bool insertAutomaticFeedHistory(int cycles, String safetyReason) {
+ // =====================================================
+ // AUTO FEEDING
+ // =====================================================
++bool clearLastFeedLock() {
++  if (!actuatorPrefs.begin("actuator", false)) return false;
++  bool existed = actuatorPrefs.isKey("last_feed");
++  bool removed = !existed || actuatorPrefs.remove("last_feed");
++  bool cleared = removed && !actuatorPrefs.isKey("last_feed");
++  actuatorPrefs.end();
++  return cleared;
++}
++
+ String getLastFeedDate() {
+   actuatorPrefs.begin("actuator", true);
+   String value = actuatorPrefs.getString("last_feed", "");
+@@ -5210,7 +5399,7 @@ void saveLastFeedDate(String dateKey) {
+ }
+ 
+ void handleAutoFeeding() {
+-  if (!isClaimed || actuatorBusy || currentAction != "IDLE") return;
++  if (!emergencyGuard.canRun() || !isClaimed || actuatorBusy || currentAction != "IDLE") return;
+   if (!isTimeReady()) return;
+ 
+   // v1.29: get ON/OFF, hour, minute, and dispense cycles from Supabase.
+@@ -5259,9 +5448,12 @@ void handleAutoFeeding() {
+   Serial.print(settings.autoFeedCycles);
+   Serial.println(" cycle(s).");
+ 
+-  feedCycles(settings.autoFeedCycles);
++  if (!feedCycles(settings.autoFeedCycles)) {
++    insertAutomaticFeedHistory(settings.autoFeedCycles, "STOP_ALL or loss of verified emergency state interrupted the servo sequence. " + reason, "failed");
++    return;
++  }
+   saveLastFeedDate(today);
+-  insertAutomaticFeedHistory(settings.autoFeedCycles, reason);
++  insertAutomaticFeedHistory(settings.autoFeedCycles, reason, "done");
+   Serial.println("Automatic feeding servo sequence completed and saved.");
+ }
+ 
+@@ -5289,6 +5481,7 @@ void restoreCloudStateAfterReconnect() {
+   configureDeviceTime();
+   updateDeviceStatusToSupabase();
+   fetchDeviceAssignmentFromSupabase();
++  publishEmergencyScope();
+ 
+   lastDeviceStatusUpdate = millis();
+   lastAssignmentFetch = millis();
+@@ -5318,7 +5511,7 @@ void setup() {
+ 
+   feederServo.setPeriodHertz(50);
+   feederServo.attach(FEEDER_SERVO_PIN, 500, 2400);
+-  feederServo.write(SERVO_REST_ANGLE);
++  writeFeederSafely(SERVO_REST_ANGLE);
+ 
+   actuatorBusy = false;
+   currentAction = "IDLE";
+@@ -5353,8 +5546,18 @@ void setup() {
+   if (WiFi.status() == WL_CONNECTED) {
+     restoreCloudStateAfterReconnect();
+     cloudStateRestoredForCurrentWifi = true;
+-    lastAutoFeedCheck = millis();
+-    lastAutoWaterCheck = millis();
++    lastAutoFeedCheck = millis(); lastAutoWaterCheck = millis();
++  }
++  emergencyOutputMutex = xSemaphoreCreateMutex();
++  emergencyPrefs.begin("ct-stop", true);
++  emergencyNvsLatched = emergencyPrefs.getBool("latched", false);
++  localEmergencyPending.store(emergencyPrefs.getBool("local", false));
++  emergencyPrefs.end();
++  if (emergencyNvsLatched) emergencyGuard.latch();
++  publishEmergencyScope();
++  if (!emergencyOutputMutex || xTaskCreatePinnedToCore(emergencyMonitorTask, "ct-emergency", 12288, nullptr, 2, nullptr, 0) != pdPASS) {
++    emergencyGuard.verify(false); latchEmergencyStop();
++    Serial.println("Emergency monitor could not start. Outputs remain locked OFF.");
+   }
+ }
+ 
+@@ -5362,6 +5565,7 @@ void setup() {
+ // LOOP
+ // =====================================================
+ void loop() {
++  publishEmergencyScope();
+   server.handleClient();
+   handleSerialHardwareTests();
+ 
+@@ -5388,6 +5592,7 @@ void loop() {
+   if (millis() - lastAssignmentFetch >= ASSIGNMENT_FETCH_INTERVAL) {
+     lastAssignmentFetch = millis();
+     fetchDeviceAssignmentFromSupabase();
++    publishEmergencyScope();
+   }
+ 
+   bool commandRan = false;

@@ -3,9 +3,12 @@ import MonitoringSyncNotice from '../../components/MonitoringSyncNotice';
 import { mergeSensorHistoryRows, currentSensorSafety } from '../../../supabase/functions/_shared/sensorReadingContract.js';
 import { philippineDayBounds, philippineDateKey, timestampMs, formatPhilippineDateTime, compareTimestamps } from '../../utils/philippineTime';
 import useServerTime from '../../hooks/useServerTime';
-import { fetchServerTimestamp } from '../../services/serverTimeService';
+import { fetchServerTimestamp, getServerNowMs } from '../../services/serverTimeService';
 import { formatMonitoringAlert, waterAutomationAlertSeverity } from "../../../supabase/functions/_shared/monitoringAlertPresentation.js";
 import { formatRecordedPumpAction, getRecordedActionOutcome } from "../../../supabase/functions/_shared/tankActivity.js";
+import { ACTIVE_COMMAND_STATUSES, isCommandActive, isCommandTerminal, STOP_COMMAND, RESUME_COMMAND } from '../../../supabase/functions/_shared/actuatorCommandLifecycle.js';
+import { actuatorControlError, loadActuatorControlState, requestEmergencyControl } from '../../services/actuatorControlService';
+import { queueFeedLockReset } from '../../services/feedTestService';
 import { logDiagnostic, getSafeErrorMessage } from "../../utils/securityDiagnostics";
 import { getAmmoniaLabel, getAmmoniaNumericValue, getAmmoniaScanDate, getLatestAmmoniaForTank, recordMatchesAmmoniaTank, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
 import { loadAmmoniaHistory, loadSensorHistory } from "../../services/tankSnapshotService";
@@ -32,6 +35,7 @@ import {
   Droplets,
   FlaskConical,
   Gauge,
+  Info,
   Loader2,
   Play,
   Power,
@@ -401,6 +405,8 @@ function getCommandLabel(commandType) {
     REFILL_FOR: "Add Water",
     DRAIN_FOR: "Drain Water",
     STOP_ALL: "Emergency Stop",
+    RESUME_CONTROLS: "Resume Controls",
+    RESET_FEED_LOCK: "Feed Test Reset",
   };
 
   return (
@@ -413,6 +419,11 @@ function getCommandLabel(commandType) {
 function getShortResultMessage(
   command = {}
 ) {
+  if (command.command_type === 'RESET_FEED_LOCK') {
+    if (isCommandActive(command)) return 'Resetting feed test lock...';
+    if (command.command_status === 'done') return 'Feed test reset. You may use Feed Now again.';
+    return command.result_message || 'The feed test reset could not be confirmed.';
+  }
   const feeding = formatRecordedFeedingAction(command, getRecordedActionOutcome(command, 'device_commands'));
   if (feeding) return feeding.message;
   const pump = formatRecordedPumpAction(command, 'device_commands');
@@ -1401,14 +1412,7 @@ async function fetchActiveCommandsForActuator(
     )
     .in(
       "command_status",
-      [
-        "pending",
-        "running",
-      ]
-    )
-    .neq(
-      "command_type",
-      "STOP_ALL"
+      ACTIVE_COMMAND_STATUSES
     )
     .order(
       "created_at",
@@ -1426,7 +1430,7 @@ async function fetchActiveCommandsForActuator(
     return [];
   }
 
-  return data;
+  return data.filter(isCommandActive);
 }
 
 async function fetchTodaysFeedCommands(
@@ -1551,7 +1555,13 @@ function EmptyBlock({
 export default function TankDetailsPage() {
   const [dispenseCycles, setDispenseCycles] = useState(2);
   const [feedConfirmation, setFeedConfirmation] = useState(null);
-  const [submittedFeed, setSubmittedFeed] = useState(null);
+  const [submittedCommand, setSubmittedCommand] = useState(null);
+  const submittedCommandRef = useRef(null);
+  const [actuatorControl, setActuatorControl] = useState({ verified: false });
+  const [localStopLock, setLocalStopLock] = useState(null);
+  const [emergencySending, setEmergencySending] = useState(false);
+  const emergencySubmission = useRef(false);
+  const emergencyEpoch = useRef(0);
   const [feedError, setFeedError] = useState('');
   const feedSubmission = useRef(false);
   const feedContext = useRef(null);
@@ -1941,7 +1951,8 @@ export default function TankDetailsPage() {
     setDispenseCycles(2);
     setFeedConfirmation(null);
     setFeedError('');
-    setSubmittedFeed(null);
+    setSubmittedCommand(null);
+    submittedCommandRef.current = null;
 
     setCommandWaitSeconds(0);
     setCommandMessage("");
@@ -1950,10 +1961,16 @@ export default function TankDetailsPage() {
     );
   }, [tankId]);
 
-  const trackedFeed = submittedFeed?.tank_id === tankId && submittedFeed?.user_id === currentUser?.id
-    ? controlLogs.find(command => command.id === submittedFeed.id) || submittedFeed : null;
-  const hasTrackedFeedPending = trackedFeed && ['pending', 'running'].includes(trackedFeed.command_status);
-  const hasActiveCommand = activeCommands.length > 0 || !!hasTrackedFeedPending;
+  const controlScope = JSON.stringify([tankId, currentUser?.id, actuatorDevice?.device_uid]);
+  const trackedCommand = submittedCommand?.tank_id === tankId && submittedCommand?.user_id === currentUser?.id
+    ? controlLogs.find(command => command.id === submittedCommand.id) || submittedCommand : null;
+  const trackedFeed = trackedCommand?.command_type === 'FEED_ONCE' ? trackedCommand : null;
+  const hasTrackedFeedPending = isCommandActive(trackedFeed);
+  const currentActiveCommands = activeCommands.filter(isCommandActive);
+  const hasActiveCommand = currentActiveCommands.length > 0 || isCommandActive(trackedCommand);
+  const controlState = actuatorControl.scope === controlScope ? actuatorControl : { verified: false };
+  const emergencyLatched = controlState.data?.emergency_stop_active === true;
+  const normalControlsLocked = !controlState.verified || !!controlState.error || emergencyLatched || localStopLock === controlScope;
 
   const refreshTankControls = useCallback(async () => {
     if (!tank || tank.id !== tankId || !currentUser?.id) return;
@@ -1962,34 +1979,49 @@ export default function TankDetailsPage() {
     pendingControlRefresh.current = pending;
     const version = ++controlRefreshVersion.current;
     try {
-      const device = await fetchActuatorDeviceForTank(tank, tankId);
-      const [commands, feeds, history, commandHistory] = await Promise.all([
-        fetchActiveCommandsForActuator(tank, device, tankId),
-        fetchTodaysFeedCommands(tank, device, tankId),
-        loadSensorHistory(currentUser, { tankId: tank.id, limit: 400 }),
-        supabase.from('device_commands').select('*').eq('tank_id', tank.id).eq('user_id', currentUser.id)
-          .order('created_at', { ascending: false }).order('id', { ascending: false }).limit(300),
-      ]);
+      if (!actuatorDevice?.device_uid) return;
+      const data = await loadActuatorControlState(supabase, { tankId, deviceUid: actuatorDevice.device_uid,
+        userId: currentUser.id, commandId: submittedCommandRef.current?.id || null });
       if (version !== controlRefreshVersion.current) return;
       controlCommitVersion.current++;
-      setActuatorDevice(device); setActiveCommands(commands); setTodaysFeedCommands(feeds);
-      if (!history.error) setReadings(history.rows);
-      if (!commandHistory.error) setControlLogs(previous => [
-        ...previous.filter(row => row.action_type === 'threshold_updated'), ...(commandHistory.data || []),
-      ]);
-    } catch (error) { logDiagnostic('Tank control refresh unavailable', error); }
+      setActuatorControl({ scope: controlScope, verified: true, data });
+      setActiveCommands(data.active_commands);
+      const changed = [data.command, data.stop_command, data.resume_command, ...(data.terminal_commands || [])].filter(Boolean);
+      if (changed.length) setControlLogs(previous => {
+        const rows = new Map(previous.map(row => [row.id, row])); changed.forEach(row => rows.set(row.id, row)); return [...rows.values()];
+      });
+      if (isCommandTerminal(data.command)) {
+        if (data.command.id === submittedCommandRef.current?.id) { submittedCommandRef.current = null; setSubmittedCommand(null); }
+        setCommandMessage(getShortResultMessage(data.command) || data.command.result_message);
+        if (data.command.command_type === 'FEED_ONCE') {
+          const completedToday = isCompletedFeedCommand(data.command)
+            && philippineDateKey(data.command.created_at) === philippineDateKey(getServerNowMs());
+          setTodaysFeedCommands(previous => [...previous.filter(row => row.id !== data.command.id), ...(completedToday ? [data.command] : [])]);
+        }
+      }
+      if (data.emergency_stop_active || data.resume_command?.command_status === 'done') setLocalStopLock(null);
+    } catch (error) {
+      if (version === controlRefreshVersion.current) setActuatorControl(previous => ({ ...previous, scope: controlScope, verified: false, error: actuatorControlError(error) }));
+    }
     finally { if (pendingControlRefresh.current === pending) pendingControlRefresh.current = null; }
-  }, [tank, tankId, currentUser]);
+  }, [tank, tankId, currentUser, actuatorDevice, controlScope]);
 
   useEffect(() => {
-    if (!tankId || isLoading) {
+    if (!tank || tank.id !== tankId || !isPairedFeedActuator(actuatorDevice, tank, tankId) || !currentUser?.id) return;
+    const refreshVersion = controlRefreshVersion;
+    let mounted = true;
+    Promise.resolve().then(() => { if (mounted) void refreshTankControls(); });
+    const visible = () => { if (document.visibilityState === 'visible') void refreshTankControls(); };
+    window.addEventListener('focus', visible); window.addEventListener('online', visible); document.addEventListener('visibilitychange', visible);
+    return () => { mounted = false; refreshVersion.current++; window.removeEventListener('focus', visible); window.removeEventListener('online', visible); document.removeEventListener('visibilitychange', visible); };
+  }, [tank, tankId, actuatorDevice, currentUser, refreshTankControls]);
+
+  useEffect(() => {
+    if (!tankId || isLoading || !hasActiveCommand) {
       return;
     }
 
-    const intervalMs =
-      hasActiveCommand
-        ? 1500
-        : 8000;
+    const intervalMs = 1500;
 
     const interval =
       setInterval(() => {
@@ -2326,55 +2358,17 @@ export default function TankDetailsPage() {
     null;
 
   const activeCommand =
-    activeCommands[0] ||
-    (hasTrackedFeedPending ? trackedFeed : null);
+    currentActiveCommands[0] ||
+    (isCommandActive(trackedCommand) ? trackedCommand : null);
   const selectedCycles = normalizeDispenseCycles(dispenseCycles);
   const feedActuatorReady = isPairedFeedActuator(actuatorDevice, tank, getPrimaryTankId(tank, tankId));
-  const activeFeedCommand = activeCommands.find(command => command.command_type === 'FEED_ONCE') || (hasTrackedFeedPending ? trackedFeed : null);
+  const activeFeedCommand = currentActiveCommands.find(command => command.command_type === 'FEED_ONCE') || (hasTrackedFeedPending ? trackedFeed : null);
   const latestFeedCommand = activeFeedCommand || trackedFeed || sortedControlLogs.find(command => command.command_type === 'FEED_ONCE');
   const feedingStatus = latestFeedCommand ? formatRecordedFeedingAction(latestFeedCommand, getRecordedActionOutcome(latestFeedCommand, 'device_commands')) : null;
 
   const isStuckLong =
     hasActiveCommand &&
     commandWaitSeconds >= 30;
-
-  /* =======================================================
-     COMMAND STATE CLEANUP
-  ======================================================= */
-
-  useEffect(() => {
-    const latestStatus =
-      lower(
-        latestCommandLog
-          ?.command_status ||
-          latestCommandLog
-            ?.status ||
-          latestCommandLog
-            ?.result ||
-          ""
-      );
-
-    if (
-      !hasActiveCommand &&
-      [
-        "done",
-        "rejected",
-        "failed",
-      ].includes(
-        latestStatus
-      )
-    ) {
-      setCommandMessage(
-        ""
-      );
-    }
-  }, [
-    hasActiveCommand,
-    latestCommandLog?.id,
-    latestCommandLog?.command_status,
-    latestCommandLog?.status,
-    latestCommandLog?.result,
-  ]);
 
   /* =======================================================
      CONTROL HELPERS
@@ -2403,176 +2397,14 @@ export default function TankDetailsPage() {
     );
   }
 
-  async function clearStuckActiveCommands() {
-    if (
-      !activeCommands.length
-    ) {
-      setCommandMessage(
-        "There is no active command to reset."
-      );
-      return;
-    }
-
-    try {
-      setIsSendingCommand(
-        true
-      );
-
-      const ids =
-        activeCommands
-          .map(
-            (command) =>
-              command.id
-          )
-          .filter(Boolean);
-
-      const { error } =
-        await supabase
-          .from(
-            "device_commands"
-          )
-          .update({
-            command_status:
-              "failed",
-
-            result_message:
-              "Manually reset from web because the command stayed pending/running.",
-
-            executed_at:
-              await fetchServerTimestamp(),
-          })
-          .in(
-            "id",
-            ids
-          );
-
-      if (error) {
-        throw new Error(
-          error.message
-        );
-      }
-
-      setCommandMessage(
-        "The stuck command was reset. You can try again."
-      );
-
-      setCommandWaitSeconds(
-        0
-      );
-
-      await loadTankDetails(
-        true
-      );
-    } catch (error) {
-      setCommandMessage(
-        getSafeErrorMessage(error, "Could not reset the command.")
-      );
-    } finally {
-      setIsSendingCommand(
-        false
-      );
-    }
+  async function refreshActuatorCommands() {
+    await refreshTankControls();
   }
 
-  async function resetTodayFeedLogForTesting() {
-    if (
-      !tank ||
-      !actuatorDevice?.device_uid
-    ) {
-      setCommandMessage(
-        "No tank or actuator is selected."
-      );
-      return;
-    }
-
-    const confirmReset =
-      window.confirm(
-        "Testing only: reset today's successful feeding record so the feeder can be tested again?"
-      );
-
-    if (!confirmReset) {
-      return;
-    }
-
-    try {
-      setIsSendingCommand(
-        true
-      );
-
-      const commandTankId =
-        getPrimaryTankId(
-          tank,
-          tankId
-        );
-
-      const {
-        startIso,
-        endIso,
-      } =
-        await getTodayRangeForSupabase();
-
-      const { error } =
-        await supabase
-          .from(
-            "device_commands"
-          )
-          .update({
-            command_status:
-              "failed",
-
-            result_message:
-              "Successful feed log reset from web for feeder testing.",
-
-            executed_at:
-              await fetchServerTimestamp(),
-          })
-          .eq(
-            "tank_id",
-            commandTankId
-          )
-          .eq(
-            "device_uid",
-            actuatorDevice.device_uid
-          )
-          .eq(
-            "command_type",
-            "FEED_ONCE"
-          )
-          .eq(
-            "command_status",
-            "done"
-          )
-          .gte(
-            "created_at",
-            startIso
-          )
-          .lt(
-            "created_at",
-            endIso
-          );
-
-      if (error) {
-        throw new Error(
-          error.message
-        );
-      }
-
-      setCommandMessage(
-        "Today's feed test record was reset."
-      );
-
-      await loadTankDetails(
-        true
-      );
-    } catch (error) {
-      setCommandMessage(
-        getSafeErrorMessage(error, "Could not reset today's feed record.")
-      );
-    } finally {
-      setIsSendingCommand(
-        false
-      );
-    }
+  async function requestFeedLockResetForTesting() {
+    if (normalControlsLocked || emergencySubmission.current || hasActiveCommand || isSendingCommand) return;
+    if (!window.confirm("Allow another feeding test today?\nThis clears only today's actuator feed lock. Water and feeding safety checks will still be applied.")) return;
+    await sendDeviceCommand('RESET_FEED_LOCK');
   }
 
   /* =======================================================
@@ -2583,7 +2415,7 @@ export default function TankDetailsPage() {
     setFeedError('');
     if (nowMs === null) { setCommandMessage('Server time is unavailable. Reconnect and retry.'); return; }
     if (!feedActuatorReady) { setFeedError('Actuator device is not connected to this tank.'); return; }
-    if (isSendingCommand || hasActiveCommand || shouldWaitForSensorRefresh || feedSubmission.current) return;
+    if (normalControlsLocked || emergencySubmission.current || isSendingCommand || hasActiveCommand || shouldWaitForSensorRefresh || feedSubmission.current) return;
     setFeedConfirmation({ tankId, cycles: normalizeDispenseCycles(dispenseCycles) });
   }
 
@@ -2592,9 +2424,46 @@ export default function TankDetailsPage() {
     durationMs = 0,
     requestedCycles = dispenseCycles
   ) {
+    if (commandType === STOP_COMMAND || commandType === RESUME_COMMAND) {
+      if (emergencySubmission.current || !tank || !actuatorDevice?.device_uid || !currentUser?.id) return;
+      emergencySubmission.current = true;
+      setEmergencySending(true);
+      if (commandType === STOP_COMMAND) {
+        emergencyEpoch.current++;
+        setLocalStopLock(controlScope);
+        setFeedConfirmation(null);
+        setCommandMessage('Emergency stop requested. Waiting for actuator...');
+      }
+      const requestContext = feedContext.current;
+      try {
+        const data = await requestEmergencyControl(supabase, { tankId: tank.id, deviceUid: actuatorDevice.device_uid,
+          userId: currentUser.id, action: commandType });
+        if (feedContext.current !== requestContext) return;
+        controlRefreshVersion.current++;
+        controlCommitVersion.current++;
+        setActuatorControl({ scope: controlScope, verified: true, data });
+        setActiveCommands(data.active_commands);
+        const command = data.command;
+        submittedCommandRef.current = isCommandActive(command) ? command : null;
+        setSubmittedCommand(submittedCommandRef.current);
+        const changed = [data.command, data.stop_command, data.resume_command, ...data.active_commands, ...(data.terminal_commands || [])].filter(Boolean);
+        if (changed.length) setControlLogs(previous => {
+          const rows = new Map(previous.map(row => [row.id, row])); changed.forEach(row => rows.set(row.id, row)); return [...rows.values()];
+        });
+        if (data.emergency_stop_active || data.resume_command?.command_status === 'done') setLocalStopLock(null);
+        setCommandMessage(command?.result_message || 'Waiting for actuator...');
+      } catch (error) {
+        if (feedContext.current === requestContext) {
+          setActuatorControl(previous => ({ ...previous, scope: controlScope, verified: false, error: actuatorControlError(error) }));
+          setCommandMessage(actuatorControlError(error));
+        }
+      } finally { emergencySubmission.current = false; setEmergencySending(false); }
+      return;
+    }
     const isFeeding = commandType === 'FEED_ONCE';
+    const commandEpoch = emergencyEpoch.current;
     const requestContext = feedContext.current;
-    if (isFeeding && feedSubmission.current) return;
+    if (feedSubmission.current || emergencySubmission.current || normalControlsLocked) return;
     setCommandMessage("");
     if (isFeeding) setFeedError('');
 
@@ -2694,10 +2563,11 @@ export default function TankDetailsPage() {
       DRAIN_FOR: "on",
       REFILL_FOR: "on",
       STOP_ALL: "stop",
+      RESET_FEED_LOCK: "reset",
     };
 
     try {
-      if (isFeeding) feedSubmission.current = true;
+      feedSubmission.current = true;
       setIsSendingCommand(
         true
       );
@@ -2705,6 +2575,7 @@ export default function TankDetailsPage() {
       let commandActuator = actuatorDevice;
       if (isFeeding) {
         commandActuator = await fetchActuatorDeviceForTank(tank, tankId);
+        if (feedContext.current !== requestContext || emergencyEpoch.current !== commandEpoch) return;
         if (!isPairedFeedActuator(commandActuator, tank, commandTankId)) {
           setFeedError('Actuator device is not connected to this tank.');
           return;
@@ -2713,7 +2584,7 @@ export default function TankDetailsPage() {
           fetchActiveCommandsForActuator(tank, commandActuator, tankId, true),
           fetchTodaysFeedCommands(tank, commandActuator, tankId, true),
         ]);
-        if (feedContext.current !== requestContext) return;
+        if (feedContext.current !== requestContext || emergencyEpoch.current !== commandEpoch) return;
         if (pendingCommands.length) {
           setActiveCommands(pendingCommands);
           setCommandMessage('Another action is still running. Please wait for it to finish.');
@@ -2750,18 +2621,20 @@ export default function TankDetailsPage() {
         command_status:
           "pending",
 
+        command_source: 'manual',
+        status: "pending",
         result_message:
           "Command queued from web dashboard.",
       };
 
-      let insert = supabase
+      const { data: inserted, error } = commandType === 'RESET_FEED_LOCK'
+        ? { data: await queueFeedLockReset(supabase, { tankId: commandTankId, userId: commandUserId, deviceUid: commandActuator.device_uid }), error: null }
+        : await supabase
           .from(
             "device_commands"
           )
-          .insert(payload);
-      if (isFeeding) insert = insert.select('*').single();
-      const { data: inserted, error } = await insert;
-      if (isFeeding && feedContext.current !== requestContext) return;
+          .insert(payload).select('*').single();
+      if (feedContext.current !== requestContext || emergencyEpoch.current !== commandEpoch) return;
 
       if (error) {
         throw new Error(
@@ -2769,11 +2642,12 @@ export default function TankDetailsPage() {
         );
       }
 
-      if (isFeeding) {
-        if (!inserted?.id) throw new Error('The feeding request could not be confirmed.');
-        setSubmittedFeed(inserted);
-        setControlLogs(previous => [inserted, ...previous.filter(command => command.id !== inserted.id)]);
-      }
+      if (!inserted?.id) throw new Error('The actuator request could not be confirmed.');
+      controlRefreshVersion.current++;
+      controlCommitVersion.current++;
+      submittedCommandRef.current = inserted;
+      setSubmittedCommand(inserted);
+      setControlLogs(previous => [inserted, ...previous.filter(command => command.id !== inserted.id)]);
 
       const label =
         getCommandLabel(
@@ -2782,7 +2656,7 @@ export default function TankDetailsPage() {
 
       setCommandMessage(
         isFeeding ? `Feeding request sent — ${dispenseCycleLabel(normalizeDispenseCycles(requestedCycles))} requested.`
-          : `${label} request sent. Waiting for the device...`
+          : commandType === 'RESET_FEED_LOCK' ? 'Resetting feed test lock...' : `${label} request sent. Waiting for the device...`
       );
 
       setCommandWaitSeconds(
@@ -2793,14 +2667,13 @@ export default function TankDetailsPage() {
         "controls"
       );
 
-      await loadTankDetails(
-        true
-      );
+      await refreshTankControls();
     } catch (error) {
+      if (feedContext.current !== requestContext || emergencyEpoch.current !== commandEpoch) return;
       if (isFeeding) setFeedError(getSafeErrorMessage(error, 'The feeding request could not be verified or sent. Refresh activity before retrying.'));
       else setCommandMessage(getSafeErrorMessage(error, "Could not send the action."));
     } finally {
-      if (isFeeding) feedSubmission.current = false;
+      feedSubmission.current = false;
       setIsSendingCommand(
         false
       );
@@ -3616,9 +3489,7 @@ export default function TankDetailsPage() {
               <button
                 type="button"
                 onClick={() =>
-                  loadTankDetails(
-                    true
-                  )
+                  refreshTankControls()
                 }
               >
                 Refresh
@@ -3720,7 +3591,7 @@ export default function TankDetailsPage() {
                 </strong>
 
                 <p>
-                  Check the actuator connection. You can reset the action from Advanced / Troubleshooting below.
+                  Check the actuator connection or refresh actuator state. Emergency Stop remains available; refreshing does not complete the action.
                 </p>
               </div>
             </div>
@@ -3751,12 +3622,27 @@ export default function TankDetailsPage() {
 
           {/* ACTION BUTTONS */}
 
+          {(normalControlsLocked || emergencySending) && <div className="command-status-card" role="status" data-emergency-state>
+            <div><strong>{emergencyLatched || localStopLock === controlScope ? 'Emergency stop active' : 'Verifying actuator controls'}</strong>
+              <p>{controlState.error || (isCommandActive(controlState.data?.stop_command)
+                ? 'Emergency stop requested. Waiting for actuator...'
+                : controlState.data?.stop_command?.command_status === 'failed' ? controlState.data.stop_command.result_message
+                  : emergencyLatched && controlState.data?.applied_at ? 'The actuator reports pumps and feeder stopped. Resume controls explicitly before a new action.'
+                    : 'Normal controls remain locked until actuator state is verified.')}</p>
+              {isCommandActive(controlState.data?.resume_command) && <p>Resume requested. Waiting for actuator...</p>}
+            </div>
+            {emergencyLatched && <button type="button" disabled={emergencySending || !controlState.verified || !controlState.data?.applied_at
+              || isCommandActive(controlState.data?.resume_command) || currentActiveCommands.some(row => ![STOP_COMMAND, RESUME_COMMAND].includes(row.command_type))}
+              onClick={() => sendDeviceCommand(RESUME_COMMAND)}>Resume Controls</button>}
+            <button type="button" onClick={() => refreshTankControls()}>Refresh actuator state</button>
+          </div>}
+
           <AutomaticFeedingSettings key={tankId} tank={tank} nowMs={nowMs}
             lastFeed={sortedControlLogs.find(isCompletedFeedCommand)} />
 
           <h4 className="manual-feeding-heading">Manual Feed Now</h4>
           <ManualFeedOptions cycles={activeFeedCommand ? feedingStatus?.cycles ?? selectedCycles : selectedCycles} onChange={setDispenseCycles}
-            disabled={isSendingCommand || hasActiveCommand}
+            disabled={normalControlsLocked || isSendingCommand || hasActiveCommand}
             confirmation={feedConfirmation?.tankId === tankId ? feedConfirmation : null}
             busy={isSendingCommand}
             onCancel={() => setFeedConfirmation(null)}
@@ -3772,6 +3658,7 @@ export default function TankDetailsPage() {
             <div>
               <strong>{feedingStatus.title}</strong>
               <p>{feedingStatus.message}</p>
+              <small>Source: {feedingStatus.sourceLabel}</small>
               {feedingStatus.cycles !== null && <small>Dispense cycles: {feedingStatus.cycles}</small>}
               {(latestFeedCommand.result_message || latestFeedCommand.reason || latestFeedCommand.notes) && <small>Device report: {latestFeedCommand.result_message || latestFeedCommand.reason || latestFeedCommand.notes}</small>}
             </div>
@@ -3784,6 +3671,7 @@ export default function TankDetailsPage() {
             <button
               type="button"
               disabled={
+                normalControlsLocked ||
                 isSendingCommand ||
                 !feedActuatorReady ||
                 hasActiveCommand ||
@@ -3806,6 +3694,7 @@ export default function TankDetailsPage() {
             <button
               type="button"
               disabled={
+                normalControlsLocked ||
                 isSendingCommand ||
                 !actuatorDevice
                   ?.device_uid ||
@@ -3836,6 +3725,7 @@ export default function TankDetailsPage() {
             <button
               type="button"
               disabled={
+                normalControlsLocked ||
                 isSendingCommand ||
                 !actuatorDevice
                   ?.device_uid ||
@@ -3866,7 +3756,7 @@ export default function TankDetailsPage() {
             <button
               type="button"
               disabled={
-                isSendingCommand ||
+                emergencySending ||
                 !actuatorDevice
                   ?.device_uid
               }
@@ -3897,9 +3787,7 @@ export default function TankDetailsPage() {
           {commandMessage && (
             <div className="modern-device-command-message">
 
-              <CheckCircle2
-                size={18}
-              />
+              <Info size={18} />
 
               <span>
                 {
@@ -3932,25 +3820,27 @@ export default function TankDetailsPage() {
                   !hasActiveCommand
                 }
                 onClick={
-                  clearStuckActiveCommands
+                  refreshActuatorCommands
                 }
               >
-                Reset Stuck Action
+                Refresh Actuator State
               </button>
 
+              <div><h4>Feeding Test</h4>
+              <p>Allows another manual feeding test today by clearing the actuator?s local daily feed lock. Normal sensor safety rules still apply.</p>
               <button
                 type="button"
                 disabled={
-                  isSendingCommand ||
-                  !hasFedToday
+                  normalControlsLocked || hasActiveCommand || !feedActuatorReady ||
+                  isSendingCommand
                 }
                 onClick={
-                  resetTodayFeedLogForTesting
+                  requestFeedLockResetForTesting
                 }
                 className="warning"
               >
-                Reset Feed Test Today
-              </button>
+                {isCommandActive(trackedCommand) && trackedCommand.command_type === 'RESET_FEED_LOCK' ? 'Resetting feed test lock...' : 'Allow Another Feed Test Today'}
+              </button></div>
             </div>
           </details>
         </section>

@@ -22,12 +22,13 @@ export function getActionStatusPresentation(row = {}, source = '', automatic = f
     blocked: ['Blocked', 'blocked', 'The action was intentionally blocked by a safety rule.'],
     rejected: ['Rejected', 'rejected', 'The action was intentionally blocked by a safety rule.'],
     skipped: ['Skipped', 'skipped', 'The action was intentionally skipped.'],
+    cancelled: ['Cancelled', 'cancelled', 'The action was cancelled.'],
     failed: ['Failed', 'failed', 'The actuator action could not be completed.'],
     running: ['In Progress', 'progress', 'The actuator action is in progress.'],
     pending: ['Pending Verification', 'pending', 'The action is pending verification.'],
   };
-  const aliases = { completed: 'done', success: 'done', succeeded: 'done', error: 'failed', started: 'running', executing: 'running',
-    queued: 'pending', sent: 'pending', requested: 'pending', acknowledged: 'pending', cancelled: 'skipped', canceled: 'skipped' };
+  const aliases = { completed: 'done', success: 'done', succeeded: 'done', error: 'failed', started: 'running', executing: 'running', processing: 'running',
+    queued: 'pending', sent: 'pending', requested: 'pending', acknowledged: 'pending', canceled: 'cancelled' };
   const key = Object.hasOwn(aliases, rawStatus) ? aliases[rawStatus] : rawStatus;
   const [label, tone, message] = Object.hasOwn(states, key) ? states[key]
     : ['Unknown / Unconfirmed', 'unknown', 'The recorded action status is unknown or unavailable.'];

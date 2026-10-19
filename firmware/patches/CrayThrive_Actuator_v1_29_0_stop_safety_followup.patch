@@ -1,0 +1,224 @@
+diff --git a/CrayThrive_Actuator_v1_29_0_DB_FEED_SCHEDULE_SERVO_STATUS_FIX.ino b/CrayThrive_Actuator_v1_29_0_DB_FEED_SCHEDULE_SERVO_STATUS_FIX.ino
+index 38b0109..0000000 100644
+--- a/CrayThrive_Actuator_v1_29_0_DB_FEED_SCHEDULE_SERVO_STATUS_FIX.ino
++++ b/CrayThrive_Actuator_v1_29_0_DB_FEED_SCHEDULE_SERVO_STATUS_FIX.ino
+@@ -488,6 +488,8 @@ EmergencyScope emergencyScope = {};
+ Preferences emergencyPrefs;
+ bool emergencyNvsLatched = false;
+ std::atomic<bool> localEmergencyPending{false};
++std::atomic<bool> emergencyRoutineActive{false};
++SemaphoreHandle_t emergencySerialMutex = nullptr;
+ String currentAction = "IDLE";
+ 
+ // =====================================================
+@@ -947,19 +949,27 @@ void setRelaysOffRaw() {
+   digitalWrite(REFILL_RELAY_PIN, relayOffSignal());
+ }
+ 
++void requestLocalEmergencyStop() {
++  // Serialize a local stop with Resume. Normal routines cannot consume X as a non-stop command.
++  if (emergencyOutputMutex) xSemaphoreTake(emergencyOutputMutex, portMAX_DELAY);
++  localEmergencyPending.store(true);
++  emergencyGuard.invalidate(); emergencyGuard.latch();
++  setRelaysOffRaw(); feederServo.write(SERVO_REST_ANGLE);
++  emergencyPrefs.begin("ct-stop", false);
++  emergencyPrefs.putBool("latched", true); emergencyPrefs.putBool("local", true); emergencyPrefs.remove("local-id");
++  emergencyPrefs.end(); emergencyNvsLatched = true;
++  if (emergencyOutputMutex) xSemaphoreGive(emergencyOutputMutex);
++  Serial.println("LOCAL EMERGENCY STOP latched. Outputs OFF; explicit cloud Resume is required.");
++}
++
+ void checkLocalEmergencyStop() {
++  if (emergencySerialMutex && xSemaphoreTake(emergencySerialMutex, 0) != pdTRUE) return;
+   while (Serial.available() && (Serial.peek() == '\n' || Serial.peek() == '\r' || Serial.peek() == ' ')) Serial.read();
+-  if (Serial.available() && (Serial.peek() == 'X' || Serial.peek() == 'x')) {
+-    Serial.read();
+-    localEmergencyPending.store(true);
+-    emergencyGuard.invalidate();
+-    latchEmergencyStop();
+-    if (emergencyOutputMutex) xSemaphoreTake(emergencyOutputMutex, portMAX_DELAY);
+-    emergencyPrefs.begin("ct-stop", false); emergencyPrefs.putBool("local", true); emergencyPrefs.end();
+-    if (emergencyOutputMutex) xSemaphoreGive(emergencyOutputMutex);
+-    Serial.println("LOCAL EMERGENCY STOP latched. Outputs OFF; explicit cloud Resume is required.");
+-  }
+-}
++  bool requested = Serial.available() && (Serial.peek() == 'X' || Serial.peek() == 'x');
++  if (requested) Serial.read();
++  if (emergencySerialMutex) xSemaphoreGive(emergencySerialMutex);
++  if (requested) requestLocalEmergencyStop();
++}
+ 
+ void writeFeederSafely(int angle) {
+   if (emergencyOutputMutex) xSemaphoreTake(emergencyOutputMutex, portMAX_DELAY);
+@@ -976,9 +986,10 @@ void emergencyOutputsOff() {
+ }
+ 
+ void latchEmergencyStop() {
+-  emergencyGuard.latch();
+-  emergencyOutputsOff();
+   if (emergencyOutputMutex) xSemaphoreTake(emergencyOutputMutex, portMAX_DELAY);
++  emergencyGuard.latch();
++  setRelaysOffRaw();
++  feederServo.write(SERVO_REST_ANGLE);
+   if (!emergencyNvsLatched) {
+     emergencyPrefs.begin("ct-stop", false);
+     emergencyPrefs.putBool("latched", true);
+@@ -988,10 +999,13 @@ void latchEmergencyStop() {
+   if (emergencyOutputMutex) xSemaphoreGive(emergencyOutputMutex);
+ }
+ 
+-void finishConfirmedResume() {
++void finishConfirmedResume(uint32_t expectedToken) {
+   emergencyOutputsOff();
+-  if (localEmergencyPending.load()) return;
+   if (emergencyOutputMutex) xSemaphoreTake(emergencyOutputMutex, portMAX_DELAY);
++  if (localEmergencyPending.load() || emergencyGuard.token() != expectedToken) {
++    if (emergencyOutputMutex) xSemaphoreGive(emergencyOutputMutex);
++    return;
++  }
+   emergencyPrefs.begin("ct-stop", false);
+   emergencyPrefs.putBool("latched", false);
+   emergencyPrefs.end();
+@@ -2653,6 +2667,7 @@ String newEmergencyUuid() {
+ }
+ 
+ bool publishLocalEmergencyStop(EmergencyScope scope) {
++  uint32_t localToken = emergencyGuard.token();
+   if (emergencyOutputMutex) xSemaphoreTake(emergencyOutputMutex, portMAX_DELAY);
+   emergencyPrefs.begin("ct-stop", false);
+   String id = emergencyPrefs.getString("local-id", "");
+@@ -2670,7 +2685,7 @@ bool publishLocalEmergencyStop(EmergencyScope scope) {
+   String settings;
+   if (!emergencyMonitorGet(String(TANK_AUTOMATION_SETTINGS_ENDPOINT) + "?user_id=eq." + String(scope.user) +
+     "&tank_id=eq." + String(scope.tank) + "&select=emergency_stop_active,emergency_stop_command_id&limit=1", settings) ||
+-    !emergencyScopeMatches(scope) || !extractJsonBool(settings, "emergency_stop_active") || extractJsonValueAsString(settings, "emergency_stop_command_id") != id) return false;
++    !emergencyScopeMatches(scope) || localToken != emergencyGuard.token() || !extractJsonBool(settings, "emergency_stop_active") || extractJsonValueAsString(settings, "emergency_stop_command_id") != id) return false;
+   if (emergencyOutputMutex) xSemaphoreTake(emergencyOutputMutex, portMAX_DELAY);
+   emergencyPrefs.begin("ct-stop", false); emergencyPrefs.putBool("local", false); emergencyPrefs.remove("local-id"); emergencyPrefs.end();
+   localEmergencyPending.store(false);
+@@ -2709,7 +2724,7 @@ void emergencyMonitorTask(void *) {
+       if (id.length() && type == "STOP_ALL") {
+         latchEmergencyStop();
+         updateCommandStatusScoped(id, "done", "Emergency stop applied. Pumps and feeder are stopped.", scope.user, scope.tank);
+-      } else if (id.length() && type == "RESUME_CONTROLS" && cloudLatched && !localEmergencyPending.load() && !actuatorBusy.load() &&
++      } else if (id.length() && type == "RESUME_CONTROLS" && cloudLatched && !localEmergencyPending.load() && !actuatorBusy.load() && !emergencyRoutineActive.load() &&
+         id == extractJsonValueAsString(settings, "emergency_resume_command_id")) {
+         emergencyOutputsOff();
+         uint32_t resumeToken = emergencyGuard.token();
+@@ -2717,17 +2732,18 @@ void emergencyMonitorTask(void *) {
+           String confirmed;
+           if (resumeToken == emergencyGuard.token() && !localEmergencyPending.load() && emergencyMonitorGet(String(TANK_AUTOMATION_SETTINGS_ENDPOINT) + filter +
+             "&select=emergency_stop_active,emergency_resume_command_id&limit=1", confirmed) && emergencyScopeMatches(scope) &&
+-            !extractJsonBool(confirmed, "emergency_stop_active") && extractJsonValueAsString(confirmed, "emergency_resume_command_id") == id) finishConfirmedResume();
++            !extractJsonBool(confirmed, "emergency_stop_active") && extractJsonValueAsString(confirmed, "emergency_resume_command_id") == id) finishConfirmedResume(resumeToken);
+         }
+       } else if (!cloudLatched && emergencyGuard.latched() && !localEmergencyPending.load()) {
+         // Recover a lost HTTP response/reboot after an explicitly confirmed Resume.
++        uint32_t resumeToken = emergencyGuard.token();
+         String resumeId = extractJsonValueAsString(settings, "emergency_resume_command_id");
+         if (resumeId.length() > 10 && resumeId != "null") {
+           String resumed;
+           if (emergencyMonitorGet(String(DEVICE_COMMANDS_ENDPOINT) + filter + "&device_uid=eq." + String(DEVICE_UID) +
+             "&id=eq." + resumeId + "&command_type=eq.RESUME_CONTROLS&command_status=eq.done&select=id,result_message&limit=1", resumed) &&
+             extractJsonValueAsString(resumed, "id") == resumeId &&
+-            extractJsonValueAsString(resumed, "result_message") == "Controls resumed. Outputs remain off until a new safe action.") finishConfirmedResume();
++            extractJsonValueAsString(resumed, "result_message") == "Controls resumed. Outputs remain off until a new safe action.") finishConfirmedResume(resumeToken);
+         }
+       }
+     }
+@@ -2767,7 +2783,7 @@ bool feedCycles(int cycles) {
+   bool completed = true;
+   if (!feederServo.attached()) {
+     feederServo.attach(FEEDER_SERVO_PIN, 500, 2400);
+-    completed = interruptibleActuatorWait(200, token);
++    completed = feederServo.attached() && interruptibleActuatorWait(200, token);
+   }
+   for (int i = 0; completed && i < cycles; i++) {
+     if (emergencyGuard.interrupted(token)) { completed = false; break; }
+@@ -4326,6 +4342,7 @@ bool runControlledWaterExchange(
+ void handleAutoWaterAssist() {
+   if (!LOCAL_AUTO_WATER_ASSIST_MASTER) return;
+   if (!emergencyGuard.canRun() || !isClaimed || actuatorBusy || currentAction != "IDLE") return;
++  EmergencyRoutineScope routine(emergencyRoutineActive);
+   if (WiFi.status() != WL_CONNECTED) return;
+ 
+   AutomationSettings settings =
+@@ -5167,9 +5184,12 @@ void runRawDrainHardwareTest(int durationMs) {
+   Serial.print(durationMs);
+   Serial.println(" ms.");
+ 
++  uint32_t token = emergencyGuard.token();
+   unsigned long startedAt = millis();
+ 
+   while (millis() - startedAt < (unsigned long)durationMs) {
++    checkLocalEmergencyStop();
++    if (emergencyGuard.interrupted(token)) break;
+     server.handleClient();
+     delay(10);
+   }
+@@ -5196,9 +5216,12 @@ void runRawRefillHardwareTest(int durationMs) {
+   Serial.print(durationMs);
+   Serial.println(" ms.");
+ 
++  uint32_t token = emergencyGuard.token();
+   unsigned long startedAt = millis();
+ 
+   while (millis() - startedAt < (unsigned long)durationMs) {
++    checkLocalEmergencyStop();
++    if (emergencyGuard.interrupted(token)) break;
+     server.handleClient();
+     delay(10);
+   }
+@@ -5242,8 +5265,10 @@ void handleSerialHardwareTests() {
+   checkLocalEmergencyStop();
+   if (!Serial.available()) return;
+   if (actuatorBusy) return;
+-
++  if (emergencySerialMutex) xSemaphoreTake(emergencySerialMutex, portMAX_DELAY);
+   char cmd = Serial.read();
++  if (emergencySerialMutex) xSemaphoreGive(emergencySerialMutex);
++  EmergencyRoutineScope routine(emergencyRoutineActive);
+   if (cmd >= 'a' && cmd <= 'z') cmd -= 32;
+ 
+   if (cmd == 'S') {
+@@ -5302,14 +5327,14 @@ void handleSerialHardwareTests() {
+   }
+ 
+   else if (cmd == 'X') {
+-    localEmergencyPending.store(true); emergencyGuard.invalidate(); latchEmergencyStop();
++    requestLocalEmergencyStop();
+     Serial.println("LOCAL TEST: STOP ALL.");
+   }
+ 
+   else if (cmd == 'C') {
+     bool cleared = clearLastFeedLock();
+     Serial.println(cleared ? "ONE-TIME RESET: last_feed NVS key cleared (or already absent)." : "Feed lock reset failed.");
+-    Serial.println("FEED_ONCE is allowed again today (subject to normal safety checks).");
++    if (cleared) Serial.println("FEED_ONCE is allowed again today (subject to normal safety checks).");
+     Serial.println("WiFi credentials, pairing, and tank assignment were NOT touched.");
+   }
+ }
+@@ -5400,6 +5425,7 @@ void saveLastFeedDate(String dateKey) {
+ 
+ void handleAutoFeeding() {
+   if (!emergencyGuard.canRun() || !isClaimed || actuatorBusy || currentAction != "IDLE") return;
++  EmergencyRoutineScope routine(emergencyRoutineActive);
+   if (!isTimeReady()) return;
+ 
+   // v1.29: get ON/OFF, hour, minute, and dispense cycles from Supabase.
+@@ -5549,13 +5575,14 @@ void setup() {
+     lastAutoFeedCheck = millis(); lastAutoWaterCheck = millis();
+   }
+   emergencyOutputMutex = xSemaphoreCreateMutex();
++  emergencySerialMutex = xSemaphoreCreateMutex();
+   emergencyPrefs.begin("ct-stop", true);
+   emergencyNvsLatched = emergencyPrefs.getBool("latched", false);
+   localEmergencyPending.store(emergencyPrefs.getBool("local", false));
+   emergencyPrefs.end();
+   if (emergencyNvsLatched) emergencyGuard.latch();
+   publishEmergencyScope();
+-  if (!emergencyOutputMutex || xTaskCreatePinnedToCore(emergencyMonitorTask, "ct-emergency", 12288, nullptr, 2, nullptr, 0) != pdPASS) {
++  if (!emergencyOutputMutex || !emergencySerialMutex || xTaskCreatePinnedToCore(emergencyMonitorTask, "ct-emergency", 12288, nullptr, 2, nullptr, 0) != pdPASS) {
+     emergencyGuard.verify(false); latchEmergencyStop();
+     Serial.println("Emergency monitor could not start. Outputs remain locked OFF.");
+   }

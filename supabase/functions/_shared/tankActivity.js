@@ -4,7 +4,7 @@ import { formatSensorSafeRange } from './sensorSafeRanges.js';
 import { formatPumpAction } from './pumpActionWording.js';
 import { formatWaterDepth, formatWaterDepthAlert, recordedWaterDepth } from './waterDepthDisplay.js';
 import { formatMonitoringAlert } from './monitoringAlertPresentation.js';
-import { formatRecordedFeedingAction } from './feederControl.js';
+import { feedingExecutionSource, formatRecordedFeedingAction } from './feederControl.js';
 import { automationLogId, waterAutomationStatus } from './waterAutomationStatus.js';
 import { getActionStatusPresentation, getRecordedActionStatus } from './actionStatus.js';
 
@@ -54,6 +54,10 @@ export function getRecordedActionOutcome(row, source = '') {
 
 function actionFor(row) {
   const action = code(row.command_type || row.action_type || row.type);
+  if (action === 'reset_feed_lock') return 'Feed test lock reset';
+  if (action === 'resume_controls') return 'Resume controls';
+  if (action === 'feed_once' && feedingExecutionSource(row) === 'schedule') return 'Automatic Feeding';
+  if (action === 'feed_once' && feedingExecutionSource(row) === 'manual') return 'Manual Feeding';
   if (/feed/.test(action)) return /scheduled/.test(action) ? 'Scheduled feeding'
     : /auto/.test(action) || row.command_value === 'auto' ? 'Automatic feeding' : /manual/.test(action) ? 'Manual feeding' : 'Feeding';
   if (/refill|fill|add_water/.test(action)) return /auto/.test(action) || row.command_value === 'auto' ? 'Automatic water refill' : 'Manual water refill';
@@ -97,9 +101,10 @@ export function buildTankActivity({ tank, userId, sources = {} }) {
 
     const parameter = parameterFor(row);
     const savedSnapshot = object(metadata.sensor_snapshot);
+    const timestamp = source === 'device_commands' && getRecordedActionOutcome(row, source) === 'Completed' ? row.executed_at || row.created_at : row.created_at;
     const event = { id: `${source}:${row.id}`, source, tankId: tank.id,
-      tankName: tank.tank_name || tank.name || 'Tank', timestamp: row.created_at,
-      timestampLabel: formatPhilippineDateTime(row.created_at, {}, 'Timestamp unavailable'),
+      tankName: tank.tank_name || tank.name || 'Tank', timestamp,
+      timestampLabel: formatPhilippineDateTime(timestamp, {}, 'Timestamp unavailable'),
       severity: recordedSeverity(row), outcome: null, title: text(row.title) || actionFor(row),
       category: 'other', reason: text(row.reason || row.result_message || row.notes || row.message),
       action: null, result: null, reading: null, threshold: null, recommendation: null, parameter };
@@ -108,6 +113,7 @@ export function buildTankActivity({ tank, userId, sources = {} }) {
       event.outcome = getRecordedActionOutcome(row, source);
       const kind = code(row.command_type || row.action_type);
       event.category = /feed/.test(kind) ? 'feeding' : /drain|refill|pump|fill|stop/.test(kind) ? 'water' : 'other';
+      if (kind === 'reset_feed_lock') event.category = 'device';
       event.title = event.action;
       const presentation = getActionStatusPresentation(row, source);
       event.outcomeTone = presentation.tone;
@@ -133,6 +139,7 @@ export function buildTankActivity({ tank, userId, sources = {} }) {
         event.outcome = feeding.outcome;
         event.dispenseCycles = feeding.cycles;
         event.result = feeding.message;
+        event.executionSource = feeding.sourceLabel;
       }
       if (kind === 'threshold_updated') {
         event.category = 'thresholds'; event.title = 'Threshold Updated'; event.action = 'Saved threshold settings';
@@ -157,6 +164,7 @@ export function buildTankActivity({ tank, userId, sources = {} }) {
         const recorded = { ...row, ...metadata, command_status: row.command_status ?? metadata.command_status, action_status: row.action_status ?? metadata.action_status };
         const kind = code(recorded.command_type || recorded.action_type);
         event.category = /feed/.test(kind) ? 'feeding' : /drain|refill|pump|fill|stop/.test(kind) ? 'water' : 'other';
+        if (kind === 'reset_feed_lock') event.category = 'device';
         event.title = actionFor(recorded);
         event.action = event.title;
         const automation = waterAutomationStatus(recorded);
@@ -170,7 +178,7 @@ export function buildTankActivity({ tank, userId, sources = {} }) {
         event.result = getActionStatusPresentation(recorded).message;
         if (automation) event.result = automation.message;
         const feeding = formatRecordedFeedingAction(recorded, event.outcome);
-        if (feeding) { event.dispenseCycles = feeding.cycles; event.outcome = feeding.outcome; }
+        if (feeding) { event.dispenseCycles = feeding.cycles; event.outcome = feeding.outcome; event.executionSource = feeding.sourceLabel; event.result = feeding.message; }
       }
       const recovery = code(row.type) === 'sensor_recovery' || metadata.event_type === 'sensor_recovery';
       if (recovery) { event.severity = 'normal'; event.result = 'A recovery event was recorded by the backend.'; }

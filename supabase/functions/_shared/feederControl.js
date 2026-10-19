@@ -1,4 +1,5 @@
 import { getRecordedActionStatus } from './actionStatus.js';
+import { commandResultReason } from './actuatorCommandLifecycle.js';
 
 export const FEED_AMOUNTS = [
   { cycles: 1, label: 'Light' },
@@ -13,6 +14,16 @@ export function recordedDispenseCycles(value) {
 
 export function normalizeDispenseCycles(value) { return recordedDispenseCycles(value) ?? 2; }
 export function dispenseCycleLabel(cycles) { return `${cycles} dispense ${cycles === 1 ? 'cycle' : 'cycles'}`; }
+
+// Origin is saved machine-readable metadata, never inferred from result prose.
+export function feedingExecutionSource(row = {}) {
+  const value = row.command_source ?? row.metadata?.command_source;
+  return ['manual', 'schedule', 'automation', 'system'].includes(value) ? value
+    : row.command_value === 'auto' || row.action_type === 'AUTO_FEED' ? 'automation' : null;
+}
+export function feedingSourceLabel(row) {
+  return { manual: 'Manual feed', schedule: 'Automatic schedule', automation: 'Automatic control', system: 'System' }[feedingExecutionSource(row)] || 'Source not recorded';
+}
 
 // A completed servo command is the daily accounting signal, not proof of food
 // delivery. Pending/running/rejected/failed requests never count as fed.
@@ -34,7 +45,7 @@ export function isPairedFeedActuator(device, tank, tankId) {
 // The caller supplies the saved status presentation outcome.
 // Legacy values ("once", "auto", missing) cannot establish a cycle count.
 export function formatRecordedFeedingAction(row, outcome) {
-  if (!/feed/i.test(row?.command_type || row?.action_type || '')) return null;
+  if (row?.command_type === 'RESET_FEED_LOCK' || !/feed/i.test(row?.command_type || row?.action_type || '')) return null;
   const cycles = recordedDispenseCycles(row.command_value ?? row.metadata?.dispense_cycles);
   const status = getRecordedActionStatus(row);
   const finalOutcome = ['blocked', 'rejected'].includes(status) ? 'Rejected' : outcome;
@@ -45,10 +56,13 @@ export function formatRecordedFeedingAction(row, outcome) {
     Requested: ['Feeding request sent', `${amount} Waiting for the actuator.`],
     Started: ['Feeding in progress', `${amount} Waiting for completion confirmation.`],
     Completed: ['Feeder command completed', `Feeder servo command sequence completed${cycles === null ? '.' : ` — ${dispenseCycleLabel(cycles)}.`} Physical feed delivery is not sensor-verified.`],
-    Rejected: ['Feeding rejected', 'Feeding was blocked by a safety rule.'],
+    Rejected: ['Feeding rejected', commandResultReason(row) || 'Feeding was blocked by a safety rule.'],
     Failed: ['Feeding failed', 'Feeding could not be completed.'],
     Skipped: ['Feeding skipped', 'Feeding was skipped. No successful completion is claimed.'],
+    Cancelled: ['Feeding cancelled', 'The feeder command was cancelled.'],
   };
   const [title, message] = states[finalOutcome] || ['Feeding unconfirmed', 'Execution has not been confirmed.'];
-  return { title, message, outcome: finalOutcome, cycles };
+  const scheduledTitle = feedingExecutionSource(row) === 'schedule'
+    ? { Completed: 'Automatic feeding completed', Rejected: 'Automatic feeding rejected', Failed: 'Automatic feeding failed', Skipped: 'Automatic feeding skipped' }[finalOutcome] : null;
+  return { title: scheduledTitle || title, message, outcome: finalOutcome, cycles, sourceLabel: feedingSourceLabel(row) };
 }

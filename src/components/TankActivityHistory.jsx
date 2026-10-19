@@ -8,7 +8,7 @@ import SafetyBadge from './SafetyBadge';
 import '../styles/tankActivity.css';
 
 const PER_PAGE = 10;
-const icons = { Completed: CheckCircle2, 'Executed – Rechecking': RefreshCw, 'Pending Verification': Clock3, 'In Progress': Activity, Blocked: AlertTriangle, Requested: Clock3, Started: Activity, Skipped: Clock3, Rejected: AlertTriangle, Failed: XCircle };
+const icons = { Completed: CheckCircle2, Cancelled: Clock3, 'Executed – Rechecking': RefreshCw, 'Pending Verification': Clock3, 'In Progress': Activity, Blocked: AlertTriangle, Requested: Clock3, Started: Activity, Skipped: Clock3, Rejected: AlertTriangle, Failed: XCircle };
 
 export default function TankActivityHistory({ tankId }) {
   const [fromDate, setFromDate] = useState('');
@@ -100,6 +100,7 @@ export default function TankActivityHistory({ tankId }) {
                 {event.category === 'sensor' && !event.threshold && <p className="tank-activity-note">The event’s threshold was not saved. Current settings are not substituted.</p>}
                 {event.action && <p><b>Action:</b> {event.action}</p>}
                 {event.category === 'feeding' && <p><b>Dispense cycles:</b> {event.dispenseCycles ?? 'Not recorded'}</p>}
+                {event.executionSource && <p><b>Source:</b> {event.executionSource}</p>}
                 {!event.outcomeTone && event.result && <p><b>Result:</b> <span>{event.result}</span></p>}
                 {event.context?.map(item => <p key={item.label}><b>{item.label === 'duration seconds' ? 'Recorded duration (seconds)' : item.label}:</b> {item.value}</p>)}
                 {event.recommendation && <p><b>{event.recommendationLabel}:</b> {event.recommendation}</p>}
