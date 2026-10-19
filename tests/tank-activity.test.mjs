@@ -112,17 +112,21 @@ test('same-tank owner scope is mandatory and chronological order uses saved inst
   assert.deepEqual(buildTankActivity({ tank, userId: 'another', sources }), []);
 });
 
-function client({ denied = false, failSource, missing = false, repeated = false } = {}) {
+function client({ denied = false, failSource, missing = false, repeated = false, rpcError = null, automationRows } = {}) {
   const calls = [];
   return { calls, auth: { getUser: async () => ({ data: { user: { id: 'owner' } } }) },
-    rpc: async (name, args) => { calls.push({ name, args }); return missing ? { error: { code: 'PGRST202' } } : { data: [] }; },
+    rpc: async (name, args) => { calls.push({ name, args }); return rpcError ? { error: rpcError } : missing ? { error: { code: 'PGRST202' } } : { data: [] }; },
     from(source) {
       const call = { source, filters: [] }; calls.push(call);
       const q = {};
-      for (const method of ['select', 'eq', 'gte', 'lt', 'order', 'range']) q[method] = (...args) => { call.filters.push({ method, args }); return q; };
+      for (const method of ['select', 'eq', 'or', 'gte', 'lt', 'order', 'range']) q[method] = (...args) => { call.filters.push({ method, args }); return q; };
       q.maybeSingle = async () => ({ data: denied ? null : tank });
-      q.then = (resolve, reject) => Promise.resolve(source === failSource ? { error: { code: '42501' } }
-        : { data: repeated ? Array.from({ length: 100 }, (_, i) => row(`r-${i}`)) : [row(source)] }).then(resolve, reject);
+      q.then = (resolve, reject) => {
+        const range = call.filters.find(filter => filter.method === 'range')?.args || [0, 99];
+        const data = source === 'tank_automation_logs' && automationRows ? automationRows.slice(range[0], range[1] + 1)
+          : repeated ? Array.from({ length: 100 }, (_, i) => row(`r-${i}`)) : [row(source)];
+        return Promise.resolve(source === failSource ? { error: { code: '42501' } } : { data }).then(resolve, reject);
+      };
       return q;
     } };
 }
@@ -142,12 +146,13 @@ test('loader verifies tank ownership and filters each source by owner, tank and 
   assert.equal(denied.calls.length, 1);
 });
 
-test('loader preserves partial verified history, reports missing migration, rejects repeated pages and never writes', async () => {
+test('loader preserves partial verified history, falls back for missing RPC, rejects repeated pages and never writes', async () => {
   const fake = client({ failSource: 'alerts', missing: true });
   const loaded = await loadTankActivity(fake, { tankId: 'tank-a' });
-  assert.equal(loaded.events.length, 3);
-  assert.equal(loaded.notices.length, 2);
-  assert.ok(loaded.notices.some(value => value.includes('full automation history is unavailable')));
+  assert.equal(loaded.events.length, 4);
+  assert.equal(loaded.notices.length, 1);
+  const direct = fake.calls.find(call => call.source === 'tank_automation_logs');
+  assert.ok(direct.filters.some(filter => filter.method === 'or' && filter.args[0] === 'user_id.eq.owner,user_id.is.null'));
   const repeat = await loadTankActivity(client({ repeated: true }), { tankId: 'tank-a' });
   assert.equal(repeat.events.length, 0);
   assert.equal(repeat.notices.length, 4);
@@ -161,6 +166,41 @@ test('a missing RPC is not polled repeatedly; explicit refresh can recheck deplo
   assert.equal(fake.calls.filter(call => call.name === 'get_tank_automation_history').length, 1);
   await loadTankActivity(fake, { tankId: 'tank-a', recheckAutomation: true });
   assert.equal(fake.calls.filter(call => call.name === 'get_tank_automation_history').length, 2);
+});
+
+test('direct automation fallback pages existing logs and keeps pulses, table-ID collisions, saved reasons and ownerless rows', async () => {
+  const automated = Array.from({ length: 101 }, (_, index) => row(`pulse-${index}`, {
+    action_type: index % 2 ? 'AUTO_REFILL' : 'AUTO_DRAIN', action_status: 'done', duration_seconds: 5,
+    reason: 'before=2.96 cm, after=3.70 cm, delta=0.74 cm.', user_id: index === 0 ? null : 'owner',
+  }));
+  const fake = client({ missing: true, automationRows: automated });
+  const loaded = await loadTankActivity(fake, { tankId: tank.id, fromDate: '2026-10-11', toDate: '2026-10-11' });
+  assert.equal(loaded.events.filter(event => event.source === 'tank_automation_logs').length, 101);
+  assert.equal(fake.calls.filter(call => call.source === 'tank_automation_logs').length, 2);
+  assert.equal(fake.calls.filter(call => call.name === 'get_tank_automation_history').length, 1);
+  assert.deepEqual(loaded.notices, []);
+  const events = history({ device_commands: [row('same-id', { command_type: 'REFILL_FOR', command_status: 'done' })],
+    tank_automation_logs: [row('same-id', { action_type: 'AUTO_REFILL', action_status: 'done' }),
+      row('second-pulse', { action_type: 'AUTO_REFILL', action_status: 'done' })] });
+  assert.equal(events.length, 3); assert.equal(new Set(events.map(event => event.id)).size, 3);
+});
+test('an explicit automation RPC authorization or network error never falls back to another read path', async () => {
+  for (const code of ['42501', 'PGRST301', '503']) {
+    const fake = client({ rpcError: { code } });
+    const loaded = await loadTankActivity(fake, { tankId: tank.id });
+    assert.equal(fake.calls.some(call => call.source === 'tank_automation_logs'), false);
+    assert.match(loaded.notices.join(' '), /Automation history could not be verified/);
+  }
+  const fake = client({ missing: true, failSource: 'tank_automation_logs' });
+  const loaded = await loadTankActivity(fake, { tankId: tank.id });
+  assert.match(loaded.notices.join(' '), /Automation history could not be verified/);
+  assert.equal(loaded.events.some(event => event.source === 'tank_automation_logs'), false);
+});
+test('ownerless source logs belong only to their verified tank and independent sensor alerts are never discarded as mirrors', () => {
+  const log = row('auto', { action_type: 'AUTO_REFILL', action_status: 'done', user_id: null });
+  const events = history({ tank_automation_logs: [log, { ...log, id: 'foreign', user_id: 'other' }, { ...log, id: 'other-tank', tank_id: 'tank-b' }],
+    alerts: [row('independent', { type: 'sensor_reading', title: 'Low pH', metadata: { tank_automation_log_id: 'auto' } })] });
+  assert.deepEqual(events.map(event => event.id).sort(), ['alerts:independent', 'tank_automation_logs:auto']);
 });
 
 test('review SQL enforces owner-checked history and authenticated restrictive read policies without touching device writes', async () => {

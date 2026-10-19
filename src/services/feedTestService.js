@@ -1,5 +1,6 @@
 import { isPairedFeedActuator } from '../../supabase/functions/_shared/feederControl.js';
 import { loadActuatorControlState } from './actuatorControlService';
+import { insertActuatorCommand } from './actuatorCommandService.js';
 
 export async function loadFeedTestState(client, tank, commandId = null) {
   const { data: auth, error: authError } = await client.auth.getUser();
@@ -17,15 +18,7 @@ export async function loadFeedTestState(client, tank, commandId = null) {
 export async function queueFeedLockReset(client, scope) {
   const state = await loadActuatorControlState(client, scope);
   if (state.emergency_stop_active || state.active_commands.length) throw new Error('Wait for the active action or explicitly resume Emergency Stop before testing.');
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
-  try {
-    const { data, error } = await client.from('device_commands').insert({ user_id: scope.userId, tank_id: scope.tankId,
+  return insertActuatorCommand(client, { user_id: scope.userId, tank_id: scope.tankId,
       device_uid: scope.deviceUid, command_type: 'RESET_FEED_LOCK', command_source: 'manual', command_value: 'reset',
-      duration_ms: 0, command_status: 'pending', status: 'pending', result_message: 'Resetting feed test lock...' })
-      .select('*').single().abortSignal(controller.signal);
-    if (error) throw new Error('The reset request could not be confirmed. Refresh actuator state before retrying.');
-    if (!data?.id || data.user_id !== scope.userId || data.tank_id !== scope.tankId || data.device_uid !== scope.deviceUid || data.command_type !== 'RESET_FEED_LOCK') throw new Error('The reset request could not be verified.');
-    return data;
-  } finally { clearTimeout(timeout); }
+      duration_ms: 0, command_status: 'pending', status: 'pending', result_message: 'Resetting feed test lock...' });
 }

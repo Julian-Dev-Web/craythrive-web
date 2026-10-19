@@ -22,29 +22,39 @@ export async function loadTankActivity(client, { tankId, fromDate = '', toDate =
   const notices = [];
   const sources = {};
   if (recheckAutomation) missingHistoryRPC.delete(client);
-  const missingNotice = 'The full automation history is unavailable. Recorded commands are still shown when available.';
+  const readTable = async (source, offset) => {
+    let query = client.from(source).select('*').eq('tank_id', tankId);
+    // Automation rows may omit user_id. The tank has already been verified above;
+    // accept its ownerless device logs, never another explicit owner's records.
+    query = source === 'tank_automation_logs' ? query.or(`user_id.eq.${userId},user_id.is.null`) : query.eq('user_id', userId);
+    query = applyPhilippineDateFilter(query, fromDate, toDate);
+    if (signal) query = query.abortSignal(signal);
+    return query.order('created_at', { ascending: false, nullsFirst: false }).order('id', { ascending: false })
+      .range(offset, offset + PAGE_SIZE - 1);
+  };
   const read = async source => {
     let rows = [];
     try {
       while (rows.length < MAX_ROWS) {
         let data, error;
         if (source === 'tank_automation_logs') {
-          if (missingHistoryRPC.has(client)) { notices.push(missingNotice); return; }
-          let query = client.rpc('get_tank_automation_history', {
-            p_tank_id: tankId, p_from: dates.startIso, p_to: dates.endIso, p_offset: rows.length, p_limit: PAGE_SIZE,
-          });
-          if (signal) query = query.abortSignal(signal);
-          ({ data, error } = await query);
-          if (missingRPC(error)) { missingHistoryRPC.add(client); notices.push(missingNotice); return; }
+          if (!missingHistoryRPC.has(client)) {
+            let query = client.rpc('get_tank_automation_history', {
+              p_tank_id: tankId, p_from: dates.startIso, p_to: dates.endIso, p_offset: rows.length, p_limit: PAGE_SIZE,
+            });
+            if (signal) query = query.abortSignal(signal);
+            ({ data, error } = await query);
+            if (missingRPC(error)) missingHistoryRPC.add(client);
+          }
+          // A review-only SQL file used to be the sole provider of this RPC.
+          // Fall back only for an absent RPC, never for ownership/RLS failures.
+          if (missingHistoryRPC.has(client)) ({ data, error } = await readTable(source, rows.length));
         } else {
-          let query = client.from(source).select('*').eq('user_id', userId).eq('tank_id', tankId);
-          query = applyPhilippineDateFilter(query, fromDate, toDate);
-          if (signal) query = query.abortSignal(signal);
-          ({ data, error } = await query.order('created_at', { ascending: false, nullsFirst: false }).order('id', { ascending: false })
-            .range(rows.length, rows.length + PAGE_SIZE - 1));
+          ({ data, error } = await readTable(source, rows.length));
         }
         if (error || !Array.isArray(data)) throw new Error('Read failed');
-        if (data.some(row => row.user_id !== userId || String(row.tank_id) !== String(tankId))) throw new Error('Unverified scope');
+        if (data.some(row => (row.user_id !== userId && !(source === 'tank_automation_logs' && row.user_id == null))
+          || String(row.tank_id) !== String(tankId))) throw new Error('Unverified scope');
         // Stop on a repeated page instead of looping forever if pagination fails.
         const seen = new Set(rows.map(row => row.id));
         if (data.some(row => seen.has(row.id))) throw new Error('Repeated history page');

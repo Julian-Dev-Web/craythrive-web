@@ -26,7 +26,6 @@ export default function NotificationBell() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [alerts, setAlerts] = useState([]);
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
   const unresolvedCount = alerts.filter((alert) => alert.status !== "resolved").length;
 
@@ -73,7 +72,6 @@ export default function NotificationBell() {
       setErrorMessage(getSafeErrorMessage(error, "Could not load notifications."));
     } finally {
       setIsLoading(false);
-      setHasLoadedOnce(true);
     }
   };
 
@@ -81,7 +79,7 @@ export default function NotificationBell() {
     const nextIsOpen = !isOpen;
     setIsOpen(nextIsOpen);
 
-    if (nextIsOpen && !hasLoadedOnce) {
+    if (nextIsOpen) {
       loadAlerts();
     }
   };

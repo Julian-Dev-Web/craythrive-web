@@ -28,7 +28,7 @@ test('verified AUTO_DRAIN/AUTO_REFILL and manual DONE are green Completed withou
     await expect(card).not.toContainText('Execution has not been confirmed');
   }
   await expect(entry(page, 'verified-drain')).toContainText(reason);
-  await expect(entry(page, 'verified-drain')).toContainText('The automatic action completed and the expected water-level movement was confirmed.');
+  await expect(entry(page, 'verified-drain')).toContainText('The actuator automatically drained water.');
   await expect(entry(page, 'verified-drain')).toHaveCount(1);
   expect(qa.writes).toEqual([]);
   expect(qa.data).toEqual(before);
@@ -54,8 +54,8 @@ for (const width of [1440, 390]) {
     const before = structuredClone(qa.data);
     await page.goto('/admin/tanks/tank-a');
     await page.getByRole('button', { name: 'Activity', exact: true }).click();
-    await expect(entry(page, 'refill-check').locator('.tank-activity-outcome')).toHaveText('Executed – Rechecking');
-    await expect(entry(page, 'drain-check').locator('.tank-activity-outcome')).toHaveText('Executed – Rechecking');
+    await expect(entry(page, 'refill-check').locator('.tank-activity-outcome')).toHaveText('Rechecking');
+    await expect(entry(page, 'drain-check').locator('.tank-activity-outcome')).toHaveText('Rechecking');
     await expect(entry(page, 'refill-done').locator('.tank-activity-outcome')).toHaveText('Completed');
     await expect(entry(page, 'refill-fail').locator('.tank-activity-outcome')).toHaveText('Failed');
     await expect(entry(page, 'drain-block').locator('.tank-activity-outcome')).toHaveText('Blocked');
@@ -65,7 +65,7 @@ for (const width of [1440, 390]) {
     await expect(entry(page, 'refill-check')).toContainText('Fresh sensor readings are still being checked');
     await expect(entry(page, 'refill-check')).toContainText('LOW_WARNING');
     await expect(entry(page, 'refill-check')).toContainText('stable reading count: 3');
-    await expect(entry(page, 'refill-check')).toContainText('Recorded duration (seconds): 2');
+    await expect(entry(page, 'refill-check')).toContainText('Recorded duration: 2 seconds');
     await expect(entry(page, 'refill-check')).toContainText('10:00 AM');
     const recheckingColor = await entry(page, 'refill-check').locator('.tank-activity-outcome').evaluate(node => getComputedStyle(node).color);
     const failedColor = await entry(page, 'refill-fail').locator('.tank-activity-outcome').evaluate(node => getComputedStyle(node).color);

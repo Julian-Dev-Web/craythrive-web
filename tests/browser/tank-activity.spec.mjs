@@ -66,7 +66,7 @@ test('raw automation and mirrored command appear once; a handled alert is not a 
   qa.data.alerts[0].status = 'resolved';
   qa.data.alerts[0].resolved_at = date;
   const panel = await open(page);
-  await expect(entry(panel, 'tank_automation_logs', 'auto')).toContainText('Automatic water refill');
+  await expect(entry(panel, 'tank_automation_logs', 'auto')).toContainText('Automatic Water Refill');
   await expect(entry(panel, 'device_commands', 'mirror')).toHaveCount(0);
   await expect(entry(panel, 'alerts', 'warning')).toContainText('sensor recovery was not independently recorded');
   await panel.getByRole('button', { name: 'Refresh activity' }).click();
@@ -140,16 +140,17 @@ test('changing current thresholds cannot rewrite saved event severity, limits or
   expect(qa.writes).toEqual([]);
 });
 
-test('unavailable automation RPC preserves mirrored history and clearly reports the pending update', async ({ page, qa }) => {
+test('unavailable automation RPC reads existing automation rows directly alongside mirrored history', async ({ page, qa }) => {
   setup(qa);
   qa.activityRPCMissing = true;
   qa.data.device_commands.push(row('mirror-only', { command_type: 'REFILL_FOR', command_status: 'done', command_value: 'auto', executed_at: date,
     result_message: 'Automatic water assist: correction | Auto log id: unavailable' }));
+  qa.data.tank_automation_logs.push(row('recorded-auto', { action_type: 'AUTO_DRAIN', action_status: 'done', reason: 'Existing recorded drain.' }));
   const panel = await open(page);
-  await expect(panel).toContainText('full automation history is unavailable');
+  await expect(entry(panel, 'tank_automation_logs', 'recorded-auto')).toContainText('Automatic Water Drain');
   await expect(entry(panel, 'device_commands', 'mirror-only')).toContainText('Completed');
   await expect(entry(panel, 'device_commands', 'refill')).toBeVisible();
-  expect(qa.reads.some(read => read.table === 'tank_automation_logs')).toBe(false);
+  expect(qa.reads.some(read => read.table === 'tank_automation_logs')).toBe(true);
   expect(qa.writes).toEqual([]);
 });
 

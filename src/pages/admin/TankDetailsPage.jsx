@@ -9,7 +9,8 @@ import { formatRecordedPumpAction, getRecordedActionOutcome } from "../../../sup
 import { ACTIVE_COMMAND_STATUSES, isCommandActive, isCommandTerminal, STOP_COMMAND, RESUME_COMMAND } from '../../../supabase/functions/_shared/actuatorCommandLifecycle.js';
 import { actuatorControlError, loadActuatorControlState, requestEmergencyControl } from '../../services/actuatorControlService';
 import { queueFeedLockReset } from '../../services/feedTestService';
-import { logDiagnostic, getSafeErrorMessage } from "../../utils/securityDiagnostics";
+import { actuatorCommandErrorMessage, insertActuatorCommand } from '../../services/actuatorCommandService.js';
+import { logDiagnostic } from "../../utils/securityDiagnostics";
 import { getAmmoniaLabel, getAmmoniaNumericValue, getAmmoniaScanDate, getLatestAmmoniaForTank, recordMatchesAmmoniaTank, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
 import { loadAmmoniaHistory, loadSensorHistory } from "../../services/tankSnapshotService";
 import SafetyBadge, { SafetyIcon } from "../../components/SafetyBadge";
@@ -2627,20 +2628,10 @@ export default function TankDetailsPage() {
           "Command queued from web dashboard.",
       };
 
-      const { data: inserted, error } = commandType === 'RESET_FEED_LOCK'
-        ? { data: await queueFeedLockReset(supabase, { tankId: commandTankId, userId: commandUserId, deviceUid: commandActuator.device_uid }), error: null }
-        : await supabase
-          .from(
-            "device_commands"
-          )
-          .insert(payload).select('*').single();
+      const inserted = commandType === 'RESET_FEED_LOCK'
+        ? await queueFeedLockReset(supabase, { tankId: commandTankId, userId: commandUserId, deviceUid: commandActuator.device_uid })
+        : await insertActuatorCommand(supabase, payload);
       if (feedContext.current !== requestContext || emergencyEpoch.current !== commandEpoch) return;
-
-      if (error) {
-        throw new Error(
-          error.message
-        );
-      }
 
       if (!inserted?.id) throw new Error('The actuator request could not be confirmed.');
       controlRefreshVersion.current++;
@@ -2670,8 +2661,9 @@ export default function TankDetailsPage() {
       await refreshTankControls();
     } catch (error) {
       if (feedContext.current !== requestContext || emergencyEpoch.current !== commandEpoch) return;
-      if (isFeeding) setFeedError(getSafeErrorMessage(error, 'The feeding request could not be verified or sent. Refresh activity before retrying.'));
-      else setCommandMessage(getSafeErrorMessage(error, "Could not send the action."));
+      logDiagnostic('Actuator request was not confirmed', error);
+      if (isFeeding) setFeedError(actuatorCommandErrorMessage(error, 'The feeding request could not be verified or sent. Refresh actuator state before retrying.'));
+      else setCommandMessage(actuatorCommandErrorMessage(error, 'The action could not be confirmed. Refresh actuator state before retrying.'));
     } finally {
       feedSubmission.current = false;
       setIsSendingCommand(

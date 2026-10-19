@@ -1,5 +1,10 @@
 # Emergency Stop, remote feed-lock reset, and scheduled feeding history
 
+**Production follow-up:** see [Actuator compatibility repair](ACTUATOR_COMPATIBILITY_REPAIR.md)
+for the actual supplied schema, optional-column submission regression, reviewed
+older alert revision and current uploaded-sketch limitations. That evidence
+supersedes the original deployment assumptions below.
+
 Implementation date: 2026-10-19. Git publication does not apply the remote
 migrations or upload firmware. No remote migration, firmware upload, or
 physical actuator test was performed for this work.
@@ -168,8 +173,8 @@ alert-to-mobile-push mechanism remains in place.
 
 Both migrations stop if a command_type CHECK constraint needs review. The
 second also stops if another existing origin/metadata field is discovered or
-the audited command-alert function changed (expected revision
-41b0c2a1915b0972c55bbdc87b8b1c40). This protects newer production logic rather
+the audited command-alert function changed (reviewed revisions
+41b0c2a1915b0972c55bbdc87b8b1c40 and 64cff69aa4deda3bd7afd5d73c7c7860). This protects newer production logic rather
 than overwriting it blindly. Review a preflight failure before proceeding.
 No standalone RESET_FEED_LOCK table or unnecessary command-type migration is
 introduced. Existing RLS, privileges, legacy thresholds and sensor rows are

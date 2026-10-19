@@ -54,6 +54,8 @@ export function getRecordedActionOutcome(row, source = '') {
 
 function actionFor(row) {
   const action = code(row.command_type || row.action_type || row.type);
+  if (action === 'auto_refill') return 'Automatic Water Refill';
+  if (action === 'auto_drain') return 'Automatic Water Drain';
   if (action === 'reset_feed_lock') return 'Feed test lock reset';
   if (action === 'resume_controls') return 'Resume controls';
   if (action === 'feed_once' && feedingExecutionSource(row) === 'schedule') return 'Automatic Feeding';
@@ -83,7 +85,8 @@ export function formatRecordedPumpAction(row, source = '') {
 export function buildTankActivity({ tank, userId, sources = {} }) {
   if (!tank?.id || tank.user_id !== userId) return [];
   const rows = Object.entries(sources).flatMap(([source, items]) => (Array.isArray(items) ? items : [])
-    .filter(row => row?.id && row.user_id === userId && String(row.tank_id) === String(tank.id))
+    .filter(row => row?.id && (row.user_id === userId || source === 'tank_automation_logs' && row.user_id == null)
+      && String(row.tank_id) === String(tank.id))
     .map(row => ({ source, row })));
   const lookup = source => new Set(rows.filter(item => item.source === source).map(item => String(item.row.id)));
   const commands = lookup('device_commands'), controls = lookup('control_logs'), scans = lookup('ammonia_readings'), autos = lookup('tank_automation_logs');
@@ -94,7 +97,8 @@ export function buildTankActivity({ tank, userId, sources = {} }) {
   const sourcePriority = { tank_automation_logs: 0, device_commands: 1, control_logs: 2, alerts: 3 };
   for (const { source, row } of rows) {
     const metadata = object(row.metadata);
-    if (source !== 'tank_automation_logs' && autos.has(automationLogId(row))) continue;
+    const independentSensorAlert = source === 'alerts' && /sensor|ammonia/.test(code(row.type));
+    if (!independentSensorAlert && source !== 'tank_automation_logs' && autos.has(automationLogId(row))) continue;
     if (source === 'control_logs' && commands.has(String(row.command_id || metadata.command_id))) continue;
     if (source === 'alerts' && (commands.has(String(row.command_id || metadata.command_id))
       || controls.has(String(metadata.control_log_id)) || scans.has(String(metadata.ammonia_reading_id)))) continue;
@@ -128,6 +132,10 @@ export function buildTankActivity({ tank, userId, sources = {} }) {
       }
       if (source === 'tank_automation_logs') {
         event.reason = text(row.reason);
+        if (automation?.tone === 'completed') event.result = automation.pump === 'refill'
+          ? 'The actuator automatically added water.' : 'The actuator automatically drained water.';
+        if (automation?.tone === 'rechecking') event.outcome = 'Rechecking';
+        if (automation) event.executionSource = 'Automatic water control';
         event.context = ['water_status', 'ph_status', 'turbidity_status', 'temperature_status', 'ammonia_status', 'stable_reading_count', 'duration_seconds']
           .filter(key => row[key] !== null && row[key] !== undefined && String(row[key]).trim() !== '')
           .map(key => ({ label: key.replaceAll('_', ' '), value: String(row[key]) }));
@@ -160,7 +168,7 @@ export function buildTankActivity({ tank, userId, sources = {} }) {
       event.title = presentation.title || event.title;
       event.reason = presentation.message || event.reason;
       event.category = /sensor|ammonia/.test(code(row.type)) ? 'sensor' : /device.*(connect|online|offline)/.test(code(row.type || row.title)) ? 'device' : 'other';
-      if (row.command_id || metadata.command_type || code(row.type) === 'control_log') {
+      if (!independentSensorAlert && (row.command_id || metadata.command_type || metadata.action_type || code(row.type) === 'control_log')) {
         const recorded = { ...row, ...metadata, command_status: row.command_status ?? metadata.command_status, action_status: row.action_status ?? metadata.action_status };
         const kind = code(recorded.command_type || recorded.action_type);
         event.category = /feed/.test(kind) ? 'feeding' : /drain|refill|pump|fill|stop/.test(kind) ? 'water' : 'other';
@@ -204,7 +212,7 @@ export function buildTankActivity({ tank, userId, sources = {} }) {
     if (event.category === 'device') event.outcome = null;
     // Preserve a single canonical card even if only repeated command/alert
     // mirrors are available while the full automation RPC is unavailable.
-    const linkedId = automationLogId(row);
+    const linkedId = independentSensorAlert ? '' : automationLogId(row);
     const key = linkedId ? `automation:${linkedId}` : event.id;
     const previous = events.get(key);
     if (!previous || sourcePriority[source] < sourcePriority[previous.source]

@@ -3,6 +3,7 @@ import { AlertTriangle, Info, Loader2, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { loadFeedTestState, queueFeedLockReset } from '../services/feedTestService';
 import { actuatorControlError } from '../services/actuatorControlService';
+import { actuatorCommandErrorMessage } from '../services/actuatorCommandService.js';
 import { isCommandActive } from '../../supabase/functions/_shared/actuatorCommandLifecycle.js';
 
 export default function FeedingTestSettings({ tank }) {
@@ -57,12 +58,12 @@ export default function FeedingTestSettings({ tank }) {
       commandId.current = command.id;
       setResource(previous => ({ ...previous, data: { ...previous.data, command, active_commands: [command] } }));
     } catch (error) {
-      if (request.current === version) { setMessage(error.message); setResource(previous => ({ ...previous, verified: false })); }
+      if (request.current === version) { setMessage(actuatorCommandErrorMessage(error, 'The reset request could not be confirmed. Refresh actuator state before retrying.')); setResource(previous => ({ ...previous, verified: false })); }
     } finally { busy.current = false; setSubmitting(false); }
   }
   return <section className="automatic-feeding-card" aria-label="Feeding test maintenance">
     <div className="automatic-feeding-heading"><h3>Feeding Test</h3><button type="button" aria-label="Refresh feed test state" onClick={reload} disabled={submitting}><RefreshCw size={17} /></button></div>
-    <p>Allows another manual feeding test today by clearing the actuators local daily feed lock. Normal sensor safety rules still apply.</p>
+    <p>Allows another manual feeding test today by clearing the actuator's local daily feed lock. Normal sensor safety rules still apply.</p>
     {current?.error && <p role="alert"><AlertTriangle size={16} /> {current.error}</p>}
     {current?.data.emergency_stop_active && <p>Emergency Stop is active. Resume controls explicitly in Tank Details before testing.</p>}
     {active && !pending && <p>Another actuator action is pending or running. Wait for it to finish before resetting the feed lock.</p>}

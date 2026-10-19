@@ -53,7 +53,7 @@ test('verified automation and manual DONE show green Completed without unrelated
     assert.doesNotMatch(event.result, /pending|unconfirmed|not been verified|not been confirmed/i);
     assert.doesNotMatch(formatRecordedPumpAction(row, source).message, /pending|unconfirmed|not been verified|not been confirmed/i);
     if (automatic) {
-      assert.equal(event.result, 'The automatic action completed and the expected water-level movement was confirmed.');
+      assert.equal(event.result, type === 'AUTO_REFILL' ? 'The actuator automatically added water.' : 'The actuator automatically drained water.');
       assert.equal(event.reason, reason);
     }
     assert.deepEqual(row, before);

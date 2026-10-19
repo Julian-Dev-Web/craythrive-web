@@ -12,8 +12,8 @@ const history = sources => buildTankActivity({ tank, userId: 'owner', sources })
 test('automatic water statuses A–E honor the recorded contract and preserve diagnostic evidence', () => {
   for (const [action_type, action_status, reason, label] of [
     ['AUTO_REFILL', 'done', 'Expected sensor movement confirmed.', 'Completed'],
-    ['AUTO_REFILL', 'rechecking', 'Before: 1.80 cm; latest: 1.51 cm', 'Executed – Rechecking'],
-    ['AUTO_DRAIN', 'rechecking', 'Sensor settling', 'Executed – Rechecking'],
+    ['AUTO_REFILL', 'rechecking', 'Before: 1.80 cm; latest: 1.51 cm', 'Rechecking'],
+    ['AUTO_DRAIN', 'rechecking', 'Sensor settling', 'Rechecking'],
     ['AUTO_REFILL', 'failed', 'STOP_ALL interrupted the pump action.', 'Failed'],
     ['AUTO_DRAIN', 'blocked', 'Safety lock enabled.', 'Blocked'],
     ['AUTO_DRAIN', 'skipped', 'No correction needed.', 'Skipped'],

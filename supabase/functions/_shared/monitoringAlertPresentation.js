@@ -11,6 +11,12 @@ export function waterAutomationAlertSeverity(record) {
 }
 
 export function formatMonitoringAlert(record) {
+  // These are already rendered by the persistent automation-alert pipeline.
+  // Preserve its specific automatic title/reason rather than relabeling it as a
+  // generic Add Water/Drain command notification.
+  if (record?.source === 'tank_automation_logs' && record.metadata?.water_activity_version === 1) {
+    return { title: record.title, message: record.message };
+  }
   const pump = formatPumpAction(record);
   return pump ? { title: pump.title, message: pump.message,
     ...(waterAutomationAlertSeverity(record) ? { severity: 'info' } : {}) } : formatWaterDepthAlert(record || {});

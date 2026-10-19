@@ -217,7 +217,7 @@ export const test = base.extend({
           if (state.activityRPCMissing) return reply({ code: 'PGRST202', message: 'History RPC not installed' }, 404);
           if (state.activityReadFailure) return reply({ code: '42501', message: 'History unavailable' }, 403);
           if (!state.data.tanks.some(tank => tank.id === args.p_tank_id && tank.user_id === user.id)) return reply({ code: '42501' }, 403);
-          const rows = state.data.tank_automation_logs.filter(row => row.tank_id === args.p_tank_id && row.user_id === user.id
+          const rows = state.data.tank_automation_logs.filter(row => row.tank_id === args.p_tank_id && (row.user_id === user.id || row.user_id == null)
             && (!args.p_from || row.created_at >= args.p_from) && (!args.p_to || row.created_at < args.p_to))
             .sort((a, b) => new Date(b.created_at) - new Date(a.created_at) || b.id.localeCompare(a.id));
           return reply(rows.slice(args.p_offset, args.p_offset + args.p_limit));
@@ -304,15 +304,23 @@ export const test = base.extend({
           if (value.startsWith('gte.')) rows = rows.filter(row => new Date(row[key]).getTime() >= new Date(value.slice(4)).getTime());
           if (value.startsWith('lt.')) rows = rows.filter(row => new Date(row[key]).getTime() < new Date(value.slice(3)).getTime());
           if (value.startsWith('in.(')) rows = rows.filter(row => value.slice(4, -1).split(',').map(item => item.replaceAll('"', '')).includes(String(row[key])));
+          if (key === 'or' && value === `(user_id.eq.${user.id},user_id.is.null)`) rows = rows.filter(row => row.user_id === user.id || row.user_id == null);
         }
         if (table === 'device_commands' && request.method() === 'POST') {
           const body = request.postDataJSON();
+          if (state.commandSourceMissing && Object.hasOwn(body, 'command_source')) {
+            return reply({ code: 'PGRST204', message: "Could not find the 'command_source' column of 'device_commands' in the schema cache" }, 400);
+          }
           if (['RESET_FEED_LOCK','FEED_ONCE','DRAIN_FOR','REFILL_FOR'].includes(body.command_type)
             && (state.data.tank_automation_settings.some(row => row.tank_id === body.tank_id && row.emergency_stop_active)
             || state.data.device_commands.some(row => row.tank_id === body.tank_id && row.device_uid === body.device_uid && ['pending','running','processing'].includes(row.command_status)))) {
             state.controlQueueRejected = true;
             return reply({code:'55000',message:'Emergency stop is active or another action is running.'},409);
           }
+        }
+        if (table === 'device_commands' && request.method() === 'GET' && state.commandSourceMissing
+          && url.searchParams.get('select') === 'command_source') {
+          return reply({ code: '42703', message: 'column device_commands.command_source does not exist' }, 400);
         }
         if (request.method() !== 'GET' && request.method() !== 'HEAD') {
           const body = request.postDataJSON();
@@ -406,10 +414,13 @@ export const test = base.extend({
           || (state.feedingReadFailure && /^Failed to load resource:.*status of 503/.test(message.text())));
       const expectedControlFailure = state.controlQueueRejected && /status of 409/.test(message.text()) || /\/rpc\/(?:get_tank_actuator_control_state|request_tank_emergency_control)/.test(message.location().url || '')
         && ((state.controlRPCMissing && /status of 404/.test(message.text())) || (state.controlReadFailure && /status of 503/.test(message.text())));
+      const expectedCommandSchemaFailure = state.commandSourceMissing
+        && /\/rest\/v1\/device_commands\?/.test(message.location().url || '')
+        && /status of 400/.test(message.text());
       const expectedDeveloperFailure = (state.developerDenied && /^Failed to load resource:.*status of 403/.test(message.text())) ||
         (state.developerInvalidOtp && /^Failed to load resource:.*status of 401/.test(message.text())) ||
         (state.developerOperationStatus && new RegExp(`^Failed to load resource:.*status of ${state.developerOperationStatus}`).test(message.text()));
-      if (message.type() === 'error' && !expectedControlFailure && !expectedAuthFailure && !expectedTankFailure && !expectedDeveloperFailure && !expectedRecommendationFailure && !expectedActivityFailure && !expectedReadingFailure && !expectedFeedingFailure) state.errors.push(message.text());
+      if (message.type() === 'error' && !expectedCommandSchemaFailure && !expectedControlFailure && !expectedAuthFailure && !expectedTankFailure && !expectedDeveloperFailure && !expectedRecommendationFailure && !expectedActivityFailure && !expectedReadingFailure && !expectedFeedingFailure) state.errors.push(message.text());
       if (message.type() === 'warning') state.warnings.push(message.text());
     });
     page.on('response', response => {

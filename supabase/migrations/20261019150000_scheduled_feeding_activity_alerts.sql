@@ -2,7 +2,10 @@
 -- No historical executions, notifications, or ambiguous origins are rewritten.
 BEGIN;
 DO $preflight$ BEGIN
- IF md5(pg_get_functiondef(to_regprocedure('public.create_actuator_alert_from_command()'))) IS DISTINCT FROM '41b0c2a1915b0972c55bbdc87b8b1c40' THEN
+ -- Both definitions have been reviewed. The second fingerprint is the actual
+ -- production definition supplied in the 2026-10-19 database diagnostic.
+ IF coalesce(md5(pg_get_functiondef(to_regprocedure('public.create_actuator_alert_from_command()'))),'')
+  NOT IN ('41b0c2a1915b0972c55bbdc87b8b1c40','64cff69aa4deda3bd7afd5d73c7c7860') THEN
   RAISE EXCEPTION 'Existing command alert function changed; review before deployment rather than overwriting it'; END IF;
  IF EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='device_commands'
    AND column_name IN ('source','origin','trigger_source','execution_source','metadata')) THEN
