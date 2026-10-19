@@ -14,6 +14,12 @@ export function recordedDispenseCycles(value) {
 export function normalizeDispenseCycles(value) { return recordedDispenseCycles(value) ?? 2; }
 export function dispenseCycleLabel(cycles) { return `${cycles} dispense ${cycles === 1 ? 'cycle' : 'cycles'}`; }
 
+// A completed servo command is the daily accounting signal, not proof of food
+// delivery. Pending/running/rejected/failed requests never count as fed.
+export function isCompletedFeedCommand(row) {
+  return row?.command_type === 'FEED_ONCE' && row.command_status === 'done';
+}
+
 // A sensor hub or an unrelated actuator returned by a legacy lookup is never
 // eligible for feeding. An explicit tank pairing may precede device.tank_id.
 export function isPairedFeedActuator(device, tank, tankId) {
@@ -38,7 +44,7 @@ export function formatRecordedFeedingAction(row, outcome) {
     'In Progress': ['Feeding in progress', `${amount} Waiting for completion confirmation.`],
     Requested: ['Feeding request sent', `${amount} Waiting for the actuator.`],
     Started: ['Feeding in progress', `${amount} Waiting for completion confirmation.`],
-    Completed: ['Feeding completed', `${cycles === null ? 'Feeding completed.' : `Feeding completed — ${dispenseCycleLabel(cycles)}.`} Feed delivery is not measured.`],
+    Completed: ['Feeder command completed', `Feeder servo command sequence completed${cycles === null ? '.' : ` — ${dispenseCycleLabel(cycles)}.`} Physical feed delivery is not sensor-verified.`],
     Rejected: ['Feeding rejected', 'Feeding was blocked by a safety rule.'],
     Failed: ['Feeding failed', 'Feeding could not be completed.'],
     Skipped: ['Feeding skipped', 'Feeding was skipped. No successful completion is claimed.'],

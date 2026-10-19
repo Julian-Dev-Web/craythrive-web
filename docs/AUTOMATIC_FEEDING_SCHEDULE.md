@@ -1,5 +1,85 @@
 # Per-tank automatic feeding schedule — Web
 
+## Current integration: direct tank settings table
+
+The current Web editor reads and writes `public.tank_automation_settings`
+directly using the authenticated Supabase client and existing RLS. The table's
+four feeding columns and unique `tank_id` are provided by the current schema.
+**No feeding RPC or additional SQL migration is required for this Web change.**
+The older RPC/migration audit below is historical and no longer describes the
+current service dependency.
+
+The existing Automatic Feeding card appears once in Tank Details → Controls,
+above Manual Feed Now, and once in Settings for its selected tank. It reuses
+the existing input, switch, cycle selector, save action and responsive styles;
+no second section or page was created.
+
+| Database field | Value and validation |
+| --- | --- |
+| `auto_feeding_enabled` | Boolean, default true |
+| `auto_feed_hour` | Integer 0–23, default 19 |
+| `auto_feed_minute` | Integer 0–59, default 0 |
+| `auto_feed_cycles` | Integer 1–3, default 2 |
+| `tank_id` | Selected owned tank UUID; existing unique settings row |
+| `user_id` | Verified authenticated owner |
+| `device_uid` | Verified owned/paired actuator UID when available on first creation |
+
+Load verifies the current user and tank ownership, then selects only that
+owner/tank's settings. Opening a missing schedule shows the established defaults
+without inserting a row. Save updates **only the four feeding fields** on an
+existing row; it never sends cached water settings, device binding, durations,
+stability controls or other automation columns. A first save inserts the chosen
+feed fields, owner/tank, and an available verified actuator UID. An unpaired
+tank can configure its schedule without a fabricated UID. Database constraints
+and RLS remain authoritative. If another writer creates the unique tank row
+between read and insert, the service retries a feed-only update, preserving the
+winning row's other values.
+
+The native HH:MM input is parsed directly into integer hour/minute. There is no
+UTC conversion before saving: 19:30 saves as hour 19/minute 30 regardless of
+browser timezone, and displays as 7:30 PM Asia/Manila. The saved summary is
+"Every day at 7:00 PM · 2 dispense cycles" or "Automatic feeding off". Disabling
+keeps the chosen time and cycles. Existing focus/visibility reads preserve the
+draft; no new polling or browser scheduler was added.
+
+Saving the settings never inserts a `FEED_ONCE`, servo request, activity entry or
+notification. Firmware v1.29's direct settings reads, Manila clock, recovery
+window and one-successful-sequence-per-day behavior are the user-provided
+integration contract; the complete firmware/hardware was not modified or
+physically tested here.
+
+Command rendering uses `command_status ?? status ?? result` for device commands
+and `action_status ?? status ?? result` for automation logs. Legacy pending
+cannot override a saved done. The daily FEED_ONCE accounting signal is strictly
+`command_status === 'done'`; pending/running/rejected/failed do not count, and
+extra acknowledgement text is not required. This preserves the existing manual
+extra-feeding warning/confirmation flow; the actuator enforces its own automatic
+daily rule.
+
+A done feeder result says: "Feeder servo command sequence completed — 2 dispense
+cycles. Physical feed delivery is not sensor-verified." Cycle counts are taken
+from the saved command, and available device reason/safety text is retained.
+
+Modified application files: `src/services/feedingScheduleService.js`,
+`src/components/AutomaticFeedingSettings.jsx`, `src/pages/admin/TankDetailsPage.jsx`,
+`supabase/functions/_shared/actionStatus.js`, and
+`supabase/functions/_shared/feederControl.js`. Regression fixtures/tests and this
+document plus `docs/WATER_AUTOMATION_STATUS.md` were updated. Exact test files:
+`tests/feeding-schedule-service.test.mjs` (new), `tests/feeding-schedule.test.mjs`,
+`tests/feeder-control.test.mjs`, `tests/action-status.test.mjs`,
+`tests/browser/feeding-schedule.spec.mjs`, `tests/browser/manual-feeding.spec.mjs`,
+and `tests/browser/fixtures.mjs`.
+
+Validation: 234 unit tests pass, one pre-existing test is skipped, and all 56
+targeted browser tests pass. Browser coverage includes create/update/reload,
+owner/tank scoping, preserved water settings, unsaved edits, offline actuator
+configuration, three browser timezones, mobile widths, command status precedence
+and absence of feeding commands during schedule saves. Migration tests remain
+historical local PostgreSQL checks. No live authenticated production save or
+physical feeding sequence was run.
+
+## Original implementation audit (historical)
+
 2026-10-18. Web editor, service, migration and tests implemented. The migration
 has NOT been applied remotely. The complete actuator source is NOT in this
 repository, so configurable physical scheduling remains pending firmware

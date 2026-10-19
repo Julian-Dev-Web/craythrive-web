@@ -49,15 +49,43 @@ test('save is per tank, preserves all water settings, persists after reload and 
   let panel = await open(page);
   await panel.getByLabel('Feeding Time', { exact: true }).fill('21:15');
   await panel.getByRole('radio', { name: /1 Cycle/ }).check();
+  qa.data.tank_automation_settings[0].drain_seconds = 9; // independent water-setting change after loading the form
   await panel.getByRole('button', { name: 'Save Feeding Schedule', exact: true }).click();
   await expect(panel.getByRole('status')).toContainText('Automatic feeding schedule updated.');
   expect(writes(qa)).toHaveLength(1);
-  expect(writes(qa)[0].body).toEqual({ p_tank_id: 'tank-a', p_enabled: true, p_hour: 21, p_minute: 15, p_cycles: 1 });
-  expect(qa.data.tank_automation_settings[0]).toEqual({ ...original, auto_feed_hour: 21, auto_feed_minute: 15, auto_feed_cycles: 1 });
+  expect(writes(qa)[0].method).toBe('PATCH');
+  expect(writes(qa)[0].body).toEqual({ auto_feeding_enabled: true, auto_feed_hour: 21, auto_feed_minute: 15, auto_feed_cycles: 1 });
+  expect(qa.data.tank_automation_settings[0]).toEqual({ ...original, drain_seconds: 9, auto_feed_hour: 21, auto_feed_minute: 15, auto_feed_cycles: 1 });
   expect(qa.data.tank_automation_settings[1]).toEqual(other);
   await page.reload(); await page.getByRole('button', { name: 'Controls', exact: true }).click(); panel = panelFor(page);
   await expect(panel.getByLabel('Feeding Time', { exact: true })).toHaveValue('21:15');
   expect(qa.writes.every(write => write.table === 'tank_automation_settings')).toBe(true);
+});
+
+test('first save uses the existing settings table with owner/tank/actuator and works without feeding RPCs', async ({ page, qa }) => {
+  setup(qa); qa.data.tank_automation_settings = []; qa.feedingRPCMissing = true;
+  const panel = await open(page);
+  await expect(panelFor(page)).toHaveCount(1);
+  await panel.getByLabel('Feeding Time', { exact: true }).fill('07:15');
+  await panel.getByRole('radio', { name: /3 Cycles/ }).check();
+  await panel.getByRole('button', { name: 'Save Feeding Schedule', exact: true }).click();
+  await expect(panel.getByRole('status')).toContainText('updated');
+  expect(writes(qa)[0]).toMatchObject({ method: 'POST', body: { user_id: user.id, tank_id: 'tank-a', device_uid: 'actuator-a',
+    auto_feeding_enabled: true, auto_feed_hour: 7, auto_feed_minute: 15, auto_feed_cycles: 3 } });
+  await expect(panel.locator('.automatic-feeding-summary')).toContainText('Every day at 7:15 AM · 3 dispense cycles');
+  expect(qa.data.tank_automation_settings).toHaveLength(1);
+  expect(qa.reads.some(read => /^(get|save)_tank_feeding_schedule$/.test(read.table))).toBe(false);
+  expect(qa.writes.every(write => write.table === 'tank_automation_settings')).toBe(true);
+  expect(qa.data.device_commands).toEqual([]);
+});
+
+test('a tank without a paired actuator can save its schedule without inventing a device UID', async ({ page, qa }) => {
+  setup(qa); qa.data.tank_automation_settings = []; qa.data.iot_devices = [];
+  const panel = await open(page);
+  await panel.getByRole('button', { name: 'Save Feeding Schedule', exact: true }).click();
+  await expect(panel.getByRole('status')).toContainText('updated');
+  expect(Object.hasOwn(writes(qa)[0].body, 'device_uid')).toBe(false);
+  expect(qa.data.device_commands).toEqual([]);
 });
 
 test('switching OFF preserves configured time and cycles across save/reload', async ({ page, qa }) => {
@@ -69,7 +97,7 @@ test('switching OFF preserves configured time and cycles across save/reload', as
   await panel.getByRole('button', { name: 'Save Feeding Schedule', exact: true }).click();
   await expect(panel.getByRole('status')).toContainText('updated');
   await page.reload(); await page.getByRole('button', { name: 'Controls', exact: true }).click(); panel = panelFor(page);
-  await expect(panel).toContainText('Automatic feeding disabled');
+  await expect(panel).toContainText('Automatic feeding off');
   await expect(panel.getByLabel('Feeding Time', { exact: true })).toHaveValue('20:30');
   await panel.getByRole('switch').check();
   await expect(panel.getByRole('radio', { name: /3 Cycles/ })).toBeChecked();
@@ -91,7 +119,7 @@ test('Settings tank switching uses each tank own values and a focus refresh keep
   expect(writes(qa)).toHaveLength(0);
 });
 
-test('cleared time is rejected, save failures keep the draft and missing migration never claims success', async ({ page, qa }) => {
+test('cleared time is rejected, save failures keep the draft and unavailable columns never claim success', async ({ page, qa }) => {
   setup(qa); const panel = await open(page);
   await panel.getByLabel('Feeding Time', { exact: true }).fill('');
   await expect(panel.getByRole('button', { name: 'Save Feeding Schedule', exact: true })).toBeDisabled();
@@ -101,9 +129,9 @@ test('cleared time is rejected, save failures keep the draft and missing migrati
   await expect(panel.getByRole('alert')).toContainText('could not be verified');
   await expect(panel.getByLabel('Feeding Time', { exact: true })).toHaveValue('23:58');
   expect(writes(qa)).toHaveLength(0);
-  qa.feedingRPCMissing = true;
+  qa.feedingSchemaMissing = true;
   await panel.getByRole('button', { name: 'Reload feeding schedule', exact: true }).click();
-  await expect(panel.getByRole('alert')).toContainText('database migration');
+  await expect(panel.getByRole('alert')).toContainText('database fields are unavailable');
   await expect(panel).not.toContainText('Automatic feeding schedule updated.');
 });
 
@@ -125,6 +153,11 @@ for (const timezoneId of ['America/New_York', 'Asia/Tokyo', 'Europe/London']) te
     await expect(panel).toContainText('Oct 18, 2026');
     await expect(panel).toContainText('Philippine Time (UTC+8)');
     expect(writes(qa)).toHaveLength(0);
+    await panel.getByLabel('Feeding Time', { exact: true }).fill('19:30');
+    await panel.getByRole('button', { name: 'Save Feeding Schedule', exact: true }).click();
+    await expect(panel.getByRole('status')).toContainText('updated');
+    expect(writes(qa)[0].body.auto_feed_hour).toBe(19);
+    expect(writes(qa)[0].body.auto_feed_minute).toBe(30);
   });
 });
 

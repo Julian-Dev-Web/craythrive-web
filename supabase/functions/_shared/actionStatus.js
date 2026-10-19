@@ -5,7 +5,7 @@ const normalize = value => typeof value === 'string' ? value.trim().toLowerCase(
 export function getRecordedActionStatus(row = {}, source = '') {
   const metadata = row.metadata || {};
   const device = source === 'device_commands' || !source && !!row.command_type && !row.action_type;
-  const saved = device ? row.command_status ?? row.action_status : row.action_status ?? row.command_status;
+  const saved = device ? row.command_status : source === 'tank_automation_logs' ? row.action_status : row.action_status ?? row.command_status;
   const legacy = row.status ?? row.result;
   const notificationState = ['active', 'resolved', 'read', 'unread', 'open', 'handled', 'dismissed'].includes(normalize(legacy));
   const embedded = device ? metadata.command_status ?? metadata.action_status : metadata.action_status ?? metadata.command_status;

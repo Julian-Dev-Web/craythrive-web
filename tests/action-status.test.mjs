@@ -34,6 +34,9 @@ test('each source uses its authoritative field with nullish fallback and case no
   assert.equal(getRecordedActionStatus({ command_status: 'done', metadata: { action_status: 'pending' } }), 'done');
   assert.equal(getRecordedActionStatus({ status: 'done', metadata: { action_status: 'pending' } }), 'done');
   assert.equal(getRecordedActionStatus({ status: 'resolved', metadata: { action_status: 'done' } }), 'done');
+  assert.equal(getRecordedActionStatus({ command_status: 'done', status: 'pending', result: 'failed' }, 'device_commands'), 'done');
+  assert.equal(getRecordedActionStatus({ command_status: null, action_status: 'failed', status: 'pending' }, 'device_commands'), 'pending');
+  assert.equal(getRecordedActionStatus({ action_status: null, command_status: 'done', status: 'pending' }, 'tank_automation_logs'), 'pending');
 });
 
 test('verified automation and manual DONE show green Completed without unrelated metadata or acknowledgement text', () => {

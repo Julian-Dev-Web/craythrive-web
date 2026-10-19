@@ -69,7 +69,7 @@ for (const status of ['done', 'rejected', 'failed']) test(`polling reports ${sta
   const outcome = { done: 'Completed', rejected: 'Rejected', failed: 'Failed' }[status];
   const card = page.locator(`[data-feed-status="${outcome}"]`);
   await expect(card).toBeVisible();
-  await expect(card).toContainText(status === 'done' ? 'Feeding completed — 2 dispense cycles' : status === 'rejected' ? 'blocked by a safety rule' : 'could not be completed');
+  await expect(card).toContainText(status === 'done' ? 'Feeder servo command sequence completed — 2 dispense cycles' : status === 'rejected' ? 'blocked by a safety rule' : 'could not be completed');
   if (status !== 'done') {
     await expect(feedButton(page)).toBeEnabled();
     await expect(page.getByText(/This tank was already fed today/)).toHaveCount(0);
@@ -78,13 +78,14 @@ for (const status of ['done', 'rejected', 'failed']) test(`polling reports ${sta
   expect(feedWrites(qa)).toHaveLength(1);
 });
 
-test('a done row displays Completed while the existing daily guard still requires its acknowledgement', async ({ page, qa }) => {
+test('a done row with legacy pending status counts as fed today without acknowledgement wording', async ({ page, qa }) => {
   setup(qa);
   qa.data.device_commands = [{ id: 'unconfirmed', user_id: user.id, tank_id: 'tank-a', device_uid: 'actuator-a',
-    command_type: 'FEED_ONCE', command_value: '3', command_status: 'done', created_at: '2026-10-17T01:00:00Z' }];
+    command_type: 'FEED_ONCE', command_value: '3', command_status: 'done', status: 'pending', created_at: '2026-10-17T01:00:00Z' }];
   await open(page);
-  await expect(page.locator('[data-feed-status="Completed"]')).toContainText('Feeding completed');
-  await expect(page.getByText(/This tank was already fed today/)).toHaveCount(0);
+  await expect(page.locator('[data-feed-status="Completed"]')).toContainText('Feeder servo command sequence completed — 3 dispense cycles');
+  await expect(page.locator('[data-feed-status="Completed"]')).toContainText('Physical feed delivery is not sensor-verified.');
+  await expect(page.getByText(/This tank was already fed today/).first()).toBeVisible();
   await expect(feedButton(page)).toBeEnabled();
 });
 

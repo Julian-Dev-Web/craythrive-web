@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FEED_AMOUNTS, normalizeDispenseCycles, recordedDispenseCycles, isPairedFeedActuator, formatRecordedFeedingAction } from '../supabase/functions/_shared/feederControl.js';
+import { FEED_AMOUNTS, normalizeDispenseCycles, recordedDispenseCycles, isPairedFeedActuator, isCompletedFeedCommand, formatRecordedFeedingAction } from '../supabase/functions/_shared/feederControl.js';
 import { buildTankActivity, getRecordedActionOutcome, hasRecordedCommandAcknowledgement } from '../supabase/functions/_shared/tankActivity.js';
 
 test('only 1/2/3 are selectable; invalid values fall back to two without inventing historical cycles', () => {
@@ -35,10 +35,18 @@ test('feeding labels honor saved status while acknowledgement checks stay separa
   const command = { command_type: 'FEED_ONCE', command_value: '2', command_status: 'done', executed_at: '2026-10-17T02:00:00Z', result_message: 'FEED_ONCE completed.' };
   const before = structuredClone(command);
   assert.equal(hasRecordedCommandAcknowledgement(command), true);
-  assert.match(formatRecordedFeedingAction(command, getRecordedActionOutcome(command)).message, /Feeding completed — 2 dispense cycles/);
+  assert.match(formatRecordedFeedingAction(command, getRecordedActionOutcome(command)).message, /Feeder servo command sequence completed — 2 dispense cycles.*Physical feed delivery is not sensor-verified/);
   assert.deepEqual(command, before);
   assert.equal(formatRecordedFeedingAction({ ...command, command_value: 'once' }, 'Completed').cycles, null);
   assert.equal(formatRecordedFeedingAction({ command_type: 'REFILL_FOR' }, 'Completed'), null);
+});
+
+test('only command_status done FEED_ONCE counts toward the daily feeding history', () => {
+  for (const command_status of ['pending', 'running', 'rejected', 'failed', 'completed', null, undefined]) {
+    assert.equal(isCompletedFeedCommand({ command_type: 'FEED_ONCE', command_status, status: 'done' }), false);
+  }
+  assert.equal(isCompletedFeedCommand({ command_type: 'FEED_ONCE', command_status: 'done', status: 'pending' }), true);
+  assert.equal(isCompletedFeedCommand({ command_type: 'DRAIN_FOR', command_status: 'done' }), false);
 });
 
 test('manual/scheduled history uses recorded cycle counts and preserves raw historical statuses', () => {

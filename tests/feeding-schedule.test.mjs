@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 import { DEFAULT_FEEDING_SCHEDULE as defaults, feedingTimeLabel, feedingTimeInput, parseFeedingTime, nextFeedingSchedule, normalizeFeedingSchedule, validFeedingSchedule } from '../supabase/functions/_shared/feedingSchedule.js';
-import { loadFeedingSchedule, saveFeedingSchedule } from '../src/services/feedingScheduleService.js';
 
 const migration = fs.readFileSync('supabase/migrations/20261018100000_tank_feeding_schedule.sql', 'utf8');
 const owner = '11111111-1111-4111-8111-111111111111';
@@ -98,16 +97,4 @@ test('migration adds missing fields safely and rejects duplicate settings and un
 test('invalid existing feeding rows stop the migration without rewriting feeding or water values', async () => {
   const pg = await fixture(true, true);
   await pg.close();
-});
-
-test('service uses only scoped RPC arguments, validates saves and rejects cross-tank responses', async () => {
-  const calls = [];
-  const fake = { rpc: async (name,args) => { calls.push({ name,args }); return { data: { tank_id: tank, exists: name.startsWith('save'), can_save: true, settings: name.startsWith('save') ? defaults : null } }; } };
-  assert.deepEqual((await loadFeedingSchedule(fake, tank)).settings, defaults);
-  assert.equal(calls.length, 1);
-  await saveFeedingSchedule(fake, tank, defaults);
-  assert.deepEqual(calls[1].args, { p_tank_id: tank, p_enabled: true, p_hour: 19, p_minute: 0, p_cycles: 2 });
-  await assert.rejects(saveFeedingSchedule(fake, tank, { ...defaults, auto_feed_cycles: 4 }), /Invalid/);
-  await assert.rejects(loadFeedingSchedule(fake, tankB), /Unverified/);
-  assert.equal(calls.some(call => /device_commands/.test(call.name)), false);
 });

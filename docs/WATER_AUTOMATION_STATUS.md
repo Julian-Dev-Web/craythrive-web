@@ -35,9 +35,10 @@ deduplication and source priority remain in place.
 This rendering correction updates `actionStatus.js`, `waterAutomationStatus.js`,
 `tankActivity.js`, `pumpActionWording.js`, `feederControl.js`, Tank Details,
 the Activity timeline, and Automatic Feeding Settings plus their regression tests.
-The existing feeding acknowledgement predicate is preserved separately as
-`hasRecordedCommandAcknowledgement()` for the daily control guard. Display labels
-no longer participate in that decision. Pump/feeder commands and safety rules
+Daily feeding accounting now counts only FEED_ONCE rows with
+`command_status === 'done'`; an extra acknowledgement phrase is not required.
+Pending/running/rejected/failed rows do not count, and display labels do not
+participate in that decision. Pump/feeder command execution and safety interlocks
 are unchanged. Reports continue exporting sensor/ammonia and marketplace records;
 they do not combine actuator history sources.
 

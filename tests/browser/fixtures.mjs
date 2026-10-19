@@ -229,6 +229,20 @@ export const test = base.extend({
           return reply({ affected: targets.length, changed, rows: saved });
         }
         if (request.method() === 'GET') state.reads.push({ table, filters: Object.fromEntries(url.searchParams), query: [...url.searchParams] });
+        if (table === 'tank_automation_settings') {
+          if (state.feedingSchemaMissing) return reply({ code: '42703', message: 'Feeding column unavailable' }, 400);
+          if (request.method() === 'GET' && state.feedingReadFailure) return reply({ code: '503' }, 503);
+          if (['POST', 'PATCH'].includes(request.method())) {
+            if (state.feedingSaveDelay) await new Promise(resolve => setTimeout(resolve, state.feedingSaveDelay));
+            if (state.feedingSaveFailure) return reply({ code: '42501' }, 403);
+            const body = request.postDataJSON();
+            const owner = (state.authUser || user).id;
+            const target = body.tank_id || url.searchParams.get('tank_id')?.slice(3);
+            if (!state.data.tanks.some(tank => tank.id === target && tank.user_id === owner)
+              || request.method() === 'POST' && body.user_id !== owner) return reply({ code: '42501' }, 403);
+            if (request.method() === 'POST' && state.data.tank_automation_settings.some(row => row.tank_id === target)) return reply({ code: '23505' }, 409);
+          }
+        }
         if (request.method() === 'GET' && table === 'profiles' && state.profileFailure) return reply({ code: '503', message: 'Profile temporarily unavailable' }, 503);
         if (request.method() === 'GET' && state.activityReadDelay && table === 'control_logs') await new Promise(resolve => setTimeout(resolve, state.activityReadDelay));
         if (request.method() === 'GET' && state.activityReadFailure && ['control_logs', 'device_commands', 'alerts', 'ammonia_readings'].includes(table)) return reply({ code: '42501', message: 'History unavailable' }, 403);
@@ -331,9 +345,10 @@ export const test = base.extend({
       const expectedActivityFailure = (state.activityRPCMissing && /^Failed to load resource:.*status of 404/.test(message.text()))
         || (state.activityReadFailure && /^Failed to load resource:.*status of (403|503)/.test(message.text()));
       const expectedReadingFailure = state.currentReadingFailure && /^Failed to load resource:.*status of 503/.test(message.text());
-      const expectedFeedingFailure = /\/rpc\/(?:get|save)_tank_feeding_schedule/.test(message.location().url || '')
+      const expectedFeedingFailure = /\/(?:rpc\/(?:get|save)_tank_feeding_schedule|tank_automation_settings)/.test(message.location().url || '')
         && ((state.feedingSaveFailure && /^Failed to load resource:.*status of 403/.test(message.text()))
           || (state.feedingRPCMissing && /^Failed to load resource:.*status of 404/.test(message.text()))
+          || (state.feedingSchemaMissing && /^Failed to load resource:.*status of 400/.test(message.text()))
           || (state.feedingReadFailure && /^Failed to load resource:.*status of 503/.test(message.text())));
       const expectedDeveloperFailure = (state.developerDenied && /^Failed to load resource:.*status of 403/.test(message.text())) ||
         (state.developerInvalidOtp && /^Failed to load resource:.*status of 401/.test(message.text())) ||

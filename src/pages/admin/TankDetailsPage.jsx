@@ -5,7 +5,7 @@ import { philippineDayBounds, philippineDateKey, timestampMs, formatPhilippineDa
 import useServerTime from '../../hooks/useServerTime';
 import { fetchServerTimestamp } from '../../services/serverTimeService';
 import { formatMonitoringAlert, waterAutomationAlertSeverity } from "../../../supabase/functions/_shared/monitoringAlertPresentation.js";
-import { formatRecordedPumpAction, getRecordedActionOutcome, hasRecordedCommandAcknowledgement } from "../../../supabase/functions/_shared/tankActivity.js";
+import { formatRecordedPumpAction, getRecordedActionOutcome } from "../../../supabase/functions/_shared/tankActivity.js";
 import { logDiagnostic, getSafeErrorMessage } from "../../utils/securityDiagnostics";
 import { getAmmoniaLabel, getAmmoniaNumericValue, getAmmoniaScanDate, getLatestAmmoniaForTank, recordMatchesAmmoniaTank, recordMatchesMonitoringTank } from "../../utils/monitoringRecords";
 import { loadAmmoniaHistory, loadSensorHistory } from "../../services/tankSnapshotService";
@@ -15,7 +15,7 @@ import SensorRecommendations from "../../components/SensorRecommendations";
 import TankActivityHistory from "../../components/TankActivityHistory";
 import ManualFeedOptions from "../../components/ManualFeedOptions";
 import AutomaticFeedingSettings from "../../components/AutomaticFeedingSettings";
-import { dispenseCycleLabel, formatRecordedFeedingAction, isPairedFeedActuator, normalizeDispenseCycles } from '../../../supabase/functions/_shared/feederControl.js';
+import { dispenseCycleLabel, formatRecordedFeedingAction, isCompletedFeedCommand, isPairedFeedActuator, normalizeDispenseCycles } from '../../../supabase/functions/_shared/feederControl.js';
 import { getTankPairingState } from "../../utils/tankPairing";
 import { getTankPopulationLabel } from "../../utils/tankCreationRules";
 import { getSafetyLabelSeverity, getSafetySeverity, getParameterExplanation, getSafetyStatusLabel } from "../../utils/statusHelpers";
@@ -1499,7 +1499,7 @@ async function fetchTodaysFeedCommands(
     return [];
   }
 
-  return data.filter(command => command.command_status === 'done' && hasRecordedCommandAcknowledgement(command));
+  return data.filter(isCompletedFeedCommand);
 }
 
 /* =========================================================
@@ -3752,7 +3752,7 @@ export default function TankDetailsPage() {
           {/* ACTION BUTTONS */}
 
           <AutomaticFeedingSettings key={tankId} tank={tank} nowMs={nowMs}
-            lastFeed={sortedControlLogs.find(command => command.command_type === 'FEED_ONCE' && hasRecordedCommandAcknowledgement(command))} />
+            lastFeed={sortedControlLogs.find(isCompletedFeedCommand)} />
 
           <h4 className="manual-feeding-heading">Manual Feed Now</h4>
           <ManualFeedOptions cycles={activeFeedCommand ? feedingStatus?.cycles ?? selectedCycles : selectedCycles} onChange={setDispenseCycles}
@@ -3773,7 +3773,7 @@ export default function TankDetailsPage() {
               <strong>{feedingStatus.title}</strong>
               <p>{feedingStatus.message}</p>
               {feedingStatus.cycles !== null && <small>Dispense cycles: {feedingStatus.cycles}</small>}
-              {['Rejected', 'Failed', 'Skipped'].includes(feedingStatus.outcome) && latestFeedCommand.result_message && <small>Device report: {latestFeedCommand.result_message}</small>}
+              {(latestFeedCommand.result_message || latestFeedCommand.reason || latestFeedCommand.notes) && <small>Device report: {latestFeedCommand.result_message || latestFeedCommand.reason || latestFeedCommand.notes}</small>}
             </div>
             {['Pending Verification', 'In Progress'].includes(feedingStatus.outcome) ? <Loader2 className="spin-icon" size={18} aria-hidden="true" />
               : feedingStatus.outcome === 'Completed' ? <CheckCircle2 size={18} aria-hidden="true" /> : <AlertTriangle size={18} aria-hidden="true" />}
